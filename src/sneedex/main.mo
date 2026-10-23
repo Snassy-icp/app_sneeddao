@@ -12,6 +12,7 @@ import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 import Nat32 "mo:base/Nat32";
 import Error "mo:base/Error";
+import Iter "mo:base/Iter";
 
 import Map "mo:map/Map";
 import { phash; nhash; thash } "mo:map/Map";
@@ -27,6 +28,7 @@ import Icrc3Sns "../icrc3/SnsRegister";
 import T3 "../icrc3/Types";
 import Ext "../sneed_names/Ext";
 import SpecialPrices "../SpecialPrices";
+import RateLimit "../RateLimit";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -77,11 +79,40 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     ];
     var _nextCanisterKindId : T.CanisterKindId = 2; // 0, 1 are reserved (prefixed with _ to suppress unused warning)
     
-    // Offers storage
+    // Offers storage. Both arrays are kept in ascending id order (ids are handed out and appended
+    // in the same synchronous step, and nothing is ever removed), so lookups are binary searches
+    // (getOffer, getBid) and the feed walks backwards from its start id without sorting.
+    // A write still copies the array (updateOffer / updateBid): a pointer copy, a few instructions
+    // per offer, harmless up to hundreds of thousands of offers. Moving to maps would change the
+    // stable types, which under classic persistence means a migration that an older build could
+    // not read back (no rollback), so the arrays stay (spec/paging_audit.md, sneedex).
     var offers : [T.Offer] = [];
     
     // Bids storage
     var bids : [T.Bid] = [];
+
+    // Bid ids per offer, ascending (transient: rebuilt from `bids` on every install and upgrade,
+    // below, and extended where a bid is appended). Bids are never removed or moved to another offer.
+    transient let bidIdsByOffer = Map.new<T.OfferId, Buffer.Buffer<T.BidId>>();
+    func indexBid(bid : T.Bid) {
+        switch (Map.get(bidIdsByOffer, nhash, bid.offer_id)) {
+            case (?b) { b.add(bid.id) };
+            case null { let b = Buffer.Buffer<T.BidId>(1); b.add(bid.id); Map.set(bidIdsByOffer, nhash, bid.offer_id, b) };
+        };
+    };
+    func sortedById<X>(xs : [X], id : X -> Nat) : Bool {
+        var i = 1;
+        while (i < xs.size()) { if (id(xs[i - 1]) >= id(xs[i])) return false; i += 1 };
+        true;
+    };
+    // The order is an invariant of the code; restore it should an old state lack it.
+    if (not sortedById<T.Offer>(offers, func(o) { o.id })) {
+        offers := Array.sort<T.Offer>(offers, func(a, b) { Nat.compare(a.id, b.id) });
+    };
+    if (not sortedById<T.Bid>(bids, func(b) { b.id })) {
+        bids := Array.sort<T.Bid>(bids, func(a, b) { Nat.compare(a.id, b.id) });
+    };
+    for (b in bids.vals()) { indexBid(b) };
 
     // In-flight guard for bid escrow payouts (transient — intentionally reset
     // on upgrade). On ICP every await is a commit point and concurrent ingress
@@ -966,30 +997,51 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         null;
     };
     
-    func getOffer(offerId : T.OfferId) : ?T.Offer {
-        for (offer in offers.vals()) {
-            if (offer.id == offerId) return ?offer;
+    /// Position of the element with id `id` in an id-ascending array (binary search).
+    func indexById<X>(xs : [X], id : X -> Nat, target : Nat) : ?Nat {
+        var lo = 0;
+        var hi = xs.size();
+        while (lo < hi) {
+            let mid = (lo + hi) / 2;
+            let m = id(xs[mid]);
+            if (m == target) return ?mid;
+            if (m < target) { lo := mid + 1 } else { hi := mid };
         };
         null;
+    };
+    /// The number of elements with an id below `target` in an id-ascending array.
+    func countBelow<X>(xs : [X], id : X -> Nat, target : Nat) : Nat {
+        var lo = 0;
+        var hi = xs.size();
+        while (lo < hi) {
+            let mid = (lo + hi) / 2;
+            if (id(xs[mid]) < target) { lo := mid + 1 } else { hi := mid };
+        };
+        lo;
+    };
+    func offerId_(o : T.Offer) : Nat { o.id };
+    func bidId_(b : T.Bid) : Nat { b.id };
+
+    func getOffer(offerId : T.OfferId) : ?T.Offer {
+        switch (indexById<T.Offer>(offers, offerId_, offerId)) { case (?i) ?offers[i]; case null null };
     };
     
     func getBid(bidId : T.BidId) : ?T.Bid {
-        for (bid in bids.vals()) {
-            if (bid.id == bidId) return ?bid;
-        };
-        null;
+        switch (indexById<T.Bid>(bids, bidId_, bidId)) { case (?i) ?bids[i]; case null null };
     };
     
     func updateOffer(offerId : T.OfferId, newOffer : T.Offer) {
-        offers := Array.map<T.Offer, T.Offer>(offers, func(o : T.Offer) : T.Offer {
-            if (o.id == offerId) { newOffer } else { o };
-        });
+        switch (indexById<T.Offer>(offers, offerId_, offerId)) {
+            case (?i) { let old = offers; offers := Array.tabulate<T.Offer>(old.size(), func(j) { if (j == i) newOffer else old[j] }) };
+            case null {};
+        };
     };
     
     func updateBid(bidId : T.BidId, newBid : T.Bid) {
-        bids := Array.map<T.Bid, T.Bid>(bids, func(b : T.Bid) : T.Bid {
-            if (b.id == bidId) { newBid } else { b };
-        });
+        switch (indexById<T.Bid>(bids, bidId_, bidId)) {
+            case (?i) { let old = bids; bids := Array.tabulate<T.Bid>(old.size(), func(j) { if (j == i) newBid else old[j] }) };
+            case null {};
+        };
     };
     
     /// Refund a Lost bid's escrow to its bidder, the one recipient the bid records: the bid amount
@@ -1970,22 +2022,31 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// The bids of an offer in id order (through bidIdsByOffer: no scan of every bid).
     func getBidsForOffer(offerId : T.OfferId) : [T.Bid] {
-        Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
-            b.offer_id == offerId;
-        });
+        switch (Map.get(bidIdsByOffer, nhash, offerId)) {
+            case null { [] };
+            case (?ids) {
+                let out = Buffer.Buffer<T.Bid>(ids.size());
+                for (id in ids.vals()) { switch (getBid(id)) { case (?b) out.add(b); case null {} } };
+                Buffer.toArray(out);
+            };
+        };
+    };
+    func bidCountForOffer(offerId : T.OfferId) : Nat {
+        switch (Map.get(bidIdsByOffer, nhash, offerId)) { case (?ids) ids.size(); case null 0 };
     };
     
     /// Get only confirmed bids for an offer (excludes unconfirmed reservations with amount=0)
     func getConfirmedBidsForOffer(offerId : T.OfferId) : [T.Bid] {
-        Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
-            b.offer_id == offerId and b.tokens_escrowed;
+        Array.filter<T.Bid>(getBidsForOffer(offerId), func(b : T.Bid) : Bool {
+            b.tokens_escrowed;
         });
     };
     
     func getActiveBidsForOffer(offerId : T.OfferId) : [T.Bid] {
-        Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
-            b.offer_id == offerId and b.state == #Pending and b.tokens_escrowed;
+        Array.filter<T.Bid>(getBidsForOffer(offerId), func(b : T.Bid) : Bool {
+            b.state == #Pending and b.tokens_escrowed;
         });
     };
     
@@ -2256,6 +2317,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Create a new offer in Draft state
     public shared ({ caller }) func createOffer(request : T.CreateOfferRequest) : async T.Result<T.OfferId> {
+        // Keep the caller's Premium status cached (a call only when it is missing or expired), so
+        // inspect can give members the Premium limit; then take from the bucket under their rule.
+        switch (sneedPremiumCanisterId) { case (?pc) ignore await* PremiumClient.isPremium(premiumCache, pc, caller); case null {} };
+        if (not rateLimiter.take(caller, "createOffer", createOfferRule(caller), Time.now())) { return #err(rateLimited("createOffer")) };
         // Validate: must have buyout or expiration
         switch (request.buyout_price, request.expiration) {
             case (null, null) {
@@ -3263,6 +3328,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
     /// Reserve a bid ID (so user knows which subaccount to send tokens to)
     public shared ({ caller }) func reserveBid(offerId : T.OfferId) : async T.Result<T.BidId> {
+        if (not rateTake(caller, "reserveBid")) { return #err(rateLimited("reserveBid")) };
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -3322,6 +3388,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 bids := Array.append(bids, [bid]);
+                indexBid(bid);
                 icrc3_add("sneedex_bid_reserve", [("caller", pv(caller)), ("bid_id", #Nat(bidId)), ("offer_id", #Nat(offerId))]);
                 
                 #ok(bidId);
@@ -3331,6 +3398,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Confirm a bid after tokens have been sent to the escrow subaccount
     public shared ({ caller }) func confirmBid(bidId : T.BidId, amount : Nat) : async T.Result<()> {
+        if (not rateTake(caller, "confirmBid")) { return #err(rateLimited("confirmBid")) };
         switch (getBid(bidId)) {
             case null { return #err(#BidNotFound) };
             case (?bid) {
@@ -3790,6 +3858,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Cancel an offer (only if no bids)
     public shared ({ caller }) func cancelOffer(offerId : T.OfferId) : async T.Result<()> {
+        if (not rateTake(caller, "cancelOffer")) { return #err(rateLimited("cancelOffer")) };
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -4291,26 +4360,71 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Get all active offers
+    // Reply limits of the offer lists (spec/paging_audit.md S6, S7): a page of the feed holds at most
+    // MAX_FEED_PAGE offers, and every list stops before its reply would pass MAX_REPLY_BYTES (a
+    // query reply may be at most 3 MB; a few hundred offers with 4,000-character notes and long
+    // bidder lists would pass that).
+    transient let MAX_FEED_PAGE : Nat = 100;
+    transient let MAX_OFFER_LIST : Nat = 500;
+    transient let MAX_REPLY_BYTES : Nat = 1_500_000;
+
+    /// An upper estimate of an offer's size in a Candid reply.
+    func offerReplyBytes(o : T.Offer) : Nat {
+        let text = func(t : ?Text) : Nat { switch (t) { case (?x) Text.encodeUtf8(x).size() + 8; case null 1 } };
+        let principals = func(ps : ?[Principal]) : Nat { switch (ps) { case (?l) 8 + 32 * l.size(); case null 1 } };
+        var n = 400 + text(o.public_note) + text(o.note_to_buyer) + principals(o.approved_bidders);
+        for (e in o.assets.vals()) {
+            n += 160 + (switch (e.asset) {
+                case (#Canister(c)) text(c.title) + text(c.description) + principals(c.controllers_snapshot);
+                case (#SNSNeuron(x)) x.neuron_id.id.size() + principals(x.hotkeys_snapshot);
+                case (#ICRC1Token(_)) 0;
+                case (#ICRC7NFT(x)) 12 * x.token_ids.size();
+                case (#EXTNFT(x)) 4 * x.token_indices.size();
+                case (#SneedLock(_)) 64;
+            });
+        };
+        n;
+    };
+
+    /// The newest offers passing `keep` (at most MAX_OFFER_LIST, within the reply budget), as
+    /// `caller` may see them, in ascending id order like the full lists these methods used to give.
+    func newestOffers(caller : Principal, keep : T.Offer -> Bool) : [T.Offer] {
+        let out = Buffer.Buffer<T.Offer>(16);
+        var bytes = 0;
+        var i = offers.size();
+        label walk while (i > 0) {
+            i -= 1;
+            let o = offers[i];
+            if (keep(o)) {
+                if (out.size() >= MAX_OFFER_LIST) break walk;
+                let seen = offerAsSeenBy(caller, o);
+                let size = offerReplyBytes(seen);
+                if (out.size() > 0 and bytes + size > MAX_REPLY_BYTES) break walk;
+                out.add(seen);
+                bytes += size;
+            };
+        };
+        Buffer.reverse(out);
+        Buffer.toArray(out);
+    };
+
+    /// Get the active offers (the newest 500 at most, within the reply size limit)
     public shared query ({ caller }) func getActiveOffers() : async [T.Offer] {
-        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
-            o.state == #Active;
-        }));
+        newestOffers(caller, func(o : T.Offer) : Bool { o.state == #Active });
     };
     
-    /// Get all active public offers (no approved_bidders list)
+    /// Get the active public offers (no approved_bidders list; the newest 500 at most)
     public shared query ({ caller }) func getPublicOffers() : async [T.Offer] {
-        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
-            o.state == #Active and o.approved_bidders == null;
-        }));
+        newestOffers(caller, func(o : T.Offer) : Bool { o.state == #Active and o.approved_bidders == null });
     };
     
     /// Get all private offers visible to a specific principal
     /// (offers where the principal is the creator or in the approved_bidders list)
     /// For creators: shows all states (including Draft, PendingEscrow for management)
     /// For approved bidders: shows all states except Draft/PendingEscrow (so they can see completed/expired auctions)
+    /// The newest 500 at most, within the reply size limit; getOfferFeed pages through all of them.
     public shared query ({ caller }) func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
-        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+        newestOffers(caller, func(o : T.Offer) : Bool {
             switch (o.approved_bidders) {
                 case null { false }; // Public offer, not included
                 case (?approvedList) {
@@ -4329,54 +4443,45 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
             };
-        }));
-    };
-    
-    /// Get offers by creator
-    public shared query ({ caller }) func getOffersByCreator(creator : Principal) : async [T.Offer] {
-        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
-            Principal.equal(o.creator, creator);
-        }));
-    };
-    
-    /// Get paginated offer feed (sorted by ID descending = newest first)
-    public shared query ({ caller }) func getOfferFeed(input : T.GetOfferFeedInput) : async T.GetOfferFeedResponse {
-        // Determine starting ID (default to highest offer ID)
-        let startId : Nat = switch (input.start_id) {
-            case (?id) id;
-            case null if (nextOfferId > 0) nextOfferId else 0;
-        };
-        
-        // Collect matching offers
-        let resultBuffer = Buffer.Buffer<T.Offer>(input.length);
-        var lastMatchedId : ?Nat = null;
-        
-        // Sort offers by ID descending and filter
-        let sortedOffers = Array.sort<T.Offer>(offers, func(a : T.Offer, b : T.Offer) : {#less; #equal; #greater} {
-            if (a.id > b.id) #less
-            else if (a.id < b.id) #greater
-            else #equal
         });
-        
-        for (offer in sortedOffers.vals()) {
-            // Skip offers with ID >= startId (we want offers BEFORE startId)
-            if (offer.id >= startId) {
-                // continue
-            } else {
-                // Check if offer matches filter
-                if (matchesOfferFilter(offer, input.filter)) {
-                    if (resultBuffer.size() < input.length) {
-                        resultBuffer.add(offerAsSeenBy(caller, offer));
-                        lastMatchedId := ?offer.id;
-                    } else {
-                        // We have enough, but there are more
-                        return {
-                            offers = Buffer.toArray(resultBuffer);
-                            has_more = true;
-                            next_start_id = lastMatchedId;
-                        };
-                    };
+    };
+    
+    /// Get offers by creator (the newest 500 at most, within the reply size limit)
+    public shared query ({ caller }) func getOffersByCreator(creator : Principal) : async [T.Offer] {
+        newestOffers(caller, func(o : T.Offer) : Bool { Principal.equal(o.creator, creator) });
+    };
+    
+    /// Get paginated offer feed (sorted by ID descending = newest first). A page holds at most
+    /// MAX_FEED_PAGE (100) offers whatever `length` asks, and ends early (has_more = true) before
+    /// its reply would pass MAX_REPLY_BYTES; continue with start_id = next_start_id.
+    public shared query ({ caller }) func getOfferFeed(input : T.GetOfferFeedInput) : async T.GetOfferFeedResponse {
+        let want = Nat.min(input.length, MAX_FEED_PAGE);
+        // The offers before start_id (all of them without one), walked newest first: `offers` is
+        // in ascending id order, so this is a binary search and no sort.
+        var i = switch (input.start_id) {
+            case (?id) countBelow<T.Offer>(offers, offerId_, id);
+            case null offers.size();
+        };
+        let resultBuffer = Buffer.Buffer<T.Offer>(Nat.min(want, 16));
+        var bytes = 0;
+        var lastMatchedId : ?Nat = null;
+        while (i > 0) {
+            i -= 1;
+            let offer = offers[i];
+            if (matchesOfferFilter(offer, input.filter)) {
+                if (resultBuffer.size() >= want) {
+                    // We have enough, but there are more
+                    return { offers = Buffer.toArray(resultBuffer); has_more = true; next_start_id = lastMatchedId };
                 };
+                let seen = offerAsSeenBy(caller, offer);
+                let size = offerReplyBytes(seen);
+                if (resultBuffer.size() > 0 and bytes + size > MAX_REPLY_BYTES) {
+                    // The reply is full: the rest is on the next page
+                    return { offers = Buffer.toArray(resultBuffer); has_more = true; next_start_id = lastMatchedId };
+                };
+                resultBuffer.add(seen);
+                bytes += size;
+                lastMatchedId := ?offer.id;
             };
         };
         
@@ -4437,9 +4542,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 // Check has_bids filter
                 switch (f.has_bids) {
                     case (?hasBids) {
-                        let offerHasBids = Array.size(Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
-                            b.offer_id == offer.id
-                        })) > 0;
+                        let offerHasBids = bidCountForOffer(offer.id) > 0;
                         if (hasBids != offerHasBids) return false;
                     };
                     case null {};
@@ -5964,6 +6067,77 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // the ICRC-3 spill check (every 15 minutes; started once, also on upgrades)
     ensure_icrc3_timer<system>();
 
+    // ============================================
+    // RATE LIMITS (src/RateLimit.mo)
+    // ============================================
+    // Per-caller token buckets for the calls anyone can repeat to fill the market with records
+    // (offers, bid reservations, bids, create/cancel loops). Peeked in inspect, taken in the method.
+
+    /// The limited actions and their defaults: generous for a person, a wall for a script.
+    transient let RATE_LIMIT_DEFAULTS : [(Text, RateLimit.Rule)] = [
+        ("createOffer", { capacity = 100; per_minute = 20 }),
+        ("createOffer_premium", { capacity = 200; per_minute = 40 }), // createOffer for Premium members
+        ("reserveBid", { capacity = 60; per_minute = 20 }),
+        ("confirmBid", { capacity = 60; per_minute = 20 }),
+        ("cancelOffer", { capacity = 100; per_minute = 20 }),
+    ];
+    /// Admin overrides of the defaults (setRateLimit); capacity 0 = no limit.
+    var rateLimitRules : Map.Map<Text, RateLimit.Rule> = Map.new();
+    transient let rateLimiter = RateLimit.Limiter();
+
+    func rateRule(action : Text) : RateLimit.Rule {
+        switch (Map.get(rateLimitRules, thash, action)) {
+            case (?r) r;
+            case null {
+                for ((a, r) in RATE_LIMIT_DEFAULTS.vals()) { if (a == action) return r };
+                { capacity = 0; per_minute = 0 };
+            };
+        };
+    };
+    /// For inspect: whether `caller` has a call of `action` left (does not consume one).
+    func rateAllows(caller : Principal, action : Text) : Bool { rateLimiter.allows(caller, action, rateRule(action), Time.now()) };
+    /// In the method: consumes one call of `action`; false when the caller is over the limit.
+    func rateTake(caller : Principal, action : Text) : Bool { rateLimiter.take(caller, action, rateRule(action), Time.now()) };
+    /// createOffer's rule for `caller`: the Premium rule while its cached membership is still
+    /// running (the cache stores the membership's own expiry, so it never outlasts it), else the
+    /// regular one. A new member not cached yet gets the regular rule until the method refreshes.
+    func createOfferRule(caller : Principal) : RateLimit.Rule {
+        switch (PremiumClient.getCachedExpiration(premiumCache, caller)) {
+            case (?exp) if (exp > Time.now()) rateRule("createOffer_premium") else rateRule("createOffer");
+            case null rateRule("createOffer");
+        };
+    };
+    func rateLimited(action : Text) : T.SneedexError {
+        let r = rateRule(action);
+        #InvalidState("Rate limited: at most " # Nat.toText(r.capacity) # " " # action # " calls at once, then " # Nat.toText(r.per_minute) # " a minute; try again shortly");
+    };
+
+    /// The rate limit of every limited action as it applies now (defaults with admin overrides).
+    public query func getRateLimits() : async [(Text, RateLimit.Rule)] {
+        Array.map<(Text, RateLimit.Rule), (Text, RateLimit.Rule)>(RATE_LIMIT_DEFAULTS, func((a, _)) { (a, rateRule(a)) });
+    };
+
+    /// Admin: set the rate limit of one action (`rule = null` goes back to the default; capacity 0
+    /// means no limit). Logged as a sneedex_config_update block (key "rate_limit.<action>").
+    public shared ({ caller }) func setRateLimit(action : Text, rule : ?RateLimit.Rule) : async T.Result<()> {
+        if (not isAdmin(caller)) { return #err(#NotAuthorized) };
+        if (Array.find<(Text, RateLimit.Rule)>(RATE_LIMIT_DEFAULTS, func((a, _)) { a == action }) == null) {
+            return #err(#InvalidInput("Unknown action; the limited actions are " # Text.join(", ", Iter.map<(Text, RateLimit.Rule), Text>(RATE_LIMIT_DEFAULTS.vals(), func((a, _)) { a }))));
+        };
+        switch (rule) {
+            case (?r) { if (r.capacity > 0 and (r.per_minute == 0 or r.capacity > 1_000_000 or r.per_minute > 1_000_000)) { return #err(#InvalidInput("per_minute must be 1..1,000,000 and capacity at most 1,000,000 (capacity 0 = no limit)")) } };
+            case null {};
+        };
+        let ruleV = func(r : RateLimit.Rule) : T3.Value { #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]) };
+        let old = rateRule(action);
+        switch (rule) {
+            case (?r) Map.set(rateLimitRules, thash, action, r);
+            case null Map.delete(rateLimitRules, thash, action);
+        };
+        icrc3_config(caller, "rate_limit." # action, ruleV(rateRule(action)), ?ruleV(old));
+        #ok();
+    };
+
     // Limits of the ingress guard below (the notes and NFT limits are createOffer's and addAsset's own)
     transient let MAX_OFFER_NOTE : Nat = 4_000;
     transient let MAX_NFTS_PER_ASSET : Nat = 50;
@@ -5979,6 +6153,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
+        #getRateLimits : Any;
+        #setRateLimit : Any;
         #acceptBid : Any;
         #activateOffer : Any;
         #addAdmin : Any;
@@ -6174,11 +6350,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #isExpirationWorkerRunning _
                 or #queryBid _
                 or #queryOffer _
+                or #getRateLimits _
             ) false;
+            // rate limits: a caller with no call left is refused here, before the call costs anything
+            case (#reserveBid _) rateAllows(caller, "reserveBid") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#confirmBid _) rateAllows(caller, "confirmBid") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#cancelOffer _) rateAllows(caller, "cancelOffer") and arg.size() <= IngressGuard.SMALL_ARG;
             case (#createOffer f) {
                 let r = f();
                 let bidders = switch (r.approved_bidders) { case null 0; case (?b) b.size() };
-                bidders <= MAX_APPROVED_BIDDERS
+                rateLimiter.allows(caller, "createOffer", createOfferRule(caller), Time.now())
+                and bidders <= MAX_APPROVED_BIDDERS
                 and arg.size() <= IngressGuard.textArg(2 * MAX_OFFER_NOTE) + MAX_APPROVED_BIDDERS * MAX_PRINCIPAL_BYTES
                 and IngressGuard.optText(r.public_note, MAX_OFFER_NOTE) and IngressGuard.optText(r.note_to_buyer, MAX_OFFER_NOTE)
             };

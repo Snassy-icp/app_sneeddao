@@ -1,0 +1,190 @@
+  // TEST BUILD ONLY. build.sh appends these methods to copies of the trading bot source (before
+  // and after the paging fixes of spec/paging_audit.md: sneed_trading_bot_prepaging_seed.wasm,
+  // sneed_trading_bot_seed.wasm); they are never part of a release build. They fill the logs
+  // through the bot's own append functions (so the real append, trim and daily-summary paths
+  // run) and return the instructions that took, measured with countInstructions.
+
+  private func test_tokens(balance : Nat, valueIcp : Nat) : [T.TokenSnapshot] {
+    Array.map<T.TokenRegistryEntry, T.TokenSnapshot>(tokenRegistry, func(e) {
+      {
+        token = e.ledgerCanisterId; symbol = e.symbol; decimals = e.decimals; balance = balance;
+        priceIcpE8s = ?100_000_000; priceUsdE8s = null; priceDenomE8s = null;
+        valueIcpE8s = ?valueIcp; valueUsdE8s = null; valueDenomE8s = null;
+      }
+    });
+  };
+
+  public shared func test_seed_logs(n : Nat) : async Nat64 {
+    TestIC.countInstructions(func() {
+      var i = 0;
+      while (i < n) { logEngine.logInfo("test", "seeded log line " # Nat.toText(i), null, []); i += 1 };
+    });
+  };
+
+  public shared func test_seed_trade_log(n : Nat, token : Principal) : async Nat64 {
+    TestIC.countInstructions(func() {
+      var i = 0;
+      while (i < n) {
+        ignore appendTradeLog({
+          choreId = ?"seed"; choreTypeId = ?"trade"; actionId = ?i; actionType = 0;
+          inputToken = token; outputToken = null; inputAmount = i + 1; outputAmount = null;
+          priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+          status = #Success; errorMessage = null; txId = null; destinationOwner = null;
+        });
+        i += 1;
+      };
+    });
+  };
+
+  /// One full portfolio snapshot (a token entry per registry token) per value, in order.
+  public shared func test_seed_snapshots(values : [Nat]) : async Nat64 {
+    TestIC.countInstructions(func() {
+      for (v in values.vals()) {
+        ignore appendPortfolioSnapshot({
+          trigger = "seed"; tradeLogId = null; phase = #After; choreId = null; denominationToken = null;
+          totalValueIcpE8s = ?v; totalValueUsdE8s = ?v; totalValueDenomE8s = null;
+          tokens = test_tokens(v, v);
+        });
+      };
+    });
+  };
+
+  public shared func test_seed_purse_snapshots(purseId : Text, n : Nat) : async Nat64 {
+    TestIC.countInstructions(func() {
+      var i = 0;
+      while (i < n) {
+        ignore appendPurseSnapshot(purseId, {
+          trigger = "seed"; choreId = ?purseId; totalValueIcpE8s = ?(i + 1); totalValueUsdE8s = null;
+          tokens = test_tokens(i + 1, i + 1);
+        });
+        i += 1;
+      };
+    });
+  };
+
+  /// `n` price history entries for input -> output with fetchedAt = t0 + i * step and
+  /// expectedOutput = out0 + i (per 100_000_000 input).
+  public shared func test_seed_price_history(n : Nat, input : Principal, output : Principal, t0 : Int, step : Int, out0 : Nat) : async Nat64 {
+    TestIC.countInstructions(func() {
+      var i = 0;
+      while (i < n) {
+        let at = t0 + i * step;
+        pushPriceHistory({
+          inputToken = input; outputToken = output; fetchedAt = at;
+          quote = {
+            dexId = 0; inputToken = input; outputToken = output; inputAmount = 100_000_000;
+            effectiveInputAmount = 100_000_000; expectedOutput = out0 + i; spotPriceE8s = out0 + i;
+            priceImpactBps = 0; dexFeeBps = 30; inputFeesTotal = 0; outputFeesTotal = 0;
+            poolCanisterId = null; timestamp = at;
+          };
+        });
+        i += 1;
+      };
+    });
+  };
+
+  /// `days` daily portfolio summaries and price candles for days 0 .. days-1 (date = day start),
+  /// closing at the day number.
+  public shared func test_seed_daily(days : Nat, input : Principal, output : Principal) : async () {
+    let day : Int = 86_400_000_000_000;
+    let sums = Buffer.Buffer<T.DailyPortfolioSummary>(days);
+    var d = 0;
+    while (d < days) {
+      sums.add({
+        date = d * day; openValueIcpE8s = d; highValueIcpE8s = d; lowValueIcpE8s = d; closeValueIcpE8s = d;
+        openValueUsdE8s = d; highValueUsdE8s = d; lowValueUsdE8s = d; closeValueUsdE8s = d;
+        snapshotCount = 1; closeTokens = test_tokens(d, d);
+      });
+      d += 1;
+    };
+    dailyPortfolioSummaries := Buffer.toArray(sums);
+    // candles through the bot's own update path: day d closes at d + 1
+    let (a, b) = if (Principal.toText(input) < Principal.toText(output)) (input, output) else (output, input);
+    d := 0;
+    while (d < days) {
+      updateDailyPriceCandle(pairKey(a, b), test_quote(a, b, d * day, d + 1));
+      d += 1;
+    };
+  };
+
+  private func test_quote(a : Principal, b : Principal, at : Int, price : Nat) : T.CachedPrice {
+    {
+      inputToken = a; outputToken = b; fetchedAt = at;
+      quote = {
+        dexId = 0; inputToken = a; outputToken = b; inputAmount = 100_000_000;
+        effectiveInputAmount = 100_000_000; expectedOutput = price; spotPriceE8s = price;
+        priceImpactBps = 0; dexFeeBps = 30; inputFeesTotal = 0; outputFeesTotal = 0;
+        poolCanisterId = null; timestamp = at;
+      };
+    }
+  };
+
+  private func test_principal(n : Nat) : Principal {
+    Principal.fromBlob(Blob.fromArray([0x7e, Nat8.fromNat(n / 256), Nat8.fromNat(n % 256), 0x01]));
+  };
+
+  /// Seeds `pairs` x `days` daily candles (day by day, all pairs), then measures `quotes` more
+  /// quotes on the latest day (round robin over the pairs). Returns the instructions of those quotes.
+  public shared func test_candle_quotes(pairs : Nat, days : Nat, quotes : Nat) : async Nat64 {
+    let day : Int = 86_400_000_000_000;
+    let keys = Array.tabulate<(Principal, Principal, Text)>(pairs, func(p) {
+      let a = test_principal(2 * p); let b = test_principal(2 * p + 1);
+      let (x, y) = if (Principal.toText(a) < Principal.toText(b)) (a, b) else (b, a);
+      (x, y, pairKey(x, y))
+    });
+    var d = 0;
+    while (d < days) {
+      for ((a, b, k) in keys.vals()) { updateDailyPriceCandle(k, test_quote(a, b, d * day, 1_000 + d)) };
+      d += 1;
+    };
+    TestIC.countInstructions(func() {
+      var q = 0;
+      while (q < quotes) {
+        let (a, b, k) = keys[q % pairs];
+        updateDailyPriceCandle(k, test_quote(a, b, (days - 1 : Nat) * day + q, 5_000 + q));
+        q += 1;
+      };
+    });
+  };
+
+  /// Queues `n` SnapshotTaken events (one delivery per registered listener each) and kicks the
+  /// delivery timer.
+  public shared func test_queue_events(n : Nat) : async () {
+    var i = 0;
+    while (i < n) { eventEngine.queueEvent(T.TradingEvent.SnapshotTaken, []); i += 1 };
+    eventEngine.flushDeliveryQueue<system>();
+  };
+
+  /// Calls this bot's own getPriceHistory (as a canister: the bot must hold ViewLogs on itself)
+  /// with a pair filter and returns the cycles the call cost it.
+  public shared func test_price_history_query_cycles(pk : Text) : async Nat {
+    let me = actor (Principal.toText(Principal.fromActor(this))) : actor {
+      getPriceHistory : shared query { pairKey : ?Text; limit : ?Nat; offset : ?Nat } -> async { totalCount : Nat };
+    };
+    let before = TestCycles.balance();
+    let r = await me.getPriceHistory({ pairKey = ?pk; limit = ?10; offset = null });
+    assert r.totalCount > 0;
+    before - TestCycles.balance()
+  };
+
+  /// Sets the current quote for input -> output (expectedOutput per 100_000_000 input), then
+  /// evaluates a percent-change price condition (1 %, either direction, over `periodSec`).
+  /// Returns whether it fired and the instructions the evaluation took.
+  public shared func test_cb_price_change(input : Principal, output : Principal, currentOut : Nat, periodSec : Nat) : async (Bool, Nat64) {
+    let now = Time.now();
+    setCachedQuote(input, output, {
+      dexId = 0; inputToken = input; outputToken = output; inputAmount = 100_000_000;
+      effectiveInputAmount = 100_000_000; expectedOutput = currentOut; spotPriceE8s = currentOut;
+      priceImpactBps = 0; dexFeeBps = 30; inputFeesTotal = 0; outputFeesTotal = 0;
+      poolCanisterId = null; timestamp = now;
+    });
+    let cond : T.CircuitBreakerCondition = {
+      conditionType = 0; priceToken1 = ?input; priceToken2 = ?output; balanceToken = null;
+      balanceChoreInstanceId = null; valueSources = []; operator = 4; threshold = null;
+      rangeMin = null; rangeMax = null; changePercentBps = ?100; changeDirection = ?2;
+      changePeriodSeconds = ?periodSec; denominationToken = null; children = [];
+    };
+    var fired = false;
+    let n = TestIC.countInstructions(func() { fired := evaluatePriceCondition(cond) });
+    (fired, n)
+  };

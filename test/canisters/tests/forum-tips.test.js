@@ -14,6 +14,14 @@ import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD, wasm, refusedAtIngress, asUpdates } from '../lib/pic.js';
 import { idlFactory as forumIdl } from '../build/sneed_sns_forum.did.js';
 
+/// Turns the forum's rate limits off (the setter is an admin method; builds without it are left as they are).
+const rateLimitIdl = ({ IDL: I }) => I.Service({ admin_set_rate_limit: I.Func([I.Text, I.Opt(I.Record({ capacity: I.Nat, per_minute: I.Nat }))], [I.Variant({ ok: I.Null, err: I.Reserved })], []) });
+async function forumRateLimitsOff(pic, id) {
+  for (const a of ['thread', 'post', 'edit', 'poll', 'tip', 'vote']) {
+    await actorAs(pic, rateLimitIdl, id, admin).admin_set_rate_limit(a, [{ capacity: 0n, per_minute: 0n }]).catch(() => {});
+  }
+}
+
 const SNS_W = Principal.fromText('qaa6y-5yaaa-aaaaa-aaafa-cai');
 const minter = user('minter');
 const E8S = 100_000_000n;
@@ -60,6 +68,7 @@ describe.skipIf(!haveLedger)('sneed_sns_forum: tips verified on the ledger', () 
     const govId = await install(pic, { name: 'MockForumGovernance' });
     icpId = await install(pic, { name: 'MockIcpLedger', targetCanisterId: ICP_LEDGER_ID });
     forumId = await install(pic, { name: 'sneed_sns_forum', targetSubnetId: appSubnet });
+    await forumRateLimitsOff(pic, forumId); // these tests script bursts of tips; forum-paging.test.js covers the limits
     // the real ICRC ledger, archiving early so old blocks move to an archive
     tokId = await pic.createCanister({ sender: admin, cycles: 100n * T, targetSubnetId: appSubnet, controllers: [admin] });
     await pic.installCode({ sender: admin, canisterId: tokId, wasm: readFileSync(ledgerGz), arg: IDL.encode([LedgerArg], [{ Init: {

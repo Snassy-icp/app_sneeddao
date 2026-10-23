@@ -118,6 +118,39 @@ module {
     status : LaunchStatus;
     steps : [(Text, Int)]; // step name, time (ns)
   };
+  /// A launch as the lists show it: without the logo (get_launch_logo) and the allocation list
+  /// (get_launch has both), so a page stays small whatever the launches carry.
+  public type LaunchSummary = {
+    id : Nat;
+    creator : Principal;
+    created_at : Int;
+    name : Text;
+    symbol : Text;
+    decimals : Nat8;
+    transfer_fee : Nat;
+    logo_bytes : Nat; // 0: no logo
+    allocations : Nat; // how many
+    allocated : Nat; // their total amount
+    minting : MintingPolicy;
+    fee_collector : ?Account;
+    control : ControlChoice;
+    with_index : Bool;
+    quote : Quote;
+    paid_e8s : Nat;
+    ledger : ?Principal;
+    index : ?Principal;
+    ledger_wasm_hash : ?Blob;
+    index_wasm_hash : ?Blob;
+    controllers : [Principal];
+    registration_proposal : ?Nat64;
+    status : LaunchStatus;
+    steps : [(Text, Int)];
+  };
+  /// A page of launches, newest first: all, or one creator's. `before`: ids below this one (the
+  /// `next` of the previous page); `limit`: at most 50 (0 = 20).
+  public type LaunchPageArgs = { creator : ?Principal; before : ?Nat; limit : Nat };
+  public type LaunchPage = { total : Nat; items : [LaunchSummary]; next : ?Nat };
+
   public type Config = {
     ledger_wasm_hash : ?Blob;
     index_wasm_hash : ?Blob;

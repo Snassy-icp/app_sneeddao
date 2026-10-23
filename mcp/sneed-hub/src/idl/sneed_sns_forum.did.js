@@ -25,6 +25,7 @@ export const idlFactory = ({ IDL }) => {
     'spill_batch_size' : IDL.Nat,
     'archive_top_up_amount' : IDL.Nat,
   });
+  const RateRule = IDL.Record({ 'per_minute' : IDL.Nat, 'capacity' : IDL.Nat });
   const CreateForumInput = IDL.Record({
     'sns_root_canister_id' : IDL.Opt(IDL.Principal),
     'title' : IDL.Text,
@@ -225,6 +226,10 @@ export const idlFactory = ({ IDL }) => {
     'post_id' : IDL.Nat,
     'neuron_votes' : IDL.Vec(NeuronVote),
   });
+  const PostsPage = IDL.Record({
+    'next' : IDL.Opt(IDL.Nat),
+    'items' : IDL.Vec(PostResponse),
+  });
   const PremiumConfig = IDL.Record({
     'premium_post_body_max_length' : IDL.Nat,
     'premium_thread_body_max_length' : IDL.Nat,
@@ -310,6 +315,10 @@ export const idlFactory = ({ IDL }) => {
     'next_start_from' : IDL.Opt(IDL.Nat),
     'has_more' : IDL.Bool,
   });
+  const ThreadsPage = IDL.Record({
+    'next' : IDL.Opt(IDL.Nat),
+    'items' : IDL.Vec(ThreadResponse),
+  });
   const TipStats = IDL.Record({
     'total_tips' : IDL.Nat,
     'total_tip_amount_by_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
@@ -318,6 +327,10 @@ export const idlFactory = ({ IDL }) => {
     'total_amount' : IDL.Nat,
     'token_ledger_principal' : IDL.Principal,
     'tip_count' : IDL.Nat,
+  });
+  const TipsPage = IDL.Record({
+    'next' : IDL.Opt(IDL.Nat),
+    'items' : IDL.Vec(TipResponse),
   });
   const TopicStatistics = IDL.Record({
     'thread_count' : IDL.Nat,
@@ -431,6 +444,16 @@ export const idlFactory = ({ IDL }) => {
       ),
     'admin_set_notifications' : IDL.Func(
         [IDL.Opt(IDL.Principal)],
+        [Result],
+        [],
+      ),
+    'admin_set_rate_limit' : IDL.Func(
+        [IDL.Text, IDL.Opt(RateRule)],
+        [Result],
+        [],
+      ),
+    'admin_set_rate_limit_exempt' : IDL.Func(
+        [IDL.Principal, IDL.Bool],
         [Result],
         [],
       ),
@@ -572,6 +595,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(PostResponse)],
         ['query'],
       ),
+    'get_posts_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [PostsPage],
+        ['query'],
+      ),
     'get_premium_config' : IDL.Func([], [PremiumConfig], ['query']),
     'get_proposal_thread' : IDL.Func(
         [IDL.Principal, IDL.Nat],
@@ -586,6 +614,12 @@ export const idlFactory = ({ IDL }) => {
     'get_proposals_topic_by_sns_root' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(ProposalTopicMappingResponse)],
+        ['query'],
+      ),
+    'get_rate_limit_exempt' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_rate_limits' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Text, RateRule))],
         ['query'],
       ),
     'get_recent_mentions_count' : IDL.Func(
@@ -607,6 +641,11 @@ export const idlFactory = ({ IDL }) => {
     'get_replies_to_user' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(PostResponse)],
+        ['query'],
+      ),
+    'get_replies_to_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [PostsPage],
         ['query'],
       ),
     'get_stats' : IDL.Func([], [ForumStats], ['query']),
@@ -663,6 +702,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ThreadResponse)],
         ['query'],
       ),
+    'get_threads_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [ThreadsPage],
+        ['query'],
+      ),
     'get_tip' : IDL.Func([IDL.Nat], [IDL.Opt(TipResponse)], ['query']),
     'get_tip_stats' : IDL.Func([], [TipStats], ['query']),
     'get_tip_tokens_received_by_user' : IDL.Func(
@@ -681,9 +725,19 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(TipResponse)],
         ['query'],
       ),
+    'get_tips_given_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [TipsPage],
+        ['query'],
+      ),
     'get_tips_received_by_user' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(TipResponse)],
+        ['query'],
+      ),
+    'get_tips_received_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [TipsPage],
         ['query'],
       ),
     'get_tips_received_since' : IDL.Func(

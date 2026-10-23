@@ -16,6 +16,8 @@ import Timer "mo:base/Timer";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import Control "../sneed_names/Control";
 import SnsDirectory "../sneed_names/SnsDirectory";
@@ -133,6 +135,21 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     max_attempts = 5;
   };
   var admins : [Principal] = [];
+
+  // Per-caller rate limits (src/RateLimit.mo): admin-set overrides on top of RATE_DEFAULTS
+  // (get_rate_limits / admin_set_rate_limit). Admins and verified apps (registered or verified by
+  // an admin: Sneed SMS, the forum, Sneed Monitor ...) are never limited. The buckets are transient.
+  var rate_rules : [(Text, RateLimit.Rule)] = [];
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("register_app", { capacity = 5; per_minute = 1 }), // registering and changing apps (per signed-in caller)
+    ("update_app", { capacity = 20; per_minute = 5 }),
+    ("request_permission", { capacity = 200; per_minute = 20 }), // per unverified app canister
+    ("notify", { capacity = 1_000; per_minute = 600 }), // per unverified app canister; a batch counts once
+    ("notify_batch", { capacity = 100; per_minute = 60 }),
+    ("settings", { capacity = 60; per_minute = 30 }), // set_settings, set_permission, allow_app, channels, alerts
+    ("top_up", { capacity = 20; per_minute = 10 }), // top_up and top_up_app (each one ledger call)
+  ];
 
   // One-time bootstrap (2026-10-20): since #417 made SNS root the only controller, nobody could make
   // admin calls (admins are controllers plus this list, which was empty). This upgrade puts one
@@ -350,6 +367,14 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     case null null;
   };
 
+  func rateRule(action : Text) : RateLimit.Rule = RateRules.rule(rate_rules, RATE_DEFAULTS, action);
+  /// Whether the caller is exempt from rate limits: admins, and the canisters of verified apps.
+  func rateExempt(caller : Principal) : Bool = isAdmin(caller) or (switch (appOfCaller(caller)) { case (?a) a.verified; case null false });
+  /// Consumes one call of `action` (in the method; inspect only peeks with rateAllows).
+  func rateTake(caller : Principal, action : Text) : Bool = rateExempt(caller) or limiter.take(caller, action, rateRule(action), now());
+  func rateAllows(caller : Principal, action : Text) : Bool = rateExempt(caller) or limiter.allows(caller, action, rateRule(action), now());
+  let RATE_LIMITED : Text = "Rate limited: too many calls, try again in a minute";
+
   func userChannels(user : Principal) : [Channel] = switch (Map.get(channels, Map.phash, user)) { case (?c) c; case null [] };
 
   /// Every user has a Sneed SMS channel (their inbox); it is made on first use.
@@ -420,6 +445,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// SNS whose root controls it). Those canisters may then call `notify`.
   public shared ({ caller }) func register_app(input : AppInput) : async ResultNat {
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    if (not rateTake(caller, "register_app")) return #err(RATE_LIMITED);
     switch (checkAppInput(input)) { case (?e) return #err(e); case null {} };
     for (c in input.canisters.vals()) {
       if (Map.has(app_of_canister, Map.phash, c)) return #err(Principal.toText(c) # " already belongs to an app");
@@ -456,6 +482,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public shared ({ caller }) func update_app(id : Nat, input : AppInput) : async Result {
     let a = switch (Map.get(apps, Map.nhash, id)) { case (?a) a; case null return #err("No such app") };
     if (caller != a.owner and not isAdmin(caller)) return #err("Only the app's owner");
+    if (not rateTake(caller, "update_app")) return #err(RATE_LIMITED);
     switch (checkAppInput(input)) { case (?e) return #err(e); case null {} };
     for (c in input.canisters.vals()) {
       switch (Map.get(app_of_canister, Map.phash, c)) { case (?other) if (other != id) return #err(Principal.toText(c) # " belongs to another app"); case null {} };
@@ -482,6 +509,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Fund an app's balance (for sponsored messages). Anyone may: ICP by ICRC-2 approval.
   public shared ({ caller }) func top_up_app(id : Nat, amount_e8s : Nat) : async ResultNat {
     if (not Map.has(apps, Map.nhash, id)) return #err("No such app");
+    if (not rateTake(caller, "top_up")) return #err(RATE_LIMITED);
     let ledger_block = switch (await* pull(caller, amount_e8s, APP_TOP_UP_MEMO)) { case (#err(e)) return #err(e); case (#ok(b)) b };
     // an admin may have credited this very block while the ledger call was in flight
     if (Map.has(credited_blocks, Map.thash, blockKey(ledger_block))) return #ok(appBalanceOf(id));
@@ -495,6 +523,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// An app asks a user to allow it; the request shows in the user's notification centre.
   public shared ({ caller }) func request_permission(user : Principal) : async Result {
     let a = switch (appOfCaller(caller)) { case (?a) a; case null return #err("Not a registered app canister") };
+    if (not rateTake(caller, "request_permission")) return #err(RATE_LIMITED);
     if (Map.has(permissions, Map.thash, key(user, a.id))) return #ok("Already decided by the user");
     let mine = switch (Map.get(requests, Map.phash, user)) { case (?r) r; case null [] };
     if (Array.find<Nat>(mine, func(x) = x == a.id) != null) return #ok("Already asked");
@@ -638,6 +667,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Send a user a message. Only a registered app's canisters may call it.
   public shared ({ caller }) func notify(input : NotifyInput) : async NotifyResult {
     let a = switch (appOfCaller(caller)) { case (?a) a; case null return #err(#not_registered) };
+    if (not rateTake(caller, "notify")) return #err(#rate_limited);
     let r = notifyOne(a, input, echoKind(caller));
     kick<system>();
     r;
@@ -646,6 +676,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public shared ({ caller }) func notify_batch(inputs : [NotifyInput]) : async [NotifyResult] {
     if (inputs.size() > MAX_BATCH) trap("At most 100 messages per batch");
     let a = switch (appOfCaller(caller)) { case (?a) a; case null return Array.map<NotifyInput, NotifyResult>(inputs, func(_) = #err(#not_registered)) };
+    if (not rateTake(caller, "notify_batch")) return Array.map<NotifyInput, NotifyResult>(inputs, func(_) = #err(#rate_limited));
     let skip = echoKind(caller);
     let r = Array.map<NotifyInput, NotifyResult>(inputs, func(i) = notifyOne(a, i, skip));
     kick<system>();
@@ -693,6 +724,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   public shared ({ caller }) func set_settings(s : Settings) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     ignore smsChannel(caller);
     let all = Array.flatten<Nat>([s.defaults.urgent, s.defaults.normal, s.defaults.info, switch (s.always_copy) { case (?c) [c]; case null [] }]);
     if (not ownsChannels(caller, all)) return #err("Unknown channel");
@@ -705,6 +737,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// delivers, then `verify_channel`. `address` is encrypted by the client for the relay.
   public shared ({ caller }) func add_channel(kind : ChannelKind, name : Text, address : Blob) : async ResultNat {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     if (kind == #sneed_sms) return #ok(smsChannel(caller).id);
     if (name.size() > MAX_NAME or address.size() == 0 or address.size() > MAX_ADDRESS) return #err("A label of at most 64 characters and an address of 1 to 2048 bytes");
     if (userChannels(caller).size() >= MAX_CHANNELS) return #err("At most 20 channels");
@@ -741,6 +774,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// same 5 a day as new channels, so it can't be used to message an address over and over.
   public shared ({ caller }) func resend_code(id : Nat) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     let c = switch (Array.find<Channel>(userChannels(caller), func(x) = x.id == id)) { case (?c) c; case null return #err("Not your channel") };
     if (c.kind == #sneed_sms or c.state != #unverified) return #err("This channel needs no code");
     let added = switch (Map.get(channel_adds, Map.phash, caller)) { case (?(d, n)) if (d == day()) n else 0; case null 0 };
@@ -797,6 +831,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Allow an app (with the default caps) or block it.
   public shared ({ caller }) func allow_app(app : Nat, allow : Bool) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     if (not Map.has(apps, Map.nhash, app)) return #err("No such app");
     let k = key(caller, app);
     let p = switch (Map.get(permissions, Map.thash, k)) { case (?p) ({ p with allowed = allow }); case null ({ defaultPermission() with allowed = allow }) };
@@ -807,6 +842,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   public shared ({ caller }) func set_permission(app : Nat, p : Permission) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     let a = switch (Map.get(apps, Map.nhash, app)) { case (?a) a; case null return #err("No such app") };
     if (p.topics.size() > MAX_TOPICS) return #err("Too many topic rules");
     for ((id, r) in p.topics.vals()) {
@@ -851,6 +887,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Your low-balance alert: you're told once when your balance falls below `threshold_e8s` (0 turns it off).
   public shared ({ caller }) func set_low_balance_alert(threshold_e8s : Nat) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "settings")) return #err(RATE_LIMITED);
     Map.set(low_balance, Map.phash, caller, (threshold_e8s, balanceOf(caller) < threshold_e8s and threshold_e8s > 0));
     #ok(if (threshold_e8s == 0) "Low-balance alert off" else "Low-balance alert set");
   };
@@ -862,6 +899,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Top up your notification balance with ICP (approve this canister for amount + fee first).
   public shared ({ caller }) func top_up(amount_e8s : Nat) : async ResultNat {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (not rateTake(caller, "top_up")) return #err(RATE_LIMITED);
     let ledger_block = switch (await* pull(caller, amount_e8s, TOP_UP_MEMO)) { case (#err(e)) return #err(e); case (#ok(b)) b };
     if (Map.has(credited_blocks, Map.thash, blockKey(ledger_block))) return #ok(balanceOf(caller)); // an admin credited it meanwhile
     let b = balanceOf(caller) + amount_e8s;
@@ -1538,6 +1576,20 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
   // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  /// The rate limits per caller: each action with its rule ({ capacity; per_minute }: `capacity`
+  /// calls at once, refilled at `per_minute` a minute; capacity 0 = no limit). Admins and verified
+  /// apps are exempt.
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Admins set an action's rule (null: back to the default).
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#ok(r)) { rate_rules := r; #ok("Saved") };
+      case (#err(e)) #err(e);
+    };
+  };
+
   public query func get_api_doc() : async Text { ApiDoc.text };
 
   // ---------------------------------------------------------------------------------------------
@@ -1602,19 +1654,26 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #admin_get_user : Any;
     #admin_get_removed_app : Any;
     #claim_removed_app_balance : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
       case (#admin_get_user _ or #admin_get_removed_app _) false;
+      case (#get_rate_limits _) false;
+      case (#admin_set_rate_limit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
       case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
-      case (#register_app _ or #update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
+      case (#register_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "register_app");
+      case (#update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "update_app");
       case (#relay_ack _) relayKind(caller) != null and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_pull _) relayKind(caller) != null and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#add_channel _ or #set_settings _ or #set_permission _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(MAX_ADDRESS + 256);
+      case (#add_channel _ or #set_settings _ or #set_permission _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(MAX_ADDRESS + 256) and rateAllows(caller, "settings");
+      case (#allow_app _ or #resend_code _ or #set_low_balance_alert _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "settings");
+      case (#top_up _ or #top_up_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "top_up");
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

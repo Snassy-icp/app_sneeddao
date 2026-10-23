@@ -17,6 +17,8 @@ import Map "mo:map/Map";
 import Sha256 "mo:sha2/Sha256";
 
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import PremiumClient "../PremiumClient";
 
@@ -51,6 +53,15 @@ shared (deployer) persistent actor class SneedAvatars() = this {
   var config : Config = { max_held = 20; max_held_premium = 200; premium = null };
   var admins : [Principal] = [];
 
+  // per-caller rate limits of writes (src/RateLimit.mo); admins are not limited
+  var rate_rules : [(Text, RateLimit.Rule)] = []; // admin overrides of RATE_DEFAULTS
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("upload", { capacity = 20; per_minute = 5 }), // upload,
+    ("release", { capacity = 60; per_minute = 20 }), // release
+  ];
+  transient let RATE_LIMITED = "Rate limited: too many changes in a short time, please try again in a minute";
+
   let data : Region.Region = Region.new();
   var next_offset : Nat64 = 0;
   let free : [var List.List<Nat64>] = Array.init<List.List<Nat64>>(CLASSES.size(), null); // freed slots per class
@@ -61,6 +72,10 @@ shared (deployer) persistent actor class SneedAvatars() = this {
   var bytes_stored : Nat = 0;
 
   func isAdmin(p : Principal) : Bool = Principal.isController(p) or Array.find<Principal>(admins, func(a) = a == p) != null;
+
+  func rateRule(action : Text) : RateLimit.Rule = RateRules.rule(rate_rules, RATE_DEFAULTS, action);
+  /// Takes one call of `action` from the caller's bucket; true when the caller is over the limit.
+  func limited(caller : Principal, action : Text) : Bool = not isAdmin(caller) and not limiter.take(caller, action, rateRule(action), Time.now());
   func now64() : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
 
   // ---- storage ----
@@ -151,6 +166,7 @@ shared (deployer) persistent actor class SneedAvatars() = this {
   /// Store an image (PNG, JPEG, GIF or WebP, at most 48 KiB) and hold it. Answers its SHA-256,
   /// which name records use as `#blob`. Uploading an image someone already stored just holds it.
   public shared ({ caller }) func upload(bytes : Blob) : async { #ok : Blob; #err : Text } {
+    if (limited(caller, "upload")) return #err(RATE_LIMITED);
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
     let (contentType, hash) = switch (check(bytes)) { case (#ok(x)) x; case (#err(e)) return #err(e) };
     let mine = heldBy(caller);
@@ -168,6 +184,7 @@ shared (deployer) persistent actor class SneedAvatars() = this {
 
   /// Stop holding an image; it is freed when nobody holds it.
   public shared ({ caller }) func release(hash : Blob) : async Result {
+    if (limited(caller, "release")) return #err(RATE_LIMITED);
     let mine = heldBy(caller);
     if (Array.find<Blob>(mine, func(h) = h == hash) == null) return #err("You do not hold that image");
     let rest = Array.filter<Blob>(mine, func(h) = h != hash);
@@ -273,6 +290,22 @@ shared (deployer) persistent actor class SneedAvatars() = this {
     #ok("Config updated");
   };
 
+  /// The per-caller rate limits of writes: action -> { capacity (calls at once); per_minute (refill) }.
+  /// Actions: upload, release. Admins are not limited.
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Set an action's rate limit (null: back to the default; capacity 0: no limit).
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) #err(e);
+      case (#ok(r)) {
+        rate_rules := r;
+        #ok("Rate limit updated");
+      };
+    };
+  };
+
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) == null) admins := Array.append(admins, [p]);
@@ -320,6 +353,8 @@ shared (deployer) persistent actor class SneedAvatars() = this {
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
     #admin_add_admin : Any;
     #admin_remove : Any;
     #admin_remove_admin : Any;
@@ -335,11 +370,21 @@ shared (deployer) persistent actor class SneedAvatars() = this {
     #stats : Any;
     #upload : Any;
   } }) : Bool {
+    // rate limits: peek at the caller's bucket (the method takes from it)
+    let rateAction : ?Text = switch msg {
+      case (#upload _) ?"upload";
+      case (#release _) ?"release";
+      case _ null;
+    };
+    switch rateAction {
+      case (?a) if (not isAdmin(caller) and not limiter.allows(caller, a, rateRule(a), Time.now())) return false;
+      case null {};
+    };
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_api_doc _ or #get_admins _ or #get_config _ or #get_images _ or #get_info _ or #http_request _ or #my_images _ or #stats _) false;
+      case (#get_api_doc _ or #get_rate_limits _ or #get_admins _ or #get_config _ or #get_images _ or #get_info _ or #http_request _ or #my_images _ or #stats _) false;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
-      case (#admin_add_admin _ or #admin_remove _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_set_rate_limit _ or #admin_remove _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_upload_for _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#upload _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;

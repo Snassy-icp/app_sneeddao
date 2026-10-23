@@ -114,6 +114,12 @@ describe('frontend NamingService against the naming canisters', () => {
     unwrap(await NS.addHotkey(ident(dave), bob));
     unwrap(await NS.setPrincipalNameFor(ident(bob), dave, 'Dave B'));
     expect((await NS.getPrincipalName(null, dave))[0][0]).toBe('Dave B');
+    // AccountPanel's paged list, and leaving every account that gave bob a hotkey
+    const daveAcc = (await NS.getAccount(ident(bob), (await NS.getMyAccount(ident(dave))).id)).id;
+    expect((await NS.myHotkeyAccountsPage(ident(bob))).items.map((a) => a.id)).toEqual([daveAcc]);
+    unwrap(await NS.leaveHotkeyAccounts(ident(bob)));
+    expect((await NS.myHotkeyAccountsPage(ident(bob))).total).toBe(0);
+    unwrap(await NS.addHotkey(ident(dave), bob));
     expect((await NS.setPrincipalNameFor(ident(carol), dave, 'Hijack')).err).toMatch(/hotkey/);
     // admins may name anyone; verification takes the current name
     unwrap(await NS.setPrincipalNameFor(ident(admin), user('erin'), 'Erin'));

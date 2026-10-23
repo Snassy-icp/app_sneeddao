@@ -238,7 +238,8 @@ describe('P1-12: withdraw_payment_balance', () => {
       expect(await env.lock.getPaymentBalance(carol)).toBe(0n);
       await env.icp.mint(env.payment(carol), E8);
     }
-    // and the other order
+    // and the other order (fund the second lock either way: whether the first race locked the 5,000 depends on which call ran first)
+    await env.tokenA.mint(env.wallet(carol), 1_000n);
     const [w, c] = await env.race(
       ['withdraw_payment_balance', carol, []],
       ['create_lock', carol, [1_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, []]],

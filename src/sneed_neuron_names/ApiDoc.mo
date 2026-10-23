@@ -39,6 +39,7 @@ The Sneed DAO naming service is six canisters (production ids):
 - No Busy state. Retrying a write is safe (same value answers `Unchanged`).
 - `The name check is unavailable right now, please try again (...)`: nothing stored; retry later.
 - Typical errors: `Not a neuron id`, `That name is taken in this SNS`, `Not a deployed SNS`, `No such neuron in that SNS`, `You have no permission on that neuron`, `Name the neuron first`.
+- `Rate limited: too many changes in a short time, please try again in a minute`: per-caller limits on writes (actions `name`, `avatar`; `get_rate_limits` lists them, admins set them with `admin_set_rate_limit`). Once a caller is over the limit its next calls are also refused at ingress until it refills. Nothing was stored; wait and retry.
 
 ## Common pitfalls
 - Query methods answer only query calls; sent as update calls they are refused by the ingress guard (inspect_message). Calls from other canisters are not affected.

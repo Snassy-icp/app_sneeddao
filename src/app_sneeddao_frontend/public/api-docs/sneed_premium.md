@@ -51,7 +51,7 @@ Each user pays from their own deposit account on the premium canister:
 
 ### 1.5 Public, not private
 
-Membership is public data. `checkMembership` answers for any principal, `getActivePremiumMembers()` lists every current member (the Sneed app uses it to show crown badges next to names), and every purchase, claim, grant and setting change is a block in the public activity log ([section 7](#7-activity-log-icrc-3)). Only `getMembershipDetails` is limited to the principal itself (or an admin), and it only adds `lastUpdated`.
+Membership is public data. `checkMembership` answers for any principal (`checkMemberships` for up to 500 at once: the Sneed app asks it for the principals on screen to show crown badges next to names), `getActivePremiumMembersPage` pages through every current member, and every purchase, claim, grant and setting change is a block in the public activity log ([section 7](#7-activity-log-icrc-3)). Only `getMembershipDetails` is limited to the principal itself (or an admin), and it only adds `lastUpdated`.
 
 ### 1.6 Calls the canister refuses at ingress
 
@@ -98,7 +98,14 @@ async function isPremium(actor, principal) {
 }
 ```
 
-Cache the answer until `expiration`: a membership never shrinks except when an admin revokes it. For many principals at once (badges in a list), fetch `getActivePremiumMembers()` once and test membership in a `Set`.
+Cache the answer until `expiration`: a membership never shrinks except when an admin revokes it. For many principals at once (badges in a list), ask `checkMemberships` for the ones you show: at most 500 per query (more traps), answers in the same order.
+
+```js
+const statuses = await actor.checkMemberships(principals); // vec MembershipStatus
+const premium = principals.filter((_, i) => 'Active' in statuses[i]);
+```
+
+To list every member, page `getActivePremiumMembersPage({ start, limit })`: it answers `{ items : vec record { principal; expiration : int }; next : opt nat; total_active : nat }`. Start at 0 and pass `next` back as `start` until it is empty; `limit` is capped at 500 (0 means 100); `total_active` counts every active member. The older `getActivePremiumMembers()` returns the whole list in one reply and grows with the membership; prefer the page.
 
 ### 2.3 Buy membership with ICP
 
@@ -261,7 +268,9 @@ type PriceTier = variant { regular; premium; admin; partner };
 | Method | Returns | Notes |
 |---|---|---|
 | `checkMembership(principal)` | `MembershipStatus` | `Active { expiration }`, `Expired { expiredAt }` or `NotFound`. The method other canisters call. |
-| `getActivePremiumMembers()` | `vec principal` | Every principal whose membership has not expired. |
+| `checkMemberships(vec principal)` | `vec MembershipStatus` | `checkMembership` for up to 500 principals at once, in the same order (more traps). |
+| `getActivePremiumMembersPage({ start; limit })` | `record { items : vec record { principal; expiration : int }; next : opt nat; total_active : nat }` | The active members a page at a time; `limit` capped at 500 (0 = 100); pass `next` back as `start`. |
+| `getActivePremiumMembers()` | `vec principal` | Every principal whose membership has not expired, in one reply (grows with the membership; prefer the two above). |
 | `getMembershipDetails(principal)` | `opt Membership` | The full record, only for the principal itself or an admin; `null` for anyone else. |
 | `getDepositAccount(user)` | `Account` | `{ owner = sneed_premium; subaccount = principalToSubAccount(user) }`. |
 | `getPaymentStats()` | record | `total_icp_collected_e8s` (gross deposits), `total_icp_payments`, `total_vp_claims`, `total_promo_claims`, `total_claims`, `claim_log_size`, `payment_log_size`. Shown on the Sneed app's revenue page. |
@@ -454,7 +463,7 @@ Not logged: the time of each voting power claim (the rate limit), the legacy cla
 
 ## 8. Integration checklist
 
-- Gate features with `checkMembership` (or `getActivePremiumMembers` for lists), and cache until `expiration`.
+- Gate features with `checkMembership` (or `checkMemberships` for lists), and cache until `expiration`.
 - Read tiers from `getIcpTiers()` / `getVotingPowerTiers()` every time you show them; they are DAO-managed.
 - For ICP purchases, deposit **exactly** one tier amount to `getDepositAccount(user)` before calling `purchaseWithIcp`; anything else returns `InvalidTier` and waits in the deposit account until topped up or taken back with `withdrawDeposit`.
 - After a timeout, read `checkMembership` before retrying a purchase; a retry never charges twice.

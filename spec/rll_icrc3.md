@@ -69,6 +69,8 @@ Prefix `rll_`; `icrc3_supported_block_types` reports every type with the url
 | `token_min_distribution` | Map `ledger`, `amount`; without `amount` = none set (the default 10 × fee); `old_value` always present, in the same shape |
 | `token_max_distribution` | Map `ledger`, `amount`; without `amount` = none set (no maximum); `old_value` always present, in the same shape |
 | `main_loop` | Text `on` / `off` |
+| `rate_limit:<method>` | Map `capacity`, `per_minute` (`admin_set_rate_limit`; capacity 0 = no limit) |
+| `credit_chunk_size` | Nat: owners credited per message in a distribution (`admin_set_credit_chunk_size`) |
 | `icrc3_proposal_neuron` | Blob, or Text `none` |
 | `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount` | Nat |
 
@@ -128,6 +130,7 @@ cast since proposal 1, so it credits nearly every owner who ever voted: some 800
 | `import_whitelisted_tokens_from_*` and the cycle's whitelist stage, `clear_whitelisted_tokens` | `rll_config_update` (`whitelist_tokens_added` only when something was added) |
 | `set_/remove_token_min_distribution`, `set_/remove_token_max_distribution` | `rll_config_update` |
 | `start_rll_main_loop`, `stop_rll_main_loop` | `rll_config_update` `main_loop` |
+| `admin_set_rate_limit`, `admin_set_credit_chunk_size` | `rll_config_update` |
 | `start_distribution_cycle`, `stop_distribution_cycle`, `import_all_*`, `stop_*_import`, the `clear_*` tools | `rll_admin_action` |
 | ICRC-3 settings and proposal neuron | `rll_config_update` |
 

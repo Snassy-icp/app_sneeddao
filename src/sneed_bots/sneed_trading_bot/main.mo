@@ -21,6 +21,9 @@ import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
 import BotLogTypes "../BotLogTypes";
 import BotLogEngine "../BotLogEngine";
+import BotRing "../BotRing";
+import Iter "mo:base/Iter";
+import HashMap "mo:base/HashMap";
 import DistributionTypes "../DistributionTypes";
 import BotEventTypes "../BotEventTypes";
 import BotEventEngine "../BotEventEngine";
@@ -187,6 +190,78 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var eventReactionLog: [BotEventTypes.EventReactionLogEntry] = [];
     var eventReactionLogNextId: Nat = 0;
     var eventReactionLogMaxEntries: Nat = 500;
+
+    // Ring buffers (since the paging fixes, spec/paging_audit.md S11): an append no longer copies
+    // the whole log. The old arrays above (botLogEntries, tradeLogEntries, portfolioSnapshots,
+    // purseSnapshots, priceHistory with priceHistoryNextIdx) are moved in once at start-up and then
+    // stay empty; they are kept only so upgrades from earlier versions stay compatible.
+    var botLogRing: BotRing.Ring<BotLogTypes.LogEntry> = BotRing.empty();
+    var tradeLogRing: BotRing.Ring<T.TradeLogEntry> = BotRing.empty();
+    var portfolioSnapshotRing: BotRing.Ring<T.PortfolioSnapshot> = BotRing.empty();
+    var purseSnapshotRing: BotRing.Ring<(Text, T.PortfolioSnapshot)> = BotRing.empty();
+    var priceHistoryRing: BotRing.Ring<T.CachedPrice> = BotRing.empty();
+    // Daily price candles (dailyPriceCandles above is moved in once and stays empty). Never trimmed
+    // in practice: MAX_DAILY_CANDLES is a safety bound (10 pairs for 270 years).
+    var dailyPriceCandleRing: BotRing.Ring<T.DailyPriceCandle> = BotRing.empty();
+
+    // Upper bounds for the log size settings (larger values are clamped): every getter, trim and
+    // circuit-breaker scan grows with them.
+    transient let MAX_TRADE_LOG_ENTRIES: Nat = 50_000;
+    transient let MAX_PORTFOLIO_LOG_ENTRIES: Nat = 20_000;
+    transient let MAX_PRICE_HISTORY: Nat = 20_000;
+    // Getter page caps and the reply-size budget (well under the 2 MiB inter-canister and 3 MiB
+    // query reply limits).
+    transient let MAX_TRADE_LOG_PAGE: Nat = 500;
+    transient let MAX_SNAPSHOT_PAGE: Nat = 200;
+    transient let MAX_PRICE_HISTORY_PAGE: Nat = 1_000;
+    transient let MAX_DAILY_PAGE: Nat = 1_000;
+    transient let REPLY_BUDGET_BYTES: Nat = 1_000_000;
+    transient let MAX_DAILY_CANDLES: Nat = 1_000_000;
+
+    func clampLoggingSettings(s: T.LoggingSettings): T.LoggingSettings {
+        { s with
+            maxTradeLogEntries = Nat.min(s.maxTradeLogEntries, MAX_TRADE_LOG_ENTRIES);
+            maxPortfolioLogEntries = Nat.min(s.maxPortfolioLogEntries, MAX_PORTFOLIO_LOG_ENTRIES);
+        }
+    };
+
+    // One-time move of the array logs into the rings, and clamping of stored settings.
+    transient let _ringMigration: () = do {
+        loggingSettings := clampLoggingSettings(loggingSettings);
+        if (tradeLogEntries.size() > 0) {
+            BotRing.appendAll(tradeLogRing, tradeLogEntries, loggingSettings.maxTradeLogEntries);
+            tradeLogEntries := [];
+        };
+        if (portfolioSnapshots.size() > 0) {
+            BotRing.appendAll(portfolioSnapshotRing, portfolioSnapshots, loggingSettings.maxPortfolioLogEntries);
+            portfolioSnapshots := [];
+        };
+        if (purseSnapshots.size() > 0) {
+            BotRing.appendAll(purseSnapshotRing, purseSnapshots, purseSnapshotMaxEntries);
+            purseSnapshots := [];
+        };
+        if (priceHistory.size() > 0) {
+            // the old ring: once full, the oldest entry is at priceHistoryNextIdx
+            let len = priceHistory.size();
+            let rotate = len >= priceHistoryMaxSize and priceHistoryNextIdx < len;
+            var i = 0;
+            while (i < len) {
+                let e = if (rotate) priceHistory[(priceHistoryNextIdx + i) % len] else priceHistory[i];
+                ignore BotRing.push(priceHistoryRing, e, priceHistoryMaxSize);
+                i += 1;
+            };
+            priceHistory := [];
+            priceHistoryNextIdx := 0;
+        };
+        priceHistoryMaxSize := Nat.min(priceHistoryMaxSize, MAX_PRICE_HISTORY);
+        if (dailyPriceCandles.size() > 0) {
+            BotRing.appendAll(dailyPriceCandleRing, dailyPriceCandles, MAX_DAILY_CANDLES);
+            dailyPriceCandles := [];
+        };
+        BotRing.trim(tradeLogRing, loggingSettings.maxTradeLogEntries);
+        BotRing.trim(portfolioSnapshotRing, loggingSettings.maxPortfolioLogEntries);
+        BotRing.trim(priceHistoryRing, priceHistoryMaxSize);
+    };
 
     // ============================================
     // TRANSIENT CACHES (cleared on canister upgrade)
@@ -435,7 +510,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // BOT LOG SYSTEM
     // ============================================
 
+    // Transient index: pair key -> position (in dailyPriceCandleRing) of that pair's candle with the
+    // latest date, so a quote updates its candle in O(1) instead of mapping over every candle.
+    transient var _candleIndex = HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
+    func rebuildCandleIndex() {
+        _candleIndex := HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
+        var i = 0;
+        for (c in BotRing.vals(dailyPriceCandleRing)) {
+            switch (_candleIndex.get(c.pairKey)) {
+                case (?j) { if (c.date >= BotRing.get(dailyPriceCandleRing, j).date) _candleIndex.put(c.pairKey, i) };
+                case null { _candleIndex.put(c.pairKey, i) };
+            };
+            i += 1;
+        };
+    };
+    transient let _candleIndexInit: () = rebuildCandleIndex();
+
     transient let logEngine = BotLogEngine.Engine({
+        ring = botLogRing;
         getEntries = func(): [BotLogTypes.LogEntry] { botLogEntries };
         setEntries = func(e: [BotLogTypes.LogEntry]): () { botLogEntries := e };
         getNextId = func(): Nat { botLogNextId };
@@ -1245,13 +1337,34 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let cutoff = Time.now() - lookbackNs;
                 let pk = pairKey(token1, token2);
 
+                // One pass over the price history (at most MAX_PRICE_HISTORY entries), comparing
+                // principals: until the paging fixes this built the pair key (two Principal.toText)
+                // for every entry, about 50-75M instructions per condition at 5000 entries.
                 var historicalPrice: Nat = 0;
                 var bestTimeDiff: Int = lookbackNs;
-                for (entry in priceHistory.vals()) {
-                    if (pairKey(entry.inputToken, entry.outputToken) == pk and entry.fetchedAt <= cutoff + (lookbackNs / 4)) {
+                let latest = cutoff + (lookbackNs / 4);
+                var windowLo: Int = cutoff - lookbackNs;
+                var windowHi: Int = cutoff + lookbackNs;
+                // Straight over the ring's slots, oldest first (no iterator objects: this loop is
+                // the hot path of every percent-change condition).
+                let slots = priceHistoryRing.items;
+                let slotCount = slots.size();
+                var k = 0;
+                var slot = priceHistoryRing.start;
+                while (k < priceHistoryRing.count) {
+                  switch (slots[slot]) {
+                   case null {};
+                   case (?entry) {
+                    // only an entry strictly inside (cutoff - best, cutoff + best) can be closer than
+                    // the best so far: two comparisons rule out almost every entry
+                    if (entry.fetchedAt <= latest and entry.fetchedAt > windowLo and entry.fetchedAt < windowHi and (
+                        (Principal.equal(entry.inputToken, token1) and Principal.equal(entry.outputToken, token2)) or
+                        (Principal.equal(entry.inputToken, token2) and Principal.equal(entry.outputToken, token1)))) {
                         let diff = if (entry.fetchedAt > cutoff) { entry.fetchedAt - cutoff } else { cutoff - entry.fetchedAt };
                         if (diff < bestTimeDiff and entry.quote.inputAmount > 0) {
                             bestTimeDiff := diff;
+                            windowLo := cutoff - diff;
+                            windowHi := cutoff + diff;
                             if (entry.inputToken == token1) {
                                 historicalPrice := entry.quote.expectedOutput * 100_000_000 / entry.quote.inputAmount;
                             } else {
@@ -1259,6 +1372,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                         };
                     };
+                   };
+                  };
+                  k += 1;
+                  slot += 1;
+                  if (slot == slotCount) slot := 0;
                 };
                 if (historicalPrice == 0) {
                     logEngine.logWarning("circuit-breaker", "No historical price found for pair " # pk # " within lookback of " # Nat.toText(periodSec) # "s", null, []);
@@ -1377,16 +1495,27 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                 var historicalBal: Nat = 0;
                 var bestTimeDiff: Int = lookbackNs;
-                for (snap in portfolioSnapshots.vals()) {
+                var foundBal = false;
+                // Snapshots are appended in time order: walk back from the newest and stop once
+                // they are further before the cutoff than the best match (ties go to the older one,
+                // as with the old full oldest-first scan).
+                label scan for (snap in BotRing.valsNewestFirst(portfolioSnapshotRing)) {
+                    if (snap.timestamp < cutoff and cutoff - snap.timestamp > bestTimeDiff) break scan;
                     if (snap.timestamp <= cutoff + (lookbackNs / 4)) {
+                        var snapBal: ?Nat = null;
                         for (ts in snap.tokens.vals()) {
-                            if (ts.token == token) {
+                            if (ts.token == token and snapBal == null) { snapBal := ?ts.balance };
+                        };
+                        switch (snapBal) {
+                            case (?b) {
                                 let diff = if (snap.timestamp > cutoff) { snap.timestamp - cutoff } else { cutoff - snap.timestamp };
-                                if (diff < bestTimeDiff) {
+                                if (diff < bestTimeDiff or (diff == bestTimeDiff and foundBal)) {
                                     bestTimeDiff := diff;
-                                    historicalBal := ts.balance;
+                                    historicalBal := b;
+                                    foundBal := true;
                                 };
                             };
+                            case null {};
                         };
                     };
                 };
@@ -1467,15 +1596,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                 var historicalValue: Nat = 0;
                 var bestTimeDiff: Int = lookbackNs;
-                for (snap in portfolioSnapshots.vals()) {
+                var foundValue = false;
+                let isIcpDenom = denomToken == Principal.fromText(T.ICP_LEDGER);
+                // newest first with an early stop, as in the balance condition above
+                label scan for (snap in BotRing.valsNewestFirst(portfolioSnapshotRing)) {
+                    if (snap.timestamp < cutoff and cutoff - snap.timestamp > bestTimeDiff) break scan;
                     if (snap.timestamp <= cutoff + (lookbackNs / 4)) {
                         let diff = if (snap.timestamp > cutoff) { snap.timestamp - cutoff } else { cutoff - snap.timestamp };
-                        if (diff < bestTimeDiff) {
+                        if (diff < bestTimeDiff or (diff == bestTimeDiff and foundValue)) {
                             var snapValue: Nat = 0;
                             for ((tok, _cid) in pairs.vals()) {
                                 for (ts in snap.tokens.vals()) {
                                     if (ts.token == tok) {
-                                        if (denomToken == Principal.fromText(T.ICP_LEDGER)) {
+                                        if (isIcpDenom) {
                                             switch (ts.valueIcpE8s) {
                                                 case (?v) { snapValue += v };
                                                 case null {};
@@ -1492,6 +1625,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             if (snapValue > 0) {
                                 bestTimeDiff := diff;
                                 historicalValue := snapValue;
+                                foundValue := true;
                             };
                         };
                     };
@@ -1861,14 +1995,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Push an entry to the price history ring buffer.
     func pushPriceHistory(entry: T.CachedPrice) {
         if (priceHistoryMaxSize == 0) return;
-        if (priceHistory.size() < priceHistoryMaxSize) {
-            priceHistory := Array.append(priceHistory, [entry]);
-        } else {
-            priceHistory := Array.tabulate<T.CachedPrice>(priceHistory.size(), func(i) {
-                if (i == priceHistoryNextIdx) entry else priceHistory[i]
-            });
-            priceHistoryNextIdx := (priceHistoryNextIdx + 1) % priceHistoryMaxSize;
-        };
+        ignore BotRing.push(priceHistoryRing, entry, priceHistoryMaxSize);
     };
 
     /// Store a price/quote in the transient cache, persist to lastKnownPrices,
@@ -2510,21 +2637,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = entry.txId;
             destinationOwner = entry.destinationOwner;
         };
-        let buf = Buffer.fromArray<T.TradeLogEntry>(tradeLogEntries);
-        buf.add(full);
-        // Trim circular buffer
-        if (buf.size() > loggingSettings.maxTradeLogEntries) {
-            let excess = buf.size() - loggingSettings.maxTradeLogEntries : Nat;
-            let trimmed = Buffer.Buffer<T.TradeLogEntry>(loggingSettings.maxTradeLogEntries);
-            var i = excess;
-            while (i < buf.size()) {
-                trimmed.add(buf.get(i));
-                i += 1;
-            };
-            tradeLogEntries := Buffer.toArray(trimmed);
-        } else {
-            tradeLogEntries := Buffer.toArray(buf);
-        };
+        ignore BotRing.push(tradeLogRing, full, loggingSettings.maxTradeLogEntries);
         ?id
     };
 
@@ -2811,25 +2924,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     else { if (rawPrice > 0) { 10_000_000_000_000_000 / rawPrice } else { 0 } };
 
         let date = utcDayStart(cached.fetchedAt);
+        let candles = dailyPriceCandleRing;
 
-        var found = false;
-        dailyPriceCandles := Array.map<T.DailyPriceCandle, T.DailyPriceCandle>(dailyPriceCandles, func(c) {
-            if (c.pairKey == key and c.date == date) {
-                found := true;
-                {
-                    c with
-                    highE8s = Nat.max(c.highE8s, price);
-                    lowE8s = Nat.min(c.lowE8s, price);
-                    closeE8s = price;
-                    quoteCount = c.quoteCount + 1;
-                }
-            } else { c }
-        });
+        func updated(c: T.DailyPriceCandle): T.DailyPriceCandle {
+            {
+                c with
+                highE8s = Nat.max(c.highE8s, price);
+                lowE8s = Nat.min(c.lowE8s, price);
+                closeE8s = price;
+                quoteCount = c.quoteCount + 1;
+            }
+        };
 
-        if (not found) {
+        // The pair's latest candle (index): today's in the normal case. Until the paging fixes this
+        // mapped over (and copied) every candle of every pair on every quote.
+        var isNewLatest = true;
+        switch (_candleIndex.get(key)) {
+            case (?i) {
+                let c = BotRing.get(candles, i);
+                if (c.date == date) { BotRing.set(candles, i, updated(c)); return };
+                if (date < c.date) {
+                    // an older day (the archive task patching yesterday): find it from the newest end
+                    isNewLatest := false;
+                    var j = BotRing.size(candles);
+                    while (j > 0) {
+                        j -= 1;
+                        let o = BotRing.get(candles, j);
+                        if (o.pairKey == key and o.date == date) { BotRing.set(candles, j, updated(o)); return };
+                    };
+                };
+            };
+            case null {};
+        };
+
+        do {
             let canonicalInput = if (isCanonical) cached.inputToken else cached.outputToken;
             let canonicalOutput = if (isCanonical) cached.outputToken else cached.inputToken;
-            dailyPriceCandles := Array.append(dailyPriceCandles, [{
+            let evicted = BotRing.push<T.DailyPriceCandle>(candles, {
                 pairKey = key;
                 inputToken = canonicalInput;
                 outputToken = canonicalOutput;
@@ -2839,7 +2970,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 lowE8s = price;
                 closeE8s = price;
                 quoteCount = 1;
-            }]);
+            }, MAX_DAILY_CANDLES);
+            switch (evicted) {
+                case (?_) { rebuildCandleIndex() }; // positions shifted (only past MAX_DAILY_CANDLES)
+                case null { if (isNewLatest) _candleIndex.put(key, BotRing.size(candles) - 1 : Nat) };
+            };
         };
     };
 
@@ -2891,26 +3026,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             totalValueDenomE8s = entry.totalValueDenomE8s;
             tokens = entry.tokens;
         };
-        let buf = Buffer.fromArray<T.PortfolioSnapshot>(portfolioSnapshots);
-        buf.add(full);
-        if (buf.size() > loggingSettings.maxPortfolioLogEntries) {
-            let excess = buf.size() - loggingSettings.maxPortfolioLogEntries : Nat;
-            // Fallback: ensure trimmed entries are captured in daily summaries
-            var j: Nat = 0;
-            while (j < excess) {
-                updateDailyPortfolioSummary(buf.get(j));
-                j += 1;
-            };
-            let trimmed = Buffer.Buffer<T.PortfolioSnapshot>(loggingSettings.maxPortfolioLogEntries);
-            var i = excess;
-            while (i < buf.size()) {
-                trimmed.add(buf.get(i));
-                i += 1;
-            };
-            portfolioSnapshots := Buffer.toArray(trimmed);
-        } else {
-            portfolioSnapshots := Buffer.toArray(buf);
-        };
+        // Each snapshot goes into its day's summary exactly once, here. (Until the paging fixes the
+        // trim below re-applied every dropped snapshot to its day once the log was full, which
+        // counted it twice and overwrote the day's close with a stale value.)
+        ignore BotRing.push(portfolioSnapshotRing, full, loggingSettings.maxPortfolioLogEntries);
         updateDailyPortfolioSummary(full);
         eventEngine.queueEvent(T.TradingEvent.SnapshotTaken, [
             ("snapshotId", Nat.toText(id)),
@@ -3081,17 +3200,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             totalValueIcpE8s = entry.totalValueIcpE8s; totalValueUsdE8s = entry.totalValueUsdE8s;
             totalValueDenomE8s = null; tokens = entry.tokens;
         };
-        let buf = Buffer.fromArray<(Text, T.PortfolioSnapshot)>(purseSnapshots);
-        buf.add((purseId, full));
-        if (buf.size() > purseSnapshotMaxEntries) {
-            let excess = buf.size() - purseSnapshotMaxEntries : Nat;
-            let trimmed = Buffer.Buffer<(Text, T.PortfolioSnapshot)>(purseSnapshotMaxEntries);
-            var i = excess;
-            while (i < buf.size()) { trimmed.add(buf.get(i)); i += 1 };
-            purseSnapshots := Buffer.toArray(trimmed);
-        } else {
-            purseSnapshots := Buffer.toArray(buf);
-        };
+        ignore BotRing.push(purseSnapshotRing, (purseId, full), purseSnapshotMaxEntries);
         id
     };
 
@@ -6578,7 +6687,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         logEngine.logInfo("chore:" # instanceId, "Archive: no summaries found for yesterday, attempting to patch from existing data", null, []);
                         // Try to create summaries from any portfolio snapshots we still have for yesterday
-                        for (snap in portfolioSnapshots.vals()) {
+                        for (snap in BotRing.vals(portfolioSnapshotRing)) {
                             if (utcDayStart(snap.timestamp) == yesterdayStart) {
                                 updateDailyPortfolioSummary(snap);
                             };
@@ -6587,16 +6696,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 };
 
                 // Similarly for price candles
-                let hasYesterdayPrice = Array.find<T.DailyPriceCandle>(dailyPriceCandles, func(c) {
-                    c.date == yesterdayStart
-                });
+                var hasYesterdayPrice: ?T.DailyPriceCandle = null;
+                label find for (c in BotRing.valsNewestFirst(dailyPriceCandleRing)) {
+                    if (c.date == yesterdayStart) { hasYesterdayPrice := ?c; break find };
+                };
 
                 switch (hasYesterdayPrice) {
                     case (?_) {};
                     case null {
                         logEngine.logInfo("chore:" # instanceId, "Archive: patching yesterday's price candles from history", null, []);
                         // Patch from price history ring buffer
-                        for (entry in priceHistory.vals()) {
+                        for (entry in BotRing.vals(priceHistoryRing)) {
                             if (utcDayStart(entry.fetchedAt) == yesterdayStart) {
                                 updateDailyPriceCandle(pairKey(entry.inputToken, entry.outputToken), entry);
                             };
@@ -9020,30 +9130,75 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         true
     };
 
+    // ---- Paging helpers (since the paging fixes): every list getter caps its page and stops at
+    // about REPLY_BUDGET_BYTES, so no reply can outgrow the IC's reply limits ----
+
+    /// Walk `it` (already in the wanted order), count the entries passing `keep`, and return those
+    /// after the first `offset` ones: at most `limit`, and only while their estimated size stays
+    /// within REPLY_BUDGET_BYTES (the first one always fits). Returns (page, total matching).
+    func pageOf<X>(it: Iter.Iter<X>, keep: X -> Bool, offset: Nat, limit: Nat, bytes: X -> Nat): ([X], Nat) {
+        let page = Buffer.Buffer<X>(Nat.min(limit, 64));
+        var total: Nat = 0;
+        var size: Nat = 0;
+        var full = limit == 0;
+        for (x in it) {
+            if (keep(x)) {
+                if (total >= offset and not full) {
+                    let b = bytes(x);
+                    if (page.size() >= limit or (page.size() > 0 and size + b > REPLY_BUDGET_BYTES)) {
+                        full := true;
+                    } else {
+                        page.add(x);
+                        size += b;
+                    };
+                };
+                total += 1;
+            };
+        };
+        (Buffer.toArray(page), total)
+    };
+
+    func optText(t: ?Text): Nat { switch (t) { case (?x) x.size(); case null 0 } };
+    func tradeEntryBytes(e: T.TradeLogEntry): Nat {
+        240 + optText(e.choreId) + optText(e.choreTypeId) + optText(e.errorMessage)
+    };
+    func tokenSnapshotsBytes(ts: [T.TokenSnapshot]): Nat {
+        var n = 0;
+        for (t in ts.vals()) { n += 120 + t.symbol.size() };
+        n
+    };
+    func snapshotBytes(s: T.PortfolioSnapshot): Nat {
+        160 + s.trigger.size() + optText(s.choreId) + tokenSnapshotsBytes(s.tokens)
+    };
+    func priceEntryBytes(_e: T.CachedPrice): Nat { 300 };
+    func dailySummaryBytes(d: T.DailyPortfolioSummary): Nat { 160 + tokenSnapshotsBytes(d.closeTokens) };
+    func candleBytes(c: T.DailyPriceCandle): Nat { 220 + c.pairKey.size() };
+    func arrayNewestFirst<X>(a: [X]): Iter.Iter<X> {
+        var i = a.size();
+        object { public func next(): ?X { if (i == 0) null else { i -= 1; ?a[i] } } }
+    };
+    func isNewestFirst(flag: ?Bool): Bool { switch (flag) { case (?true) true; case _ false } };
+
+    /// Trade log entries, newest first, `offset` counted from the newest. At most 500 per page
+    /// (and about 1 MB): page with `offset`.
     public shared query (msg) func getTradeLog(q: T.TradeLogQuery): async T.TradeLogResult {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
 
-        let limit = switch (q.limit) { case (?l) l; case null 50 };
+        let limit = Nat.min(switch (q.limit) { case (?l) l; case null 50 }, MAX_TRADE_LOG_PAGE);
         let offset = switch (q.offset) { case (?o) o; case null 0 };
-        let filtered = Array.filter<T.TradeLogEntry>(tradeLogEntries, func(e: T.TradeLogEntry): Bool { matchTradeLogEntry(e, q) });
-        let totalCount = filtered.size();
-        // Reverse so newest entries come first
-        let reversed = Array.tabulate<T.TradeLogEntry>(totalCount, func(i: Nat): T.TradeLogEntry { filtered[totalCount - 1 - i : Nat] });
-        let pageStart = if (offset >= totalCount) { totalCount } else { offset };
-        let pageEnd = if (pageStart + limit >= totalCount) { totalCount } else { pageStart + limit };
-        let pageSize = pageEnd - pageStart : Nat;
-        let page = Array.tabulate<T.TradeLogEntry>(pageSize, func(i: Nat): T.TradeLogEntry { reversed[pageStart + i] });
-        { entries = page; totalCount = totalCount; hasMore = pageEnd < totalCount }
+        let (page, totalCount) = pageOf<T.TradeLogEntry>(BotRing.valsNewestFirst(tradeLogRing),
+            func(e) { matchTradeLogEntry(e, q) }, offset, limit, tradeEntryBytes);
+        { entries = page; totalCount = totalCount; hasMore = offset + page.size() < totalCount }
     };
 
     public shared query (msg) func getTradeLogStats(): async { totalEntries: Nat; nextId: Nat } {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
-        { totalEntries = tradeLogEntries.size(); nextId = tradeLogNextId }
+        { totalEntries = BotRing.size(tradeLogRing); nextId = tradeLogNextId }
     };
 
     public shared (msg) func clearTradeLog(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
-        tradeLogEntries := [];
+        BotRing.clear(tradeLogRing);
         logEngine.logInfo("trade-log", "Trade log cleared", ?msg.caller, []);
     };
 
@@ -9055,11 +9210,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         let idSet = Buffer.Buffer<Nat>(ids.size());
         for (id in ids.vals()) { idSet.add(id) };
-        let keep = Buffer.Buffer<T.TradeLogEntry>(tradeLogEntries.size());
+        let keep = Buffer.Buffer<T.TradeLogEntry>(BotRing.size(tradeLogRing));
         var deleted: Nat = 0;
         var icpReversed: Int = 0;
         var usdReversed: Int = 0;
-        for (entry in tradeLogEntries.vals()) {
+        for (entry in BotRing.vals(tradeLogRing)) {
             var shouldDelete = false;
             for (id in idSet.vals()) {
                 if (entry.id == id) { shouldDelete := true };
@@ -9085,7 +9240,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 keep.add(entry);
             };
         };
-        tradeLogEntries := Buffer.toArray(keep);
+        BotRing.clear(tradeLogRing);
+        BotRing.appendAll(tradeLogRing, Buffer.toArray(keep), loggingSettings.maxTradeLogEntries);
         logEngine.logInfo("trade-log", "Deleted " # Nat.toText(deleted) # " trade log entries", ?msg.caller, [
             ("deletedCount", Nat.toText(deleted)),
             ("capitalIcpReversed", Int.toText(icpReversed)),
@@ -9120,21 +9276,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         true
     };
 
+    /// Portfolio snapshots. Oldest first unless `newestFirst` (which charts want: the oldest-first
+    /// default goes stale once there are more snapshots than one page). At most 200 per page (and
+    /// about 1 MB): page with `offset`.
     public shared query (msg) func getPortfolioSnapshots(q: T.PortfolioSnapshotQuery): async T.PortfolioSnapshotResult {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
 
-        let limit = switch (q.limit) { case (?l) l; case null 20 };
-        let filtered = Array.filter<T.PortfolioSnapshot>(portfolioSnapshots, func(e: T.PortfolioSnapshot): Bool { matchPortfolioSnapshot(e, q) });
-        let totalCount = filtered.size();
-        let page = if (totalCount <= limit) { filtered } else {
-            Array.tabulate<T.PortfolioSnapshot>(limit, func(i: Nat): T.PortfolioSnapshot { filtered[i] })
-        };
-        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+        let limit = Nat.min(switch (q.limit) { case (?l) l; case null 20 }, MAX_SNAPSHOT_PAGE);
+        let offset = switch (q.offset) { case (?o) o; case null 0 };
+        let it = if (isNewestFirst(q.newestFirst)) BotRing.valsNewestFirst(portfolioSnapshotRing) else BotRing.vals(portfolioSnapshotRing);
+        let (page, totalCount) = pageOf<T.PortfolioSnapshot>(it, func(e) { matchPortfolioSnapshot(e, q) }, offset, limit, snapshotBytes);
+        { entries = page; totalCount = totalCount; hasMore = offset + page.size() < totalCount }
     };
 
     public shared query (msg) func getPortfolioSnapshotStats(): async { totalEntries: Nat; nextId: Nat } {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
-        { totalEntries = portfolioSnapshots.size(); nextId = portfolioSnapshotNextId }
+        { totalEntries = BotRing.size(portfolioSnapshotRing); nextId = portfolioSnapshotNextId }
     };
 
     public shared query (msg) func getCapitalFlows(): async {
@@ -9154,34 +9311,36 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func clearPortfolioSnapshots(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
-        portfolioSnapshots := [];
+        BotRing.clear(portfolioSnapshotRing);
         logEngine.logInfo("portfolio-log", "Portfolio snapshot log cleared", ?msg.caller, []);
     };
 
+    /// One purse's snapshots: oldest first unless `newestFirst`; at most 200 per page (and about
+    /// 1 MB), page with `offset`. (`tradeLogId` and `phase` do not apply to purse snapshots.)
     public shared query (msg) func getPursePortfolioSnapshots(purseId: Text, q: T.PortfolioSnapshotQuery): async T.PortfolioSnapshotResult {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
-        let limit = switch (q.limit) { case (?l) l; case null 500 };
-        let buf = Buffer.Buffer<T.PortfolioSnapshot>(limit);
-        for ((pid, snap) in purseSnapshots.vals()) {
-            if (pid == purseId) {
-                var keep = true;
-                switch (q.fromTime) { case (?t) { if (snap.timestamp < t) keep := false }; case null {} };
-                switch (q.toTime) { case (?t) { if (snap.timestamp > t) keep := false }; case null {} };
-                switch (q.startId) { case (?s) { if (snap.id < s) keep := false }; case null {} };
-                if (keep) buf.add(snap);
-            };
+        let limit = Nat.min(switch (q.limit) { case (?l) l; case null 200 }, MAX_SNAPSHOT_PAGE);
+        let offset = switch (q.offset) { case (?o) o; case null 0 };
+        let it = if (isNewestFirst(q.newestFirst)) BotRing.valsNewestFirst(purseSnapshotRing) else BotRing.vals(purseSnapshotRing);
+        let keep = func((pid, snap): (Text, T.PortfolioSnapshot)): Bool {
+            if (pid != purseId) return false;
+            switch (q.fromTime) { case (?t) { if (snap.timestamp < t) return false }; case null {} };
+            switch (q.toTime) { case (?t) { if (snap.timestamp > t) return false }; case null {} };
+            switch (q.startId) { case (?s) { if (snap.id < s) return false }; case null {} };
+            true
         };
-        let totalCount = buf.size();
-        let page = if (totalCount <= limit) { Buffer.toArray(buf) } else {
-            Array.tabulate<T.PortfolioSnapshot>(limit, func(i) { buf.get(i) })
-        };
-        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+        let (page, totalCount) = pageOf<(Text, T.PortfolioSnapshot)>(it, keep, offset, limit, func((_, snap)) { snapshotBytes(snap) });
+        {
+            entries = Array.map<(Text, T.PortfolioSnapshot), T.PortfolioSnapshot>(page, func((_, snap)) { snap });
+            totalCount = totalCount;
+            hasMore = offset + page.size() < totalCount;
+        }
     };
 
     public shared query (msg) func listPurseSnapshotPurses(): async [Text] {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
         let seen = Buffer.Buffer<Text>(8);
-        for ((pid, _) in purseSnapshots.vals()) {
+        for ((pid, _) in BotRing.vals(purseSnapshotRing)) {
             var found = false;
             for (s in seen.vals()) { if (s == pid) found := true };
             if (not found) seen.add(pid);
@@ -9198,9 +9357,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         loggingSettings
     };
 
+    /// The log sizes are clamped (trade log at most 50 000 entries, portfolio snapshots 20 000);
+    /// smaller sizes trim the logs right away.
     public shared (msg) func setLoggingSettings(settings: T.LoggingSettings): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
-        loggingSettings := settings;
+        loggingSettings := clampLoggingSettings(settings);
+        BotRing.trim(tradeLogRing, loggingSettings.maxTradeLogEntries);
+        BotRing.trim(portfolioSnapshotRing, loggingSettings.maxPortfolioLogEntries);
         logEngine.logInfo("settings", "Logging settings updated", ?msg.caller, []);
     };
 
@@ -9263,20 +9426,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         priceHistoryMaxSize
     };
 
+    /// At most 20 000 (larger values are clamped): circuit-breaker percent-change conditions scan
+    /// the whole history. A smaller size keeps the newest entries.
     public shared (msg) func setPriceHistoryMaxSize(size: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
-        priceHistoryMaxSize := size;
-        // Truncate history if new size is smaller
-        if (size < priceHistory.size()) {
-            // Keep the most recent entries: the ring buffer write position tells us ordering.
-            // Rebuild as a simple array of the newest `size` entries.
-            let len = priceHistory.size();
-            priceHistory := Array.tabulate<T.CachedPrice>(size, func(i) {
-                priceHistory[(priceHistoryNextIdx + len - size + i) % len]
-            });
-            priceHistoryNextIdx := 0;
-        };
-        logEngine.logInfo("settings", "Price history max size set to " # Nat.toText(size), ?msg.caller, []);
+        priceHistoryMaxSize := Nat.min(size, MAX_PRICE_HISTORY);
+        BotRing.trim(priceHistoryRing, priceHistoryMaxSize);
+        logEngine.logInfo("settings", "Price history max size set to " # Nat.toText(priceHistoryMaxSize), ?msg.caller, []);
     };
 
     public shared query (msg) func getLastKnownPrices(): async [(Text, T.CachedPrice)] {
@@ -9284,33 +9440,29 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         lastKnownPrices
     };
 
+    /// Price history, oldest first unless `newestFirst`; at most 1000 per page (and about 1 MB).
     public shared query (msg) func getPriceHistory(q: T.PriceHistoryQuery): async T.PriceHistoryResult {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
-        // Linearize ring buffer: oldest first
-        let len = priceHistory.size();
-        let linearized = if (len < priceHistoryMaxSize) {
-            priceHistory
-        } else {
-            Array.tabulate<T.CachedPrice>(len, func(i) {
-                priceHistory[(priceHistoryNextIdx + i) % len]
-            })
-        };
-        // Filter by pairKey if specified
-        let filtered = switch (q.pairKey) {
+        let it = if (isNewestFirst(q.newestFirst)) BotRing.valsNewestFirst(priceHistoryRing) else BotRing.vals(priceHistoryRing);
+        // A history holds few distinct pairs: build the pair key once per distinct (input, output)
+        // and compare principals for the rest (until the paging fixes: two Principal.toText per entry).
+        let seen = Buffer.Buffer<(Principal, Principal, Bool)>(8);
+        let keep = switch (q.pairKey) {
             case (?pk) {
-                Array.filter<T.CachedPrice>(linearized, func(entry) {
-                    pairKey(entry.inputToken, entry.outputToken) == pk
-                })
+                func(entry: T.CachedPrice): Bool {
+                    for ((i, o, m) in seen.vals()) {
+                        if (Principal.equal(i, entry.inputToken) and Principal.equal(o, entry.outputToken)) return m;
+                    };
+                    let m = pairKey(entry.inputToken, entry.outputToken) == pk;
+                    seen.add((entry.inputToken, entry.outputToken, m));
+                    m
+                }
             };
-            case null linearized;
+            case null { func(_: T.CachedPrice): Bool { true } };
         };
-        let total = filtered.size();
-        let off = switch (q.offset) { case (?o) Nat.min(o, total); case null 0 };
-        let lim = switch (q.limit) { case (?l) l; case null 100 };
-        let end = Nat.min(off + lim, total);
-        let page = if (off >= total) { [] } else {
-            Array.tabulate<T.CachedPrice>(end - off, func(i) { filtered[off + i] })
-        };
+        let off = switch (q.offset) { case (?o) o; case null 0 };
+        let lim = Nat.min(switch (q.limit) { case (?l) l; case null 100 }, MAX_PRICE_HISTORY_PAGE);
+        let (page, total) = pageOf<T.CachedPrice>(it, keep, off, lim, priceEntryBytes);
         { entries = page; totalCount = total }
     };
 
@@ -9318,62 +9470,42 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // PUBLIC API — DAILY OHLC SUMMARIES
     // ============================================
 
+    /// Daily portfolio summaries, oldest first unless `newestFirst` (which charts want: the
+    /// oldest-first default goes stale once there are more days than one page). At most 1000 per
+    /// page (and about 1 MB).
     public shared query (msg) func getDailyPortfolioSummaries(q: T.DailyPortfolioSummaryQuery): async {
         entries: [T.DailyPortfolioSummary];
         totalCount: Nat;
     } {
         assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
-
-        var filtered = dailyPortfolioSummaries;
-
-        // Filter by date range
-        switch (q.fromDate) {
-            case (?from) { filtered := Array.filter<T.DailyPortfolioSummary>(filtered, func(s) { s.date >= from }) };
-            case null {};
+        let it = if (isNewestFirst(q.newestFirst)) arrayNewestFirst(dailyPortfolioSummaries) else dailyPortfolioSummaries.vals();
+        let keep = func(s: T.DailyPortfolioSummary): Bool {
+            switch (q.fromDate) { case (?from) { if (s.date < from) return false }; case null {} };
+            switch (q.toDate) { case (?to) { if (s.date > to) return false }; case null {} };
+            true
         };
-        switch (q.toDate) {
-            case (?to) { filtered := Array.filter<T.DailyPortfolioSummary>(filtered, func(s) { s.date <= to }) };
-            case null {};
-        };
-
-        let total = filtered.size();
-        let off = switch (q.offset) { case (?o) Nat.min(o, total); case null 0 };
-        let lim = switch (q.limit) { case (?l) l; case null 100 };
-        let end = Nat.min(off + lim, total);
-        let page = if (off >= total) { [] } else {
-            Array.tabulate<T.DailyPortfolioSummary>(end - off, func(i) { filtered[off + i] })
-        };
+        let off = switch (q.offset) { case (?o) o; case null 0 };
+        let lim = Nat.min(switch (q.limit) { case (?l) l; case null 100 }, MAX_DAILY_PAGE);
+        let (page, total) = pageOf<T.DailyPortfolioSummary>(it, keep, off, lim, dailySummaryBytes);
         { entries = page; totalCount = total }
     };
 
+    /// Daily price candles, oldest first unless `newestFirst`; at most 1000 per page (and about 1 MB).
     public shared query (msg) func getDailyPriceCandles(q: T.DailyPriceCandleQuery): async {
         entries: [T.DailyPriceCandle];
         totalCount: Nat;
     } {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
-
-        var filtered = dailyPriceCandles;
-
-        switch (q.pairKey) {
-            case (?pk) { filtered := Array.filter<T.DailyPriceCandle>(filtered, func(c) { c.pairKey == pk }) };
-            case null {};
+        let it = if (isNewestFirst(q.newestFirst)) BotRing.valsNewestFirst(dailyPriceCandleRing) else BotRing.vals(dailyPriceCandleRing);
+        let keep = func(c: T.DailyPriceCandle): Bool {
+            switch (q.pairKey) { case (?pk) { if (c.pairKey != pk) return false }; case null {} };
+            switch (q.fromDate) { case (?from) { if (c.date < from) return false }; case null {} };
+            switch (q.toDate) { case (?to) { if (c.date > to) return false }; case null {} };
+            true
         };
-        switch (q.fromDate) {
-            case (?from) { filtered := Array.filter<T.DailyPriceCandle>(filtered, func(c) { c.date >= from }) };
-            case null {};
-        };
-        switch (q.toDate) {
-            case (?to) { filtered := Array.filter<T.DailyPriceCandle>(filtered, func(c) { c.date <= to }) };
-            case null {};
-        };
-
-        let total = filtered.size();
-        let off = switch (q.offset) { case (?o) Nat.min(o, total); case null 0 };
-        let lim = switch (q.limit) { case (?l) l; case null 100 };
-        let end = Nat.min(off + lim, total);
-        let page = if (off >= total) { [] } else {
-            Array.tabulate<T.DailyPriceCandle>(end - off, func(i) { filtered[off + i] })
-        };
+        let off = switch (q.offset) { case (?o) o; case null 0 };
+        let lim = Nat.min(switch (q.limit) { case (?l) l; case null 100 }, MAX_DAILY_PAGE);
+        let (page, total) = pageOf<T.DailyPriceCandle>(it, keep, off, lim, candleBytes);
         { entries = page; totalCount = total }
     };
 

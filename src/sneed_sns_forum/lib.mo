@@ -14,6 +14,8 @@ import Vector "mo:vector";
 import Float "mo:base/Float";
 import Int "mo:base/Int";
 import Char "mo:base/Char";
+import Nat64 "mo:base/Nat64";
+import ExperimentalInternetComputer "mo:base/ExperimentalInternetComputer";
 import SnsUtil "../SnsUtil";
 
 import T "Types";
@@ -1067,6 +1069,7 @@ module {
 
         ignore Map.put(state.threads, Map.nhash, id, thread);
         add_to_index(state.topic_threads, input.topic_id, id);
+        index_thread(state, thread);
 
         #ok(id)
     };
@@ -1274,6 +1277,7 @@ module {
 
         ignore Map.put(state.posts, Map.nhash, id, post);
         add_to_index(state.thread_posts, thread_id, id);
+        index_post(state, post);
         
         switch (reply_to_post_id) {
             case (?reply_id) add_to_index(state.post_replies, reply_id, id);
@@ -2509,7 +2513,69 @@ module {
         }
     };
 
-    // Get count of replies to user since their last seen timestamp (optimized for notifications)
+    // ---- Per-user indexes (spec/paging_audit.md): user_posts, user_threads, user_reply_inbox ----
+
+    /// Records a new thread under its author.
+    public func index_thread(state: ForumState, thread: Thread) {
+        add_to_index_32(state.user_threads, thread.created_by, thread.id);
+    };
+
+    /// Records a new post under its author, and in the reply inbox of whoever it may answer: the
+    /// author of the post it replies to (also when that is the poster), or for a top-level post the
+    /// thread's author when someone else posts.
+    public func index_post(state: ForumState, post: Post) {
+        add_to_index_32(state.user_posts, post.created_by, post.id);
+        switch (post.reply_to_post_id) {
+            case (?parent_id) switch (Map.get(state.posts, Map.nhash, parent_id)) {
+                case (?parent) add_to_index_32(state.user_reply_inbox, parent.created_by, post.id);
+                case null {};
+            };
+            case null switch (Map.get(state.threads, Map.nhash, post.thread_id)) {
+                case (?thread) if (thread.created_by != post.created_by) add_to_index_32(state.user_reply_inbox, thread.created_by, post.id);
+                case null {};
+            };
+        };
+    };
+
+    /// Builds the per-user indexes from scratch (on the first upgrade to the build that has them),
+    /// in creation order. Returns how many posts and threads were indexed.
+    public func rebuild_user_indexes(state: ForumState) : Nat {
+        Map.clear(state.user_posts);
+        Map.clear(state.user_threads);
+        Map.clear(state.user_reply_inbox);
+        let by_time = func(a_at: Int, a_id: Nat, b_at: Int, b_id: Nat) : Order.Order {
+            if (a_at < b_at) #less else if (a_at > b_at) #greater else Nat.compare(a_id, b_id)
+        };
+        let threads = Array.sort<Thread>(Iter.toArray(Map.vals(state.threads)), func(a, b) = by_time(a.created_at, a.id, b.created_at, b.id));
+        for (thread in threads.vals()) index_thread(state, thread);
+        let posts = Array.sort<Post>(Iter.toArray(Map.vals(state.posts)), func(a, b) = by_time(a.created_at, a.id, b.created_at, b.id));
+        for (post in posts.vals()) index_post(state, post);
+        threads.size() + posts.size()
+    };
+
+    /// Whether `post` counts as a reply to `user_index` now: not deleted, and either a reply to a live
+    /// post of theirs, or a top-level post by someone else in a live thread of theirs.
+    func is_reply_to_user(state: ForumState, user_index: Nat32, post: Post) : Bool {
+        if (post.deleted) return false;
+        switch (post.reply_to_post_id) {
+            case (?parent_id) switch (Map.get(state.posts, Map.nhash, parent_id)) {
+                case (?parent) parent.created_by == user_index and not parent.deleted;
+                case null false;
+            };
+            case null switch (Map.get(state.threads, Map.nhash, post.thread_id)) {
+                case (?thread) thread.created_by == user_index and not thread.deleted and post.created_by != user_index;
+                case null false;
+            };
+        }
+    };
+
+    func user_list(map: Map.Map<Nat32, Vector.Vector<Nat>>, user_index: Nat32) : Vector.Vector<Nat> {
+        switch (Map.get(map, Map.n32hash, user_index)) { case (?v) v; case null Vector.new<Nat>() }
+    };
+
+    // Get count of replies to user since their last seen timestamp (optimized for notifications).
+    // Walks the user's reply inbox from the newest entry back to the last-seen time: the cost is the
+    // number of replies since then, not the size of the forum.
     public func get_recent_replies_count(state: ForumState, user_principal: Principal) : Nat {
         let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
             case (?index) index;
@@ -2521,64 +2587,107 @@ module {
             case (?timestamp) timestamp;
             case null 0; // If never seen, count all replies (since 0)
         };
-        
+
+        let inbox = user_list(state.user_reply_inbox, user_index);
         var count = 0;
-        
-        // First, find all posts created by the user
-        let user_post_ids = Buffer.Buffer<Nat>(0);
-        for ((post_id, post) in Map.entries(state.posts)) {
-            if (post.created_by == user_index and not post.deleted) {
-                user_post_ids.add(post_id);
-            };
-        };
-        
-        // Second, find all threads created by the user
-        let user_thread_ids = Buffer.Buffer<Nat>(0);
-        for ((thread_id, thread) in Map.entries(state.threads)) {
-            if (thread.created_by == user_index and not thread.deleted) {
-                user_thread_ids.add(thread_id);
-            };
-        };
-        
-        // Count replies to the user's posts that are newer than since_timestamp
-        for ((reply_id, reply_post) in Map.entries(state.posts)) {
-            if (not reply_post.deleted and reply_post.created_at > since_timestamp) {
-                switch (reply_post.reply_to_post_id) {
-                    case (?parent_post_id) {
-                        // Check if this reply is to one of the user's posts
-                        let user_post_array = Buffer.toArray(user_post_ids);
-                        for (user_post_id in user_post_array.vals()) {
-                            if (parent_post_id == user_post_id) {
-                                count += 1;
-                            };
-                        };
-                    };
-                    case null {}; // Not a reply, skip
+        var i = Vector.size(inbox);
+        label newest while (i > 0) {
+            i -= 1;
+            switch (Map.get(state.posts, Map.nhash, Vector.get(inbox, i))) {
+                case (?post) {
+                    if (post.created_at <= since_timestamp) break newest; // the inbox is in creation order
+                    if (is_reply_to_user(state, user_index, post)) count += 1;
                 };
+                case null {};
             };
         };
-        
-        // Count root-level posts in threads created by the user (these are "replies to the thread")
-        for ((post_id, post) in Map.entries(state.posts)) {
-            if (not post.deleted and post.created_at > since_timestamp) {
-                // Check if this is a root-level post (no reply_to_post_id) in one of the user's threads
-                switch (post.reply_to_post_id) {
-                    case null {
-                        // This is a root-level post, check if it's in one of the user's threads
-                        let user_thread_array = Buffer.toArray(user_thread_ids);
-                        for (user_thread_id in user_thread_array.vals()) {
-                            if (post.thread_id == user_thread_id and post.created_by != user_index) {
-                                // This is a root-level post in the user's thread by someone else
-                                count += 1;
-                            };
-                        };
-                    };
-                    case (?_) {}; // This is a reply to another post, not a root-level post
-                };
-            };
-        };
-        
         count
+    };
+
+    // Page limits of the per-user lists
+    public let USER_PAGE_MAX : Nat = 100;
+    let USER_PAGE_SCAN : Nat = 1_000; // entries looked at per page (deleted ones are skipped)
+    public let USER_PAGE_BYTE_BUDGET : Nat = 1_500_000;
+
+    /// One page of a per-user list, newest first: positions below `before` (all for null), at most
+    /// `limit` (0 or above USER_PAGE_MAX: USER_PAGE_MAX) items, about USER_PAGE_BYTE_BUDGET bytes of
+    /// text (always at least one item), USER_PAGE_SCAN positions looked at. `view` gives an entry's
+    /// item and its size, or null to skip it.
+    func user_page<R>(list: Vector.Vector<Nat>, before: ?Nat, limit: Nat, view: Nat -> ?(R, Nat)) : { items: [R]; next: ?Nat } {
+        let max = if (limit == 0 or limit > USER_PAGE_MAX) USER_PAGE_MAX else limit;
+        let size = Vector.size(list);
+        var i : Nat = switch (before) { case (?b) Nat.min(b, size); case null size };
+        let out = Buffer.Buffer<R>(max);
+        var scanned = 0;
+        var bytes = 0;
+        label fill while (i > 0 and out.size() < max and scanned < USER_PAGE_SCAN) {
+            switch (view(Vector.get(list, i - 1))) {
+                case (?(item, n)) {
+                    if (out.size() > 0 and bytes + n > USER_PAGE_BYTE_BUDGET) break fill; // starts the next page
+                    out.add(item);
+                    bytes += n;
+                };
+                case null {};
+            };
+            i -= 1;
+            scanned += 1;
+        };
+        { items = Buffer.toArray(out); next = if (i > 0) ?i else null }
+    };
+
+    func post_bytes(p: T.PostResponse) : Nat = 200 + opt_text_bytes(p.title) + Text.encodeUtf8(p.body).size();
+    func thread_bytes(t: T.ThreadResponse) : Nat = 200 + opt_text_bytes(t.title) + Text.encodeUtf8(t.body).size();
+
+    func live_post(state: ForumState, id: Nat) : ?(T.PostResponse, Nat) {
+        switch (Map.get(state.posts, Map.nhash, id)) {
+            case (?post) if (not post.deleted) switch (get_post(state, id)) { case (?r) ?(r, post_bytes(r)); case null null } else null;
+            case null null;
+        }
+    };
+
+    /// A user's posts (not deleted), newest first, paged (see user_page).
+    public func get_posts_by_user_page(state: ForumState, user_principal: Principal, before: ?Nat, limit: Nat) : T.PostsPage {
+        let ?user_index = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal) else return { items = []; next = null };
+        user_page<T.PostResponse>(user_list(state.user_posts, user_index), before, limit, func(id) = live_post(state, id))
+    };
+
+    /// A user's threads (not deleted), newest first, paged (see user_page).
+    public func get_threads_by_user_page(state: ForumState, user_principal: Principal, before: ?Nat, limit: Nat) : T.ThreadsPage {
+        let ?user_index = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal) else return { items = []; next = null };
+        user_page<T.ThreadResponse>(user_list(state.user_threads, user_index), before, limit, func(id) {
+            switch (Map.get(state.threads, Map.nhash, id)) {
+                case (?thread) if (not thread.deleted) switch (get_thread(state, id)) { case (?r) ?(r, thread_bytes(r)); case null null } else null;
+                case null null;
+            }
+        })
+    };
+
+    /// Replies to a user (what get_replies_to_user lists), newest first, paged (see user_page).
+    public func get_replies_to_user_page(state: ForumState, user_principal: Principal, before: ?Nat, limit: Nat) : T.PostsPage {
+        let ?user_index = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal) else return { items = []; next = null };
+        user_page<T.PostResponse>(user_list(state.user_reply_inbox, user_index), before, limit, func(id) {
+            switch (Map.get(state.posts, Map.nhash, id)) {
+                case (?post) if (is_reply_to_user(state, user_index, post)) live_post(state, id) else null;
+                case null null;
+            }
+        })
+    };
+
+    func tip_page(state: ForumState, index: Map.Map<Nat32, Vector.Vector<Nat>>, user_principal: Principal, before: ?Nat, limit: Nat) : T.TipsPage {
+        let ?user_index = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal) else return { items = []; next = null };
+        user_page<TipResponse>(user_list(index, user_index), before, limit, func(id) {
+            switch (get_tip(state, id)) { case (?t) ?(t, 300); case null null }
+        })
+    };
+
+    /// Tips a user gave (what get_tips_given_by_user lists), newest first, paged (see user_page).
+    public func get_tips_given_by_user_page(state: ForumState, user_principal: Principal, before: ?Nat, limit: Nat) : T.TipsPage {
+        tip_page(state, state.tips_given, user_principal, before, limit)
+    };
+
+    /// Tips a user received (what get_tips_received_by_user lists), newest first, paged (see user_page).
+    public func get_tips_received_by_user_page(state: ForumState, user_principal: Principal, before: ?Nat, limit: Nat) : T.TipsPage {
+        tip_page(state, state.tips_received, user_principal, before, limit)
     };
 
     // Mark replies as seen up to a specific timestamp
@@ -2671,7 +2780,19 @@ module {
         }
     };
 
-    // Post query functions by user
+    // ids of a per-user list in id order (the order the full scans of earlier builds visited them in)
+    func ids_ascending(list: Vector.Vector<Nat>) : [Nat] = Array.sort<Nat>(Vector.toArray(list), Nat.compare);
+
+    func newest_first_posts(items: [T.PostResponse]) : [T.PostResponse] {
+        Array.sort(items, func(a: T.PostResponse, b: T.PostResponse) : Order.Order {
+            if (a.created_at > b.created_at) #less
+            else if (a.created_at < b.created_at) #greater
+            else #equal
+        })
+    };
+
+    // Post query functions by user (from the per-user indexes; the same lists as the full scans of
+    // earlier builds, unpaged: the *_page variants page them)
     public func get_posts_by_user(state: ForumState, user_principal: Principal) : [T.PostResponse] {
         let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
             case (?index) index;
@@ -2679,23 +2800,15 @@ module {
         };
         
         let posts = Buffer.Buffer<T.PostResponse>(0);
-        for ((post_id, post) in Map.entries(state.posts)) {
-            if (post.created_by == user_index and not post.deleted) {
-                switch (get_post(state, post_id)) {
-                    case (?post_response) posts.add(post_response);
-                    case null {}; // Skip if post not found
-                };
+        for (post_id in ids_ascending(user_list(state.user_posts, user_index)).vals()) {
+            switch (live_post(state, post_id)) {
+                case (?(post_response, _)) posts.add(post_response);
+                case null {};
             };
         };
         
         // Sort by creation time (newest first)
-        let sorted_posts = Array.sort(Buffer.toArray(posts), func(a: T.PostResponse, b: T.PostResponse) : Order.Order {
-            if (a.created_at > b.created_at) #less
-            else if (a.created_at < b.created_at) #greater
-            else #equal
-        });
-        
-        sorted_posts
+        newest_first_posts(Buffer.toArray(posts))
     };
 
     public func get_replies_to_user(state: ForumState, user_principal: Principal) : [T.PostResponse] {
@@ -2704,76 +2817,23 @@ module {
             case null return []; // User not found in dedup, so no replies
         };
         
+        // replies to the user's posts first, then top-level posts by others in the user's threads
+        // (each in id order), as earlier builds listed them before sorting
         let replies = Buffer.Buffer<T.PostResponse>(0);
-        
-        // First, find all posts created by the user
-        let user_post_ids = Buffer.Buffer<Nat>(0);
-        for ((post_id, post) in Map.entries(state.posts)) {
-            if (post.created_by == user_index and not post.deleted) {
-                user_post_ids.add(post_id);
-            };
-        };
-        
-        // Second, find all threads created by the user
-        let user_thread_ids = Buffer.Buffer<Nat>(0);
-        for ((thread_id, thread) in Map.entries(state.threads)) {
-            if (thread.created_by == user_index and not thread.deleted) {
-                user_thread_ids.add(thread_id);
-            };
-        };
-        
-        // Find all posts that reply to the user's posts
-        for ((reply_id, reply_post) in Map.entries(state.posts)) {
-            if (not reply_post.deleted) {
-                switch (reply_post.reply_to_post_id) {
-                    case (?parent_post_id) {
-                        // Check if this reply is to one of the user's posts
-                        let user_post_array = Buffer.toArray(user_post_ids);
-                        for (user_post_id in user_post_array.vals()) {
-                            if (parent_post_id == user_post_id) {
-                                switch (get_post(state, reply_id)) {
-                                    case (?reply_response) replies.add(reply_response);
-                                    case null {}; // Skip if post not found
-                                };
-                            };
-                        };
-                    };
-                    case null {}; // Not a reply, skip
+        let top_level = Buffer.Buffer<T.PostResponse>(0);
+        for (post_id in ids_ascending(user_list(state.user_reply_inbox, user_index)).vals()) {
+            switch (Map.get(state.posts, Map.nhash, post_id)) {
+                case (?post) if (is_reply_to_user(state, user_index, post)) switch (get_post(state, post_id)) {
+                    case (?r) if (post.reply_to_post_id != null) replies.add(r) else top_level.add(r);
+                    case null {};
                 };
+                case null {};
             };
         };
-        
-        // Find root-level posts in threads created by the user (these are "replies to the thread")
-        for ((post_id, post) in Map.entries(state.posts)) {
-            if (not post.deleted) {
-                // Check if this is a root-level post (no reply_to_post_id) in one of the user's threads
-                switch (post.reply_to_post_id) {
-                    case null {
-                        // This is a root-level post, check if it's in one of the user's threads
-                        let user_thread_array = Buffer.toArray(user_thread_ids);
-                        for (user_thread_id in user_thread_array.vals()) {
-                            if (post.thread_id == user_thread_id and post.created_by != user_index) {
-                                // This is a root-level post in the user's thread by someone else
-                                switch (get_post(state, post_id)) {
-                                    case (?post_response) replies.add(post_response);
-                                    case null {}; // Skip if post not found
-                                };
-                            };
-                        };
-                    };
-                    case (?_) {}; // This is a reply to another post, not a root-level post
-                };
-            };
-        };
+        replies.append(top_level);
         
         // Sort by creation time (newest first)
-        let sorted_replies = Array.sort(Buffer.toArray(replies), func(a: T.PostResponse, b: T.PostResponse) : Order.Order {
-            if (a.created_at > b.created_at) #less
-            else if (a.created_at < b.created_at) #greater
-            else #equal
-        });
-        
-        sorted_replies
+        newest_first_posts(Buffer.toArray(replies))
     };
 
     public func get_threads_by_user(state: ForumState, user_principal: Principal) : [T.ThreadResponse] {
@@ -2783,12 +2843,13 @@ module {
         };
         
         let threads = Buffer.Buffer<T.ThreadResponse>(0);
-        for ((thread_id, thread) in Map.entries(state.threads)) {
-            if (thread.created_by == user_index and not thread.deleted) {
-                switch (get_thread(state, thread_id)) {
+        for (thread_id in ids_ascending(user_list(state.user_threads, user_index)).vals()) {
+            switch (Map.get(state.threads, Map.nhash, thread_id)) {
+                case (?thread) if (not thread.deleted) switch (get_thread(state, thread_id)) {
                     case (?thread_response) threads.add(thread_response);
                     case null {}; // Skip if thread not found
                 };
+                case null {};
             };
         };
         
@@ -3689,6 +3750,7 @@ module {
         // Create the thread
         ignore Map.put(state.threads, Map.nhash, thread_id, thread);
         add_to_index(state.topic_threads, topic_id, thread_id);
+        index_thread(state, thread);
 
         // Create the proposal mapping
         let proposal_mapping : T.ProposalThreadMapping = {
@@ -3816,6 +3878,7 @@ module {
         // Create the thread
         ignore Map.put(state.threads, Map.nhash, thread_id, thread);
         add_to_index(state.topic_threads, topic_id, thread_id);
+        index_thread(state, thread);
 
         // Create the proposal mapping
         let proposal_mapping : T.ProposalThreadMapping = {
@@ -4240,18 +4303,41 @@ module {
         true
     };
 
+    // get_feed limits (spec/paging_audit.md S5). `length` is clamped to FEED_MAX_ITEMS, a reply stops
+    // at about FEED_BYTE_BUDGET bytes of text (always at least one item), at most FEED_MAX_CHECKS ids
+    // are looked at, and a page stops early once the query has used FEED_INSTRUCTION_BUDGET
+    // instructions (search filters lowercase every body they look at). A page cut short this way says
+    // has_more with next_start_id where it stopped, so a client that follows next_start_id sees every
+    // item; it may get fewer items than it asked for, or none, on a page.
+    public let FEED_MAX_ITEMS : Nat = 500;
+    public let FEED_BYTE_BUDGET : Nat = 1_500_000;
+    public let FEED_MAX_CHECKS : Nat = 5_000;
+    let FEED_INSTRUCTION_BUDGET : Nat64 = 2_500_000_000;
+
+    func opt_text_bytes(t : ?Text) : Nat = switch t { case (?x) Text.encodeUtf8(x).size(); case null 0 };
+
+    // about the size of an item in the reply: its texts plus the fixed fields
+    func feed_item_bytes(item : T.FeedItem) : Nat {
+        200 + opt_text_bytes(item.title) + opt_text_bytes(item.body) + opt_text_bytes(item.forum_title)
+        + opt_text_bytes(item.topic_title) + opt_text_bytes(item.thread_title)
+        + (switch (item.replied_to_post) { case (?r) 16 + opt_text_bytes(r.title) + Text.encodeUtf8(r.body).size(); case null 0 })
+    };
+
     public func get_feed(state: ForumState, input: T.GetFeedInput) : T.GetFeedResponse {
         let start_id = switch (input.start_id) {
             case (?id) id;
             case null if (state.next_id > 0) state.next_id - 1 else 0; // Start from highest ID
         };
 
-        let items_buffer = Buffer.Buffer<T.FeedItem>(input.length);
+        let length = Nat.min(input.length, FEED_MAX_ITEMS);
+        let items_buffer = Buffer.Buffer<T.FeedItem>(length);
         var current_id = start_id;
         var checked_count = 0;
-        let max_checks = input.length * 10; // Prevent infinite loops
+        var bytes = 0;
+        let max_checks = Nat.min(length * 10, FEED_MAX_CHECKS); // Prevent infinite loops
 
-        while (items_buffer.size() < input.length and current_id > 0 and checked_count < max_checks) {
+        label scan while (items_buffer.size() < length and current_id > 0 and checked_count < max_checks) {
+            if (checked_count > 0 and ExperimentalInternetComputer.performanceCounter(0) > FEED_INSTRUCTION_BUDGET) break scan;
             checked_count += 1;
             
             // Try to find an item with this ID
@@ -4306,7 +4392,11 @@ module {
                     };
                     
                     if (matches) {
+                        let size = feed_item_bytes(item);
+                        // the reply is full: this item starts the next page
+                        if (items_buffer.size() > 0 and bytes + size > FEED_BYTE_BUDGET) break scan;
                         items_buffer.add(item);
+                        bytes += size;
                     };
                 };
                 case null {};
@@ -4315,8 +4405,8 @@ module {
             current_id -= 1;
         };
 
-        // More ids remain below where scanning stopped, whether the page filled or the check budget ran out
-        let has_more = current_id > 0 and input.length > 0;
+        // More ids remain below where scanning stopped, whether the page filled or a budget ran out
+        let has_more = current_id > 0 and length > 0;
         let next_start_id = if (has_more) ?current_id else null;
 
         {

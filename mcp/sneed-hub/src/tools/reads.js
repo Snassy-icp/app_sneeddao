@@ -35,6 +35,44 @@ const scoped = (id) => {
   if (w.mode === 'delegation' && w.targets && !w.targets.includes(ptext(id))) throw new Error(`Your Sneed Hub delegation does not cover ${id}; reconnect with a wider scope.`);
 };
 
+/// A method the canister does not have (yet): an older build is deployed.
+const isMissingMethod = (e) => /has no (query|update) method|method not found|IC0536|IC0302/i.test(String(e?.message || e));
+const pageArgs = ({ before = null, after = null, limit = 100 } = {}) => ({ before: before == null ? [] : [before], after: after == null ? [] : [after], limit: BigInt(limit) });
+
+/// The newest `limit` messages of the signer's inbox or outbox and how many there are, from the paged
+/// reads (get_received_messages_page / get_sent_messages_page); the full lists on a build without them.
+async function smsNewest(s, box, limit) {
+  try {
+    const page = await s[box === 'outbox' ? 'get_sent_messages_page' : 'get_received_messages_page'](pageArgs({ limit }));
+    return { total: Number(page.total), messages: page.messages };
+  } catch (e) {
+    if (!isMissingMethod(e)) throw e;
+    const list = box === 'outbox' ? await s.get_sent_messages() : await s.get_received_messages();
+    return { total: list.length, messages: [...list].sort((a, b) => (a.created_at > b.created_at ? -1 : 1)).slice(0, limit) };
+  }
+}
+
+/// The signer's messages (received and sent) that reply to message `id`: replies have higher ids, so
+/// only the ascending pages after it are read (at most 20 pages of each list).
+async function smsRepliesTo(s, id) {
+  try {
+    const found = new Map();
+    for (const method of ['get_received_messages_page', 'get_sent_messages_page']) {
+      let after = id;
+      for (let i = 0; i < 20; i += 1) {
+        const page = await s[method](pageArgs({ after, limit: 100 }));
+        for (const m of page.messages) if (opt(m.reply_to)?.[0] === id) found.set(m.id, m);
+        if (!page.has_more || !page.messages.length) break;
+        after = page.messages.at(-1).id;
+      }
+    }
+    return [...found.values()];
+  } catch (e) {
+    if (!isMissingMethod(e)) throw e;
+    return (await s.get_all_messages()).filter((x) => opt(x.reply_to)?.[0] === id);
+  }
+}
+
 /// A bot canister's version (sneedapp bots answer getVersion).
 const botIdl = ({ IDL }) => IDL.Service({ getVersion: IDL.Func([], [IDL.Record({ major: IDL.Nat, minor: IDL.Nat, patch: IDL.Nat })], ['query']) });
 
@@ -71,8 +109,7 @@ export function registerReadTools(server) {
         parents.unshift(p);
         cur = p;
       }
-      const all = await s.get_all_messages();
-      const replies = all.filter((x) => opt(x.reply_to)?.[0] === m.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      const replies = (await smsRepliesTo(s, m.id)).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
       const names = await namesOf([m, ...parents, ...replies].flatMap((x) => [x.sender, ...x.recipients]));
       return textResult([
         ...parents.map((p) => `[earlier] ${line(p, names)}`),
@@ -81,10 +118,9 @@ export function registerReadTools(server) {
         link(`/msg/${m.id}`),
       ]);
     }
-    const list = box === 'outbox' ? await s.get_sent_messages() : await s.get_received_messages();
-    const sorted = [...list].sort((a, b) => (a.created_at > b.created_at ? -1 : 1)).slice(0, limit);
+    const { total, messages: sorted } = await smsNewest(s, box, limit);
     const names = await namesOf(sorted.flatMap((x) => [x.sender, ...x.recipients]));
-    return textResult([`${box} of ${me().principal}: ${list.length} message(s)`, ...sorted.map((m) => `${line(m, names)}\n  ${clip(m.body, 200)}`), link('/sms')]);
+    return textResult([`${box} of ${me().principal}: ${total} message(s)`, ...sorted.map((m) => `${line(m, names)}\n  ${clip(m.body, 200)}`), link('/sms')]);
   }));
 
   server.registerTool('notifications_read', {

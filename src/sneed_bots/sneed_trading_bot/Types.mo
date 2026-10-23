@@ -647,8 +647,11 @@ module {
     /// Query parameters for paginated price history retrieval.
     public type PriceHistoryQuery = {
         pairKey: ?Text;
-        limit: ?Nat;
+        limit: ?Nat;               // Default 100, at most 1000 (and about 1 MB per reply)
         offset: ?Nat;
+        // Since the paging fixes (additive; earlier bots ignore it): true = newest first, with
+        // `offset` counted from the newest. Absent or false = oldest first, as before.
+        newestFirst: ?Bool;
     };
 
     /// Result of a price history query.
@@ -705,7 +708,7 @@ module {
     /// Query filter for the trade log.
     public type TradeLogQuery = {
         startId: ?Nat;             // Filter: only entries with id >= startId
-        limit: ?Nat;               // Max entries per page (default 50)
+        limit: ?Nat;               // Max entries per page (default 50, at most 500 and about 1 MB)
         offset: ?Nat;              // Skip first N matching entries (for page-based pagination)
         choreId: ?Text;            // Filter by chore instance
         choreTypeId: ?Text;        // Filter by chore type
@@ -770,11 +773,16 @@ module {
     /// Query filter for portfolio snapshots.
     public type PortfolioSnapshotQuery = {
         startId: ?Nat;
-        limit: ?Nat;               // Default 20
+        limit: ?Nat;               // Default 20, at most 200 (and about 1 MB per reply)
         tradeLogId: ?Nat;          // Filter by linked trade
         phase: ?SnapshotPhase;
         fromTime: ?Int;
         toTime: ?Int;
+        // Since the paging fixes (additive): skip this many matching snapshots (in the chosen order)
+        offset: ?Nat;
+        // Since the paging fixes (additive; earlier bots ignore it): true = newest first, with
+        // `offset` counted from the newest. Absent or false = oldest first, as before.
+        newestFirst: ?Bool;
     };
 
     /// Result of a portfolio snapshot query.
@@ -820,8 +828,11 @@ module {
     public type DailyPortfolioSummaryQuery = {
         fromDate: ?Int;
         toDate: ?Int;
-        limit: ?Nat;
+        limit: ?Nat;               // Default 100, at most 1000 (and about 1 MB per reply)
         offset: ?Nat;
+        // Since the paging fixes (additive; earlier bots ignore it): true = newest first, with
+        // `offset` counted from the newest. Absent or false = oldest first, as before.
+        newestFirst: ?Bool;
     };
 
     /// Query for daily price candles.
@@ -829,8 +840,11 @@ module {
         pairKey: ?Text;
         fromDate: ?Int;
         toDate: ?Int;
-        limit: ?Nat;
+        limit: ?Nat;               // Default 100, at most 1000 (and about 1 MB per reply)
         offset: ?Nat;
+        // Since the paging fixes (additive; earlier bots ignore it): true = newest first, with
+        // `offset` counted from the newest. Absent or false = oldest first, as before.
+        newestFirst: ?Bool;
     };
 
     // ============================================

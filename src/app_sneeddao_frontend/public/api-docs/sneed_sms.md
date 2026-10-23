@@ -33,7 +33,7 @@ Read this before you build on Sneed SMS. **Messages are not encrypted.** The sub
 |---|---|
 | The sender | The message, through `get_message`, `get_sent_messages`, `get_all_messages`, until they remove themselves from it |
 | Each current recipient | The message, through `get_message`, `get_received_messages`, `get_all_messages`, until they remove themselves from it |
-| Admins of the canister | **Every message**, through `get_all_messages_admin`. Admins are the Sneed DAO governance canister (`fi3zi-fyaaa-aaaaq-aachq-cai`), the canister's controllers (the SNS root) and the principals in `get_admins()`. |
+| Admins of the canister | **Every message**, through `get_all_messages_admin` and `admin_get_messages_page`. Admins are the Sneed DAO governance canister (`fi3zi-fyaaa-aaaaq-aachq-cai`), the canister's controllers (the SNS root) and the principals in `get_admins()`. |
 | Anyone | No message content. Anyone can read the totals (`get_stats`), and for **any** principal how many received messages are newer than their last-seen mark (`get_recent_messages_count`) and that mark itself (`get_last_seen_messages_timestamp`). |
 | The subnet's node machines | The canister's state lives on the machines of its subnet, like every canister's. Do not put secrets in a message. |
 
@@ -50,7 +50,9 @@ Each message is checked against the plain limits (`get_config()`) or, for Sneed 
 | Body length (characters) | 2,000 | 12,000 |
 | Recipients per message | 5 | 50 |
 
-Lengths count Unicode characters (`Text.size`). Subject and body must not be empty. Admins are exempt from the rate limit.
+Lengths count Unicode characters (`Text.size`). Subject and body must not be empty. Admins and the principals on the exempt list (below) are exempt from the rate limit.
+
+On top of the minutes between messages, each sender has a **burst limit** (`get_send_rate_limit()`, a token bucket: `capacity` messages in a row, refilled at `per_minute` a minute; default 10 and 2, capacity 0 turns it off). It stops a flood at ingress, before the premium lookup and before any work. Over it, `send_message` from outside the IC is refused at ingress; a call that gets through anyway (or comes from a canister) answers `RateLimited("Too many messages in a row: at most N, then M a minute. Please try again in a minute.")` and stores nothing. Admins and the principals on the exempt list (`get_rate_limit_exempt()`) are exempt from the burst limit and from the minutes between messages: an integrator whose canister or bot sends in bursts asks Sneed DAO to put its principal on that list instead of raising the limits for everyone. Rules are capped at 100,000 for `capacity` and `per_minute`. The buckets live in memory, so an upgrade refills them.
 
 ### 1.4 Leaving a message
 
@@ -80,7 +82,7 @@ Timestamps (`created_at`, `updated_at`, last-seen marks) are `int` nanoseconds s
 Before it accepts an update call from outside the IC the canister checks it (`inspect`), and a refused call costs nobody anything:
 
 - **Query methods only answer query calls.** Calling one as an update is refused.
-- **`send_message`** is refused when `reply_to` names more than 100 ids, when there are more recipients than the larger of the plain and premium recipient limits, or when the subject or body is longer than the larger of the two limits. The method itself then applies the caller's own limits.
+- **`send_message`** is refused when the sender has used up the burst limit (§1.3), when `reply_to` names more than 100 ids, when there are more recipients than the larger of the plain and premium recipient limits, or when the subject or body is longer than the larger of the two limits. The method itself then applies the caller's own limits.
 - **`send_system_notification`** is held to the premium limits.
 - **The activity log's admin methods** (`admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are refused unless the caller is an admin.
 - **Every other update** takes at most 4 KiB of arguments; `import_admins` and `import_messages` are accepted only from controllers.
@@ -167,11 +169,12 @@ if ('err' in r) console.error(r.err);
 `send_message(input)` runs these checks in order and returns the first failure:
 
 1. Anonymous caller → `Unauthorized("Anonymous callers cannot send messages")`.
-2. Premium lookup (an inter-canister call, cached), which chooses the limits.
-3. Rate limit → `RateLimited("Must wait N more minutes before sending another message")`. Minutes are whole minutes since the caller's last message.
-4. Subject and body → `InvalidInput("Subject cannot be empty")`, `InvalidInput("Subject exceeds maximum length of N characters")`, and the same for `Body`.
-5. Recipients → `InvalidInput("At least one recipient is required")`, `InvalidInput("Too many recipients. Maximum is N")`.
-6. Each `reply_to` id → `NotFound("Reply message N not found")`, or `Unauthorized("Cannot reply to message N - access denied")` when the caller cannot read it.
+2. Burst limit (§1.3) → `RateLimited("Too many messages in a row: ...")`. A refused call still counts as an attempt.
+3. Premium lookup (an inter-canister call, cached), which chooses the limits.
+4. Rate limit → `RateLimited("Must wait N more minutes before sending another message")`. Minutes are whole minutes since the caller's last message.
+5. Subject and body → `InvalidInput("Subject cannot be empty")`, `InvalidInput("Subject exceeds maximum length of N characters")`, and the same for `Body`.
+6. Recipients → `InvalidInput("At least one recipient is required")`, `InvalidInput("Too many recipients. Maximum is N")`.
+7. Each `reply_to` id → `NotFound("Reply message N not found")`, or `Unauthorized("Cannot reply to message N - access denied")` when the caller cannot read it.
 
 On success the message is stored, indexed for the sender and each recipient, the caller's rate-limit clock is reset, the recipients are notified when Sneed Notifications is set (§1.6, best effort), and the id is returned. Recipients are not checked or de-duplicated: list each principal once (a principal listed twice gets the message twice in its received list). Any principal can be a recipient, including canisters and principals that never used Sneed SMS. The sender may include themselves.
 
@@ -266,6 +269,8 @@ The text is meant for people; branch on the variant tag.
 | `get_system_sender_principal()` | query | `opt principal` | Shown as sender of system messages. |
 | `get_admins()` | query | `vec AdminInfo` | The admin list (governance and controllers are admins without being listed). |
 | `is_admin_query(p : principal)` | query | `bool` | Whether `p` is an admin. |
+| `get_rate_limit_exempt()` | query | `vec principal` | Principals exempt from the rate limits (§1.3). |
+| `get_send_rate_limit()` | query | `RateRule = record { capacity : nat; per_minute : nat }` | The burst limit per sender (§1.3). |
 
 ### 5.4 System messages (authorised canisters)
 
@@ -284,7 +289,10 @@ Restricted to admins (governance, controllers, listed admins) unless noted. Inte
 | `get_authorized_senders()`, `add_authorized_sender(p)`, `remove_authorized_sender(p)` | The canisters allowed to call `send_system_notification`. |
 | `set_system_sender_principal(opt p)` | The sender shown on system messages. |
 | `admin_set_notifications(opt p) → Result<(), SMSError>` | The Sneed Notifications canister told of new messages (§1.6); `[]` turns it off. `get_notifications_canister() → opt principal` is a public query. |
-| `get_all_messages_admin()` | Every message (empty for non-admins). |
+| `get_all_messages_admin()` | Every message (empty for non-admins). Unpaged: use `admin_get_messages_page`. |
+| `admin_get_messages_page(before : opt nat, limit : nat) → AdminMessagePage` | Every message, newest first: ids below `before` (`[]` for the newest), at most 100 messages and about 1 MB a page (always at least one), at most 10,000 ids looked at. `record { messages : vec MessageResponse; total : nat; next_before : opt nat }`: pass `next_before` as `before` until it is `[]`; a page may hold fewer messages than asked, even none, while `next_before` is set. Query; empty for non-admins. |
+| `admin_set_rate_limit_exempt(principal, exempt : bool) → Result<(), SMSError>` | Put a principal on the exempt list or take it off. Logged as `config_update` with key `rate_limit_exempt`, `principal`, and `old_value` / `value` 1 (exempt) or 0. |
+| `admin_set_send_rate_limit(RateRule) → Result<(), SMSError>` | Set the burst limit per sender (`per_minute` at least 1 unless `capacity` is 0, which turns it off). Logged as `config_update` with key `send_rate_limit`. |
 | `import_admins(vec AdminInfo)`, `import_messages(vec MessageResponse)` | Controllers only: restore data after a migration. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([7](#7-activity-log-icrc-3)). |
 
@@ -324,6 +332,14 @@ type MessagePage = record {
   last_updated : int;              // greatest updated_at in the caller's list (0 if empty)
   has_more : bool;                 // more messages further in the page's direction
 };
+
+type AdminMessagePage = record {   // admin_get_messages_page
+  messages : vec MessageResponse;  // descending ids
+  total : nat;                     // all messages in the canister
+  next_before : opt nat;           // `before` of the next page; null at the end
+};
+
+type RateRule = record { capacity : nat; per_minute : nat };
 
 type AdminInfo = record { principal : principal; added_by : nat32; added_at : int };
 
@@ -373,9 +389,9 @@ All types carry the `sneedsms_` prefix. A block is appended in the message that 
 | `sneedsms_config_update` | A setting changed. | `caller`, `key`, `old_value`, `value` |
 | `sneedsms_messages_import` | `import_messages` stored at least one message (controllers, restoring data). Only how many: never the messages. | `caller`, `count`, `next_id` (the id counter afterwards) |
 
-`sneedsms_config_update` keys: the limits `rate_limit_minutes`, `max_subject_length`, `max_body_length`, `max_recipients` (`update_config`); the premium settings `sneed_premium_canister_id`, `premium_max_subject_length`, `premium_max_body_length`, `premium_rate_limit_minutes`, `premium_max_recipients` (`update_premium_config`); `system_sender_principal` (`set_system_sender_principal`); `notifications_canister` (`admin_set_notifications`); and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedsms_config_update` keys: `rate_limit_exempt` (with a `principal` field; values 1 exempt, 0 not); the burst limit `send_rate_limit` (`admin_set_send_rate_limit`; values are Maps `{ capacity; per_minute }`); the limits `rate_limit_minutes`, `max_subject_length`, `max_body_length`, `max_recipients` (`update_config`); the premium settings `sneed_premium_canister_id`, `premium_max_subject_length`, `premium_max_body_length`, `premium_rate_limit_minutes`, `premium_max_recipients` (`update_premium_config`); `system_sender_principal` (`set_system_sender_principal`); `notifications_canister` (`admin_set_notifications`); and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
-There is no moderation in Sneed SMS: admins can read every message (`get_all_messages_admin`) but cannot delete, edit or block anything, so there are no moderation blocks. Reading is not logged (queries cannot write).
+There is no moderation in Sneed SMS: admins can read every message (`get_all_messages_admin`, `admin_get_messages_page`) but cannot delete, edit or block anything, so there are no moderation blocks. Reading is not logged (queries cannot write).
 
 Not logged: messages sent (`send_message`, `send_system_notification`), messages left (`remove_self_from_message`, also when that deletes the message), read marks (`mark_messages_seen_up_to`), each user's preview switch (`set_notification_preview`; the default, on, is fixed in the code), the premium membership cache, and the one-off data repairs an upgrade runs.
 

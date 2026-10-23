@@ -553,11 +553,6 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_unmatched_pending_claims' : IDL.Func([], [Result_1], ['query']),
-    'get_user_distribution_events' : IDL.Func(
-        [],
-        [IDL.Vec(UserDistributionEvent)],
-        ['query'],
-      ),
     'get_user_distributions' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],

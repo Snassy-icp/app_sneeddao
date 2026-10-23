@@ -24,7 +24,7 @@ The Sneed DAO naming service is six canisters (production ids):
 ## Authentication
 - Reads are public queries; any principal (even unsigned) may call them. `get_log` is admins only. Hotkeys in `AccountView` are filled only for the account's owners, hotkeys and admins.
 - Every write refuses the anonymous principal (`Please sign in`); canisters cannot own accounts.
-- Owners rename, change avatars, add hotkeys, change roles. A hotkey may manage the account and merge it into its own account. Canister names: the caller must control the canister (checked with the management canister), or be the governance of an SNS whose root controls it.
+- Owners rename, change avatars, add hotkeys, change roles. A hotkey may manage the account and merge it into its own account; it needs nothing to accept, and removes itself with `remove_hotkey(account, self)` or from every account with `leave_hotkey_accounts` (500 a call). Canister names: the caller must control the canister (checked with the management canister), or be the governance of an SNS whose root controls it.
 - Nothing here is anonymous: names, accounts with their member principals, canister names and every change are public, and each change is a block in a public ICRC-3 log.
 
 ## Fees, transfers and irreversible actions
@@ -42,6 +42,7 @@ The Sneed DAO naming service is six canisters (production ids):
 
 ## Errors, retries and Busy
 - There is no Busy state. Retrying a timed-out write is safe (same value answers `Unchanged` / `Already a hotkey`); re-read state first if the answer matters.
+- `Rate limited: too many changes in a short time, please try again in a minute`: per-caller limits on writes (actions `name`, `avatar`, `hotkey`, `account`; `get_rate_limits` lists them, admins set them with `admin_set_rate_limit`). Once a caller is over the limit its next calls are also refused at ingress until it refills. Nothing was stored; wait and retry.
 - `The name check is unavailable right now, please try again (...)`: moderator unreachable, nothing stored; retry later.
 - A trap (e.g. over 500 keys) means nothing changed.
 
@@ -52,7 +53,7 @@ The Sneed DAO naming service is six canisters (production ids):
 
 ## Start with these methods
 - `get_names(vec principal)`, `get_name`, `search({ prefix; limit; kind })`, `list_names`
-- `get_account`, `get_account_of`, `get_canister_name`, `my_hotkey_accounts`, `changes_since`, `stats`, `get_config`
+- `get_account`, `get_account_of`, `get_canister_name`, `my_hotkey_accounts_page` (paged; `my_hotkey_accounts` gives the first 100), `changes_since`, `stats`, `get_config`
 - Writes: `set_my_name`, `set_my_avatar`, `set_my_nft_avatar`, `set_my_ext_nft_avatar`, `add_hotkey`, `merge_account`, `remove_member`, `set_member`, `link_by_neuron`, `set_canister_name`
 
 ## Full reference

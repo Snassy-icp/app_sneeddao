@@ -1,0 +1,88 @@
+  // TEST BUILD ONLY. build.sh appends these methods to a copy of an earlier rll source
+  // (build/rll_prepaging_seed.wasm) to give it production-sized imported neurons and proposals
+  // quickly; never part of a release build. The same formulas are in tests/rll-paging.test.js.
+  // - neuron i: a 32-byte id 0x4e, i (3 bytes), then (i * 7 + j) % 256; owned by owner
+  //   (i % owners) with all ten permission types; neurons with i % hotkey_every == 0 also have
+  //   `hotkey` (types [3, 4]) after the owner.
+  // - proposal p: one ballot per neuron 0..voters-1, in that order; neuron j casts (vote 1 if
+  //   p + j is even, else 2) when (p + j) % cast_every == 0, else vote 0; voting power
+  //   (j + 1) * 1000 + p, cast at p * 10 + j; voting closes at `deadline` (seconds).
+  private func test_vote_neuron_id(i : Nat) : Blob {
+    Blob.fromArray(Array.tabulate<Nat8>(32, func(j) {
+      if (j == 0) 0x4e else if (j == 1) Nat8.fromNat(i / 65536 % 256) else if (j == 2) Nat8.fromNat(i / 256 % 256) else if (j == 3) Nat8.fromNat(i % 256) else Nat8.fromNat((i * 7 + j) % 256)
+    }));
+  };
+
+  private func test_vote_owner(o : Nat) : Principal {
+    Principal.fromBlob(Blob.fromArray([0x6f, Nat8.fromNat(o / 256 % 256), Nat8.fromNat(o % 256), 0x01]));
+  };
+
+  public shared func test_seed_neurons(first : Nat, count : Nat, owners_n : Nat, hotkey : Principal, hotkey_every : Nat) : async Nat {
+    var i = first;
+    while (i < first + count) {
+      let id = test_vote_neuron_id(i);
+      let owner = test_vote_owner(i % owners_n);
+      let own : [T.NeuronPermission] = [{ principal = ?owner; permission_type = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }];
+      let permissions = if (hotkey_every > 0 and i % hotkey_every == 0) { Array.append(own, [{ principal = ?hotkey; permission_type = [3, 4] : [Int32] }]) } else { own };
+      neurons.put(id, {
+        id = ?{ id };
+        staked_maturity_e8s_equivalent = null;
+        permissions;
+        maturity_e8s_equivalent = 0;
+        cached_neuron_stake_e8s = 100_000_000;
+        created_timestamp_seconds = 0;
+        source_nns_neuron_id = null;
+        auto_stake_maturity = null;
+        aging_since_timestamp_seconds = 0;
+        dissolve_state = ?#DissolveDelaySeconds(1000);
+        voting_power_percentage_multiplier = 100;
+        vesting_period_seconds = null;
+        disburse_maturity_in_progress = [];
+        followees = [];
+        neuron_fees_e8s = 0;
+      });
+      owners.put(id, owner);
+      i += 1;
+    };
+    neurons.size();
+  };
+
+  public shared func test_seed_proposals(first : Nat, count : Nat, voters : Nat, cast_every : Nat, deadline : Nat64) : async Nat {
+    let hexes = Array.tabulate<Text>(voters, func(j) { blob_to_hex_text(test_vote_neuron_id(j)) });
+    var p = first;
+    while (p < first + count) {
+      let ballots = Array.tabulate<(Text, T.Ballot)>(voters, func(j) {
+        let cast = (p + j) % cast_every == 0;
+        (hexes[j], {
+          vote = if (not cast) 0 else if ((p + j) % 2 == 0) 1 else 2;
+          cast_timestamp_seconds = Nat64.fromNat(p * 10 + j);
+          voting_power = Nat64.fromNat((j + 1) * 1000 + p);
+        });
+      });
+      props.put(p, {
+        id = ?{ id = Nat64.fromNat(p) };
+        payload_text_rendering = null;
+        action = 1;
+        failure_reason = null;
+        ballots;
+        minimum_yes_proportion_of_total = null;
+        reward_event_round = 0;
+        failed_timestamp_seconds = 0;
+        reward_event_end_timestamp_seconds = null;
+        proposal_creation_timestamp_seconds = 0;
+        initial_voting_period_seconds = 100;
+        reject_cost_e8s = 0;
+        latest_tally = null;
+        wait_for_quiet_deadline_increase_seconds = 0;
+        decided_timestamp_seconds = 0;
+        proposal = ?{ url = ""; title = "Proposal " # Nat.toText(p); action = null; summary = "" };
+        proposer = null;
+        wait_for_quiet_state = ?{ current_deadline_timestamp_seconds = deadline };
+        minimum_yes_proportion_of_exercised = null;
+        is_eligible_for_rewards = true;
+        executed_timestamp_seconds = 0;
+      });
+      p += 1;
+    };
+    props.size();
+  };

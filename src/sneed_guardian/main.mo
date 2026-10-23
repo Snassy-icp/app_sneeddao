@@ -32,6 +32,8 @@ import Timer "mo:base/Timer";
 import Sha256 "mo:sha2/Sha256";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 
 import T "Types";
 import Icrc3Log "../icrc3/Log";
@@ -88,6 +90,30 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   stable var children : [T.Child] = [];
   stable var ops : [T.Op] = [];
   stable var next_op_id : Nat = 1;
+  // ---- anti-spam (spec/paging_audit.md S12): staging an op is free, so it is capped ----
+  // open (pending or approved) ops one principal may have staged at once; admins are not limited
+  stable var max_open_ops_per_caller : Nat = 10;
+  // SHA-256 of each staged install's upgrade argument, by op id, so the lists show it without the bytes
+  stable var op_arg_hashes = Map.new<Nat, Blob>();
+  // per-caller rate limits (src/RateLimit.mo): admin overrides of RATE_DEFAULTS
+  stable var rate_rules : [(Text, RateLimit.Rule)] = [];
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("stage_op", { capacity = 20; per_minute = 10 }),
+    ("register", { capacity = 10; per_minute = 5 }),
+    ("refund_op", { capacity = 20; per_minute = 10 }),
+  ];
+  private func rateRule(action : Text) : RateLimit.Rule { RateRules.rule(rate_rules, RATE_DEFAULTS, action) };
+  /// Takes one call of `action` for a non-admin caller; false when its bucket is empty.
+  private func rateTake(caller : Principal, action : Text) : Bool { isAdmin(caller) or limiter.take(caller, action, rateRule(action), Time.now()) };
+  private func rateAllows(caller : Principal, action : Text) : Bool { isAdmin(caller) or limiter.allows(caller, action, rateRule(action), Time.now()) };
+  private func rateLimited(action : Text) : Text { "Rate limited: too many " # action # " calls; try again in a minute" };
+  // an install's upgrade argument: generous for ledger upgrade args (metadata with a logo), far below 1 MiB
+  transient let MAX_INSTALL_ARG : Nat = 262_144;
+  transient let DEFAULT_PAGE : Nat = 50;
+  transient let MAX_PAGE : Nat = 100;
+  // the old list_ops / list_ops_for return whole ops: stop adding install args past this many bytes
+  transient let LIST_ARG_BUDGET : Nat = 1_500_000;
   stable var blessed_ledger : [Blob] = [];
   stable var blessed_index : [Blob] = [];
   stable var blessed_archive : [Blob] = [];
@@ -250,6 +276,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (paused) { return #Err("the guardian is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     if (title.size() > 64) { return #Err("title: at most 64 characters") };
+    if (not rateTake(caller, "register")) { return #Err(rateLimited("register")) };
     switch (validatePolicy(policy)) { case (?e) { return #Err(e) }; case null {} };
     if (findChild(canister_id) != null) { return #Err("already registered") };
     if (canister_id == self()) { return #Err("the guardian cannot be its own child") };
@@ -339,6 +366,12 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (paused) { return #Err("the guardian is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     if (memo.size() > 500) { return #Err("memo: at most 500 characters") };
+    switch (kind) { case (#install(i)) { switch (i.arg) { case (?a) { if (a.size() > MAX_INSTALL_ARG) { return #Err("the upgrade argument is " # Nat.toText(a.size()) # " bytes; at most " # Nat.toText(MAX_INSTALL_ARG)) } }; case null {} } }; case _ {} };
+    if (not isAdmin(caller)) {
+      let open = openOpsOf(caller);
+      if (open >= max_open_ops_per_caller) { return #Err("you have " # Nat.toText(open) # " open ops (at most " # Nat.toText(max_open_ops_per_caller) # "); cancel one or wait for them to close") };
+    };
+    if (not rateTake(caller, "stage_op")) { return #Err(rateLimited("stage_op")) };
     if (kind == #set_config({ op_fee_e8s = null; premium_op_fee_e8s = null; fee_destination = null; op_ttl_ns = null; self_window_ns = null; status_interval_s = null; low_cycles_threshold = null; cycle_reserve = null; paused = null; approve_function_id = null })) { return #Err("an empty configuration change") };
     switch (kind) { case (#install(_)) { await* ensureBlessed() }; case _ {} };
     switch (validateOp(child, kind)) { case (?e) { return #Err(e) }; case null {} };
@@ -355,13 +388,73 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     };
     let op : T.Op = { id = next_op_id; child; kind; staged_by = caller; staged_at = Time.now(); memo; payer = who; fee_e8s = fee; fee_paid_e8s = 0; refunded_e8s = 0; approvals = []; oks = []; vetoes = []; state = #pending };
     next_op_id += 1;
+    // re-check after the awaits above (other stages may have landed meanwhile)
+    if (not isAdmin(caller) and openOpsOf(caller) >= max_open_ops_per_caller) { return #Err("you have too many open ops; cancel one or wait for them to close") };
     ops := Array.append(ops, [op]);
     Map.set(op_price_tiers, nhash, op.id, tier);
+    switch (kind) { case (#install({ arg = ?a })) { Map.set(op_arg_hashes, nhash, op.id, sha256(a)) }; case _ {} };
     let cid = newCid();
     icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo)), ("price_tier", #Text(SP.tierText(tier)))]);
     logText(cid, "info", "op " # Nat.toText(op.id) # " staged by " # Principal.toText(caller) # ": " # opKindText(kind) # " on " # Principal.toText(child));
     #Ok(op);
   };
+  private func isOpen(o : T.Op) : Bool {
+    switch (o.state) { case (#pending or #approved(_)) { Time.now() <= o.staged_at + op_ttl_ns }; case _ { false } };
+  };
+  /// The ops `p` staged that are still open (pending or approved, not expired).
+  private func openOpsOf(p : Principal) : Nat {
+    var n = 0;
+    for (o in ops.vals()) { if (o.staged_by == p and isOpen(o)) { n += 1 } };
+    n;
+  };
+  /// An op with the expiry applied (queries cannot write it back).
+  private func viewOp(o : T.Op) : T.Op {
+    if (Time.now() > o.staged_at + op_ttl_ns and (switch (o.state) { case (#pending or #approved(_)) { true }; case _ { false } })) { { o with state = #expired } } else { o };
+  };
+  private func argBytes(o : T.Op) : Nat { switch (o.kind) { case (#install({ arg = ?a })) { a.size() }; case _ { 0 } } };
+  private func summaryOf(o0 : T.Op) : T.OpSummary {
+    let o = viewOp(o0);
+    let kind : T.OpKindSummary = switch (o.kind) {
+      case (#set_controllers(ps)) { #set_controllers(ps) };
+      case (#install(i)) {
+        switch (i.arg) {
+          case (?a) { #install({ hash = i.hash; arg_size = ?a.size(); arg_sha256 = ?(switch (Map.get(op_arg_hashes, nhash, o.id)) { case (?h) { h }; case null { sha256(a) } }) }) };
+          case null { #install({ hash = i.hash; arg_size = null; arg_sha256 = null }) };
+        };
+      };
+      case (#set_policy(p)) { #set_policy(p) };
+      case (#set_config(c)) { #set_config(c) };
+      case (#set_approvers(a)) { #set_approvers(a) };
+    };
+    {
+      id = o.id; child = o.child; kind; staged_by = o.staged_by; staged_at = o.staged_at; memo = o.memo; payer = o.payer;
+      fee_e8s = o.fee_e8s; fee_paid_e8s = o.fee_paid_e8s; refunded_e8s = o.refunded_e8s; approvals = o.approvals; oks = o.oks; vetoes = o.vetoes; state = o.state;
+    };
+  };
+  /// Newest first: the ops (by `keep`) below `before`, at most `limit`, and whole ops (with their
+  /// install arguments) only until LIST_ARG_BUDGET bytes of arguments are reached.
+  private func pickOps(keep : (T.Op) -> Bool, before : ?Nat, limit : Nat, budget : Bool) : ([T.Op], ?Nat) {
+    let out = Buffer.Buffer<T.Op>(limit);
+    var bytes = 0;
+    var i = ops.size();
+    var next : ?Nat = null;
+    label scan while (i > 0) {
+      i -= 1;
+      let o = viewOp(ops[i]);
+      switch (before) { case (?b) { if (o.id >= b) { continue scan } }; case null {} };
+      if (not keep(o)) { continue scan };
+      if (out.size() >= limit or (budget and out.size() > 0 and bytes + argBytes(o) > LIST_ARG_BUDGET)) {
+        next := ?(out.get(out.size() - 1).id);
+        break scan;
+      };
+      bytes += argBytes(o);
+      out.add(o);
+    };
+    (Buffer.toArray(out), next);
+  };
+  private func pageLimit(limit : Nat) : Nat { if (limit == 0) { DEFAULT_PAGE } else { Nat.min(limit, MAX_PAGE) } };
+  private func openKeep(o : T.Op) : Bool { switch (o.state) { case (#pending or #approved(_)) { true }; case _ { false } } };
+
   /// The op as it stands now: pending and approved ops expire after the ttl.
   private func current(op : T.Op) : T.Op {
     switch (op.state) {
@@ -395,6 +488,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   /// Return what is left in a dead op's payment account (or an executed op's surplus) to its payer.
   public shared ({ caller }) func refund_op(id : Nat) : async { #Ok : Nat; #Err : Text } {
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
+    if (not rateTake(caller, "refund_op")) { return #Err(rateLimited("refund_op")) };
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     switch (op.state) { case (#pending or #approved(_)) { return #Err("the op is still open; cancel it first") }; case _ {} };
     let bal = switch (await* opBalance(id)) { case (#Ok(b)) { b }; case (#Err(e)) { return #Err(e) } };
@@ -722,16 +816,26 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   /// Children of one ledger: the ledger, its index, its archives.
   public query func get_suite(ledger : Principal) : async [T.Child] { Array.filter<T.Child>(children, func(c) { c.canister_id == ledger or c.suite == ?ledger }) };
   public query func get_op(id : Nat) : async ?T.Op { switch (findOp(id)) { case (?o) { ?(if (Time.now() > o.staged_at + op_ttl_ns and (o.state == #pending or (switch (o.state) { case (#approved(_)) { true }; case _ { false } }))) { { o with state = #expired } } else { o }) }; case null { null } } };
-  /// Ops, newest first; `open` keeps only pending and approved ones.
+  /// Ops, newest first; `open` keeps only pending and approved ones. At most 100 (`limit` 0 = 50),
+  /// and fewer when install arguments pass about 1.5 MB; list_op_summaries pages without the bytes.
   public query func list_ops(open : Bool, limit : Nat) : async [T.Op] {
-    let now = Time.now();
-    let view = func(o : T.Op) : T.Op { if (now > o.staged_at + op_ttl_ns and (switch (o.state) { case (#pending or #approved(_)) { true }; case _ { false } })) { { o with state = #expired } } else { o } };
-    let all = Array.map<T.Op, T.Op>(ops, view);
-    let picked = if (open) { Array.filter<T.Op>(all, func(o) { switch (o.state) { case (#pending or #approved(_)) { true }; case _ { false } } }) } else { all };
-    let rev = Array.reverse(picked);
-    if (limit > 0 and rev.size() > limit) { Array.subArray(rev, 0, limit) } else { rev };
+    pickOps(func(o) { not open or openKeep(o) }, null, pageLimit(limit), true).0;
   };
-  public query func list_ops_for(canister_id : Principal) : async [T.Op] { Array.reverse(Array.filter<T.Op>(ops, func(o) { o.child == canister_id })) };
+  /// The newest ops on one canister (at most 100, fewer past about 1.5 MB of install arguments);
+  /// list_op_summaries with `child` pages through all of them.
+  public query func list_ops_for(canister_id : Principal) : async [T.Op] {
+    pickOps(func(o) { o.child == canister_id }, null, MAX_PAGE, true).0;
+  };
+  /// A page of ops, newest first, without install argument bytes (size and SHA-256 instead; the
+  /// bytes come with get_op). Pass `next` back as `before` until it is null.
+  public query func list_op_summaries(a : T.OpPageArgs) : async T.OpPage {
+    let (picked, next) = pickOps(func(o) { (not a.open or openKeep(o)) and (switch (a.child) { case (?c) { o.child == c }; case null { true } }) }, a.before, pageLimit(a.limit), false);
+    { items = Array.map<T.Op, T.OpSummary>(picked, summaryOf); next };
+  };
+  /// The anti-spam limits on staging ops.
+  public query func get_op_limits() : async T.OpLimits { { max_open_ops_per_caller; max_install_arg_bytes = MAX_INSTALL_ARG; max_page = MAX_PAGE } };
+  /// The per-caller rate limits (calls at once, refilled per minute; capacity 0 = no limit).
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
   /// Every child's cycles from the last reading, with the ones under the threshold flagged; the guardian's own balance comes first.
   public query func get_cycles_report(threshold_cycles : ?Nat) : async [T.CyclesRow] {
     let th = switch (threshold_cycles) { case (?t) { t }; case null { low_cycles_threshold } };
@@ -770,6 +874,28 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #Ok;
   };
   public query func get_admins() : async [Principal] { admins };
+  /// How many open ops one principal may have staged at once (admins: no limit). At least 1.
+  public shared ({ caller }) func admin_set_max_open_ops(n : Nat) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admins only") };
+    if (n == 0 or n > 10_000) { return #Err("between 1 and 10000") };
+    let old = max_open_ops_per_caller;
+    max_open_ops_per_caller := n;
+    icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("max_open_ops_per_caller")), ("old_value", #Nat(old)), ("value", #Nat(n))]);
+    #Ok;
+  };
+  /// Set a per-caller rate limit (null: back to the default). Actions: see get_rate_limits.
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admins only") };
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) { #Err(e) };
+      case (#ok(r)) {
+        rate_rules := r;
+        let v : T3.Value = switch (rule) { case (?x) { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) }; case null { #Text("default") } };
+        icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
+        #Ok;
+      };
+    };
+  };
 
   // ---- special prices (spec/special_prices.md) ----
   /// The op fee's special prices `p` gets: the admin price when it is an admin and a person, its
@@ -853,17 +979,19 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   // Limits of the ingress guard below
   transient let MAX_TITLE = 64;
   transient let MAX_MEMO = 500;
-  transient let MAX_STAGE_ARG = 1_048_576;
+  transient let MAX_STAGE_ARG = 262_144 + 8_192; // MAX_INSTALL_ARG plus the rest of the call
 
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
-  system func inspect({ arg : Blob; msg : {
+  system func inspect({ caller : Principal; arg : Blob; msg : {
     #admin_add_admin : Any;
     #admin_remove_admin : Any;
     #admin_run_auto_upgrade : Any;
     #admin_run_status : Any;
     #admin_set_approve_function_id : Any;
     #admin_set_canisters : Any;
+    #admin_set_max_open_ops : Any;
+    #admin_set_rate_limit : Any;
     #approve_op : Any;
     #cancel_op : Any;
     #execute_op : Any;
@@ -872,9 +1000,11 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #get_config : Any;
     #get_cycles_report : Any;
     #get_op : Any;
+    #get_op_limits : Any;
     #get_op_payment : Any;
     #get_op_price_tier : Any;
     #get_special_prices : Any;
+    #get_rate_limits : Any;
     #get_special_prices_for : Any;
     #get_suite : Any;
     #get_text_log : Any;
@@ -886,6 +1016,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #icrc3_supported_block_types : Any;
     #is_approver : Any;
     #list_children : Any;
+    #list_op_summaries : Any;
     #list_ops : Any;
     #list_ops_for : Any;
     #list_upgradable : Any;
@@ -908,7 +1039,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
         or #get_config _
         or #get_cycles_report _
         or #get_op _
+        or #get_op_limits _
         or #get_op_price_tier _
+        or #get_rate_limits _
         or #get_special_prices _
         or #get_special_prices_for _
         or #get_suite _
@@ -921,13 +1054,16 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
         or #icrc3_supported_block_types _
         or #is_approver _
         or #list_children _
+        or #list_op_summaries _
         or #list_ops _
         or #list_ops_for _
         or #list_upgradable _
       ) false;
       // the limits of register and stage_op; an install may carry an upgrade argument
-      case (#register f) arg.size() <= IngressGuard.textArg(MAX_TITLE) and IngressGuard.text(f().4, MAX_TITLE);
-      case (#stage_op f) arg.size() <= MAX_STAGE_ARG and IngressGuard.text(f().2, MAX_MEMO);
+      // rate limits peek here (admins are not limited); the methods take the token
+      case (#register f) arg.size() <= IngressGuard.textArg(MAX_TITLE) and IngressGuard.text(f().4, MAX_TITLE) and rateAllows(caller, "register");
+      case (#stage_op f) arg.size() <= MAX_STAGE_ARG and IngressGuard.text(f().2, MAX_MEMO) and rateAllows(caller, "stage_op");
+      case (#refund_op _) arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "refund_op");
       case (#set_partner_prices f) arg.size() <= IngressGuard.SMALL_ARG and IngressGuard.text(f().1.label_, SP.MAX_LABEL_CHARS);
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };

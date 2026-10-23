@@ -8,6 +8,7 @@ import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Int "mo:base/Int";
 import Text "mo:base/Text";
+import Iter "mo:base/Iter";
 import Debug "mo:base/Debug";
 import Sha256 "mo:sha2/Sha256";
 
@@ -15,6 +16,8 @@ import T "Types";
 import Lib "lib";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import Mentions "Mentions";
 import TipVerify "TipVerify";
 import ApiDoc "ApiDoc";
@@ -151,6 +154,22 @@ persistent actor SneedSNSForum {
     };
     var stable_premium_cache = PremiumClient.emptyCache();
 
+    // Per-user indexes (spec/paging_audit.md; Types.mo ForumState): posts and threads by author, and
+    // the posts that may answer each user. Built from the forum's data on the first upgrade to this
+    // build (postupgrade), kept up to date on every new post and thread after that.
+    let stable_user_posts = Map.new<Nat32, Vector.Vector<Nat>>();
+    let stable_user_threads = Map.new<Nat32, Vector.Vector<Nat>>();
+    let stable_user_reply_inbox = Map.new<Nat32, Vector.Vector<Nat>>();
+    var stable_user_indexes_built : Bool = false;
+
+    // Rate limits (src/RateLimit.mo, rules in src/RateRules.mo) per caller and action, for the methods
+    // anyone signed in can call to write: admins set them (admin_set_rate_limit), only the ones changed
+    // from the defaults are kept; admins also keep a list of exempt principals (integrators' canisters
+    // and bots). The buckets are transient: an upgrade refills everyone.
+    var stable_rate_rules : RateRules.Rules = [];
+    let stable_rate_exempt = Map.new<Principal, ()>();
+    transient let limiter = RateLimit.Limiter();
+
     // ICRC-3 activity log (spec/forum_icrc3.md; library src/icrc3): tips verified on the ledger,
     // moderation, admins, configuration, forum structure and proposal threads. Ordinary posts,
     // threads and votes are not logged (public already, and the bulk of all calls). Enhanced
@@ -243,6 +262,9 @@ persistent actor SneedSNSForum {
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
         user_thread_reads = stable_user_thread_reads;
+        user_posts = stable_user_posts;
+        user_threads = stable_user_threads;
+        user_reply_inbox = stable_user_reply_inbox;
         log = block;
     };
 
@@ -250,6 +272,91 @@ persistent actor SneedSNSForum {
 
 
 
+
+    // ---- Rate limits (src/RateLimit.mo) ----
+
+    // What each action covers, and its default: generous for a person, a wall for a script.
+    //   thread: create_thread, create_proposal_thread(_with_auto_setup), create_special_topic, create_sns_forum_setup
+    //   post: create_post (posts and replies); edit: update_post, update_thread; poll: create_poll
+    //   tip: create_tip, verify_tip; vote: vote_on_post(_with_neurons), retract_vote(_with_neurons), vote_on_poll_with_neurons
+    transient let RATE_DEFAULTS : [(Text, T.RateRule)] = [
+        ("thread", { capacity = 10; per_minute = 2 }),
+        ("post", { capacity = 10; per_minute = 4 }),
+        ("edit", { capacity = 10; per_minute = 4 }),
+        ("poll", { capacity = 5; per_minute = 1 }),
+        ("tip", { capacity = 10; per_minute = 3 }),
+        ("vote", { capacity = 30; per_minute = 10 }),
+    ];
+
+    func rateRule(action : Text) : T.RateRule = RateRules.rule(stable_rate_rules, RATE_DEFAULTS, action);
+
+    /// An SNS canister the forum knows: the SNS root of one of its forums, or a root or governance
+    /// canister in its SNS-W cache (filled on the first post or vote after an upgrade).
+    func isKnownSns(p : Principal) : Bool {
+        for (i in sns_cache.instances.vals()) if (i.root_canister_id == ?p or i.governance_canister_id == ?p) return true;
+        for (f in Map.vals(state.forums)) if (f.sns_root_canister_id == ?p) return true;
+        false
+    };
+
+    /// Not rate limited: admins (the controllers, Sneed governance, the admin list), the principals on
+    /// the exempt list (admin_set_rate_limit_exempt) and the SNS canisters the forum knows.
+    func rateExempt(caller : Principal) : Bool {
+        Lib.is_admin(state, caller) or Map.has(stable_rate_exempt, Map.phash, caller) or isKnownSns(caller)
+    };
+
+    /// Takes one call of `action` from the caller's bucket; false when it is empty.
+    func rateOk(caller : Principal, action : Text) : Bool {
+        rateExempt(caller) or limiter.take(caller, action, rateRule(action), Time.now())
+    };
+
+    /// For the ingress guard: whether the caller's bucket has a call left (takes nothing).
+    func rateAllows(caller : Principal, action : Text) : Bool {
+        rateExempt(caller) or limiter.allows(caller, action, rateRule(action), Time.now())
+    };
+
+    func rateError(action : Text) : T.ForumError {
+        let r = rateRule(action);
+        #InvalidInput("Rate limited: at most " # Nat.toText(r.capacity) # " " # action # " calls in a row and " # Nat.toText(r.per_minute) # " a minute after that. Please try again in a minute.")
+    };
+
+    func rateValue(r : T.RateRule) : T3.Value = #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]);
+
+    /// The rate limit of every action (thread, post, edit, poll, tip, vote): `capacity` calls in a
+    /// row per caller, refilled at `per_minute` a minute; capacity 0 means no limit. Admins are never limited.
+    public query func get_rate_limits() : async [(Text, T.RateRule)] {
+        RateRules.all(stable_rate_rules, RATE_DEFAULTS)
+    };
+
+    /// Admins: sets the rate limit of an action (null: back to the default). Logged as config_update
+    /// with key "rate_limit.<action>".
+    public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?T.RateRule) : async T.Result<(), T.ForumError> {
+        if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admin access required"));
+        let old = rateRule(action);
+        switch (RateRules.set(stable_rate_rules, RATE_DEFAULTS, action, rule)) {
+            case (#err e) return #err(#InvalidInput(e));
+            case (#ok rules) stable_rate_rules := rules;
+        };
+        let new = rateRule(action);
+        if (old != new) configBlock(caller, "rate_limit." # action, rateValue(old), rateValue(new));
+        #ok
+    };
+
+    /// Principals exempt from the rate limits (besides admins and the SNS canisters the forum knows):
+    /// integrators' canisters and bots that write in bursts.
+    public query func get_rate_limit_exempt() : async [Principal] {
+        Iter.toArray(Map.keys(stable_rate_exempt))
+    };
+
+    /// Admins: puts a principal on the exempt list or takes it off. Logged as config_update with key
+    /// "rate_limit_exempt", the principal, and old_value / value 1 (exempt) or 0.
+    public shared ({ caller }) func admin_set_rate_limit_exempt(principal : Principal, exempt : Bool) : async T.Result<(), T.ForumError> {
+        if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admin access required"));
+        let was = Map.has(stable_rate_exempt, Map.phash, principal);
+        if (exempt) Map.set(stable_rate_exempt, Map.phash, principal, ()) else Map.delete(stable_rate_exempt, Map.phash, principal);
+        if (was != exempt) block("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", pv(principal)),
+            ("old_value", #Nat(if was 1 else 0)), ("value", #Nat(if exempt 1 else 0))]);
+        #ok
+    };
 
     // Admin management endpoints
     public shared ({ caller }) func add_admin(new_admin: Principal) : async T.Result<(), T.ForumError> {
@@ -318,6 +425,7 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func create_special_topic(input: T.CreateSpecialTopicInput) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "thread")) return #err(rateError("thread"));
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create special topics"));
         };
@@ -341,6 +449,7 @@ persistent actor SneedSNSForum {
 
     // Thread API endpoints
     public shared ({ caller }) func create_thread(input: T.CreateThreadInput) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "thread")) return #err(rateError("thread"));
         // Check if user is premium and get appropriate body max length
         let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
             case null { null }; // No premium canister configured
@@ -359,6 +468,7 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func update_thread(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "edit")) return #err(rateError("edit"));
         // Check if user is premium and get appropriate body max length
         let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
             case null { null }; // No premium canister configured
@@ -416,6 +526,7 @@ persistent actor SneedSNSForum {
         title: ?Text,
         body: Text
     ) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "post")) return #err(rateError("post"));
         // Check if user is premium and get appropriate body max length
         let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
             case null { null }; // No premium canister configured
@@ -441,6 +552,7 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func update_post(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "edit")) return #err(rateError("edit"));
         // Check if user is premium and get appropriate body max length
         let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
             case null { null }; // No premium canister configured
@@ -483,6 +595,7 @@ persistent actor SneedSNSForum {
         post_id: Nat,
         vote_type: T.VoteType
     ) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
         let (result, updated_cache) = await Lib.vote_on_post_with_sns(state, caller, post_id, vote_type, sns_cache);
         sns_cache := updated_cache;
         result
@@ -493,12 +606,14 @@ persistent actor SneedSNSForum {
         vote_type: T.VoteType,
         neuron_ids: [T.NeuronId]
     ) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
         let (result, updated_cache) = await Lib.vote_on_post_with_specific_neurons(state, caller, post_id, vote_type, neuron_ids, sns_cache);
         sns_cache := updated_cache;
         result
     };
 
     public shared ({ caller }) func retract_vote(post_id: Nat) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
         let (result, updated_cache) = await Lib.retract_vote_with_sns(state, caller, post_id, sns_cache);
         sns_cache := updated_cache;
         result
@@ -508,6 +623,7 @@ persistent actor SneedSNSForum {
         post_id: Nat,
         neuron_ids: [T.NeuronId]
     ) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
         let (result, updated_cache) = await Lib.retract_vote_with_specific_neurons(state, caller, post_id, neuron_ids, sns_cache);
         sns_cache := updated_cache;
         result
@@ -529,6 +645,7 @@ persistent actor SneedSNSForum {
 
     // Poll API endpoints
     public shared ({ caller }) func create_poll(input: T.CreatePollInput) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "poll")) return #err(rateError("poll"));
         Lib.create_poll(state, caller, input)
     };
 
@@ -549,6 +666,7 @@ persistent actor SneedSNSForum {
         option_id: Nat,
         neuron_ids: [T.NeuronId]
     ) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
         let (result, updated_cache) = await Lib.vote_on_poll_with_specific_neurons(state, caller, poll_id, option_id, neuron_ids, sns_cache);
         sns_cache := updated_cache;
         result
@@ -574,6 +692,7 @@ persistent actor SneedSNSForum {
         amount: Nat,
         transaction_block_index: ?Nat
     ) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "tip")) return #err(rateError("tip"));
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create tips"));
         };
@@ -643,6 +762,7 @@ persistent actor SneedSNSForum {
     /// rejected tip is final. Answers whether the tip is now verified (the reason is in the tip's
     /// verification_note). No notification is sent for a tip verified later.
     public shared ({ caller }) func verify_tip(tip_id : Nat) : async T.Result<Bool, T.ForumError> {
+        if (not rateOk(caller, "tip")) return #err(rateError("tip"));
         if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Authentication required"));
         let ?tip = Map.get(state.tips, Map.nhash, tip_id) else return #err(#NotFound("Tip not found"));
         switch (Map.get(stable_tip_checks, Map.nhash, tip_id)) {
@@ -762,6 +882,36 @@ persistent actor SneedSNSForum {
 
     public query func get_threads_by_user(user_principal: Principal) : async [T.ThreadResponse] {
         Lib.get_threads_by_user(state, user_principal)
+    };
+
+    // Paged per-user lists (spec/paging_audit.md): newest first, from `before` (a position in the
+    // user's list, exclusive; null for the newest), at most 100 items (limit 0: 100) and about 1.5 MB
+    // per page (always at least one item); `next` is the `before` of the next page, null at the end.
+    // A page may hold fewer items than asked (deleted ones are skipped), even none, while `next` is set.
+
+    /// The user's posts (not deleted): what get_posts_by_user lists, paged.
+    public query func get_posts_by_user_page(user_principal : Principal, before : ?Nat, limit : Nat) : async T.PostsPage {
+        Lib.get_posts_by_user_page(state, user_principal, before, limit)
+    };
+
+    /// Replies to the user: what get_replies_to_user lists, paged.
+    public query func get_replies_to_user_page(user_principal : Principal, before : ?Nat, limit : Nat) : async T.PostsPage {
+        Lib.get_replies_to_user_page(state, user_principal, before, limit)
+    };
+
+    /// The user's threads (not deleted): what get_threads_by_user lists, paged.
+    public query func get_threads_by_user_page(user_principal : Principal, before : ?Nat, limit : Nat) : async T.ThreadsPage {
+        Lib.get_threads_by_user_page(state, user_principal, before, limit)
+    };
+
+    /// Tips the user gave: what get_tips_given_by_user lists, paged.
+    public query func get_tips_given_by_user_page(user_principal : Principal, before : ?Nat, limit : Nat) : async T.TipsPage {
+        Lib.get_tips_given_by_user_page(state, user_principal, before, limit)
+    };
+
+    /// Tips the user received: what get_tips_received_by_user lists, paged.
+    public query func get_tips_received_by_user_page(user_principal : Principal, before : ?Nat, limit : Nat) : async T.TipsPage {
+        Lib.get_tips_received_by_user_page(state, user_principal, before, limit)
     };
 
     // @-mentions (Mentions.mo, spec/forum_mentions.md)
@@ -1114,6 +1264,7 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "thread")) return #err(rateError("thread"));
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create proposal threads"));
         };
@@ -1121,6 +1272,7 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func create_proposal_thread_with_auto_setup(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "thread")) return #err(rateError("thread"));
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create proposal threads"));
         };
@@ -1131,6 +1283,7 @@ persistent actor SneedSNSForum {
 
     // Create forum with governance and proposals topics for an SNS
     public shared ({ caller }) func create_sns_forum_setup(sns_root_canister_id: Principal) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "thread")) return #err(rateError("thread"));
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create an SNS forum setup"));
         };
@@ -1344,6 +1497,11 @@ persistent actor SneedSNSForum {
             };
             stable_tip_blocks_backfilled := true;
         };
+        // the per-user indexes, from all posts and threads, once (later posts and threads add themselves)
+        if (not stable_user_indexes_built) {
+            ignore Lib.rebuild_user_indexes(state);
+            stable_user_indexes_built := true;
+        };
     };
 
     /// A short Markdown guide to this canister for AI agents and developers (ApiDoc.mo), following
@@ -1511,6 +1669,15 @@ persistent actor SneedSNSForum {
         #vote_on_poll_with_neurons : () -> (Nat, Nat, [T.NeuronId]);
         #vote_on_post : Any;
         #vote_on_post_with_neurons : () -> (Nat, T.VoteType, [T.NeuronId]);
+        #get_posts_by_user_page : Any;
+        #get_replies_to_user_page : Any;
+        #get_threads_by_user_page : Any;
+        #get_tips_given_by_user_page : Any;
+        #get_tips_received_by_user_page : Any;
+        #get_rate_limits : Any;
+        #admin_set_rate_limit : Any;
+        #get_rate_limit_exempt : Any;
+        #admin_set_rate_limit_exempt : Any;
         #verify_tip : Any;
     } }) : Bool {
         switch (msg) {
@@ -1591,6 +1758,13 @@ persistent actor SneedSNSForum {
                 or #icrc3_get_tip_certificate _
                 or #icrc3_log_status _
                 or #icrc3_supported_block_types _
+                or #get_posts_by_user_page _
+                or #get_replies_to_user_page _
+                or #get_threads_by_user_page _
+                or #get_tips_given_by_user_page _
+                or #get_tips_received_by_user_page _
+                or #get_rate_limits _
+                or #get_rate_limit_exempt _
             ) false;
             // the log's admin methods: admins only, small arguments
             case (#admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_set_icrc3_settings _) Lib.is_admin(state, caller) and arg.size() <= IngressGuard.SMALL_ARG;
@@ -1600,19 +1774,22 @@ persistent actor SneedSNSForum {
             case (#update_forum f) { let (_, i) = f(); forumOk(arg, i.title, i.description) };
             case (#create_topic f) { let i = f(); topicOk(arg, i.title, i.description) };
             case (#update_topic f) { let (_, i) = f(); topicOk(arg, i.title, i.description) };
-            case (#create_thread f) { let i = f(); threadOk(arg, i.title, i.body) };
-            case (#update_thread f) { let (_, title, body) = f(); threadOk(arg, title, body) };
-            case (#create_post f) { let (_, _, title, body) = f(); postOk(arg, title, body, true) };
-            case (#update_post f) { let (_, title, body) = f(); postOk(arg, title, body, true) };
+            case (#create_thread f) { let i = f(); rateAllows(caller, "thread") and threadOk(arg, i.title, i.body) };
+            case (#update_thread f) { let (_, title, body) = f(); rateAllows(caller, "edit") and threadOk(arg, title, body) };
+            case (#create_post f) { let (_, _, title, body) = f(); rateAllows(caller, "post") and postOk(arg, title, body, true) };
+            case (#update_post f) { let (_, title, body) = f(); rateAllows(caller, "edit") and postOk(arg, title, body, true) };
             case (#create_poll f) {
                 let i = f();
-                i.options.size() <= MAX_POLL_OPTIONS and arg.size() <= IngressGuard.textArg((i.options.size() + 1) * postChars(false))
+                rateAllows(caller, "poll") and i.options.size() <= MAX_POLL_OPTIONS and arg.size() <= IngressGuard.textArg((i.options.size() + 1) * postChars(false))
                 and postOk(arg, ?i.title, i.body, false)
                 and IngressGuard.all<T.CreatePollOptionInput>(i.options, MAX_POLL_OPTIONS, func(o) = IngressGuard.text(o.title, state.text_limits.post_title_max_length) and IngressGuard.optText(o.body, state.text_limits.post_body_max_length))
             };
-            case (#vote_on_post_with_neurons f) arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
-            case (#retract_vote_with_neurons f) arg.size() <= NEURONS_ARG and f().1.size() <= MAX_NEURONS;
-            case (#vote_on_poll_with_neurons f) arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case (#vote_on_post_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case (#retract_vote_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().1.size() <= MAX_NEURONS;
+            case (#vote_on_poll_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case (#vote_on_post _ or #retract_vote _) rateAllows(caller, "vote") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#create_tip _ or #verify_tip _) rateAllows(caller, "tip") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#create_proposal_thread _ or #create_proposal_thread_with_auto_setup _ or #create_special_topic _ or #create_sns_forum_setup _) rateAllows(caller, "thread") and arg.size() <= IngressGuard.SMALL_ARG;
             case _ arg.size() <= IngressGuard.SMALL_ARG;
         };
     };

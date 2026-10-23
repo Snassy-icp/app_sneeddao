@@ -36,6 +36,7 @@ The Sneed DAO naming service is six canisters (production ids):
 
 ## Errors, retries and Busy
 - No Busy state. Re-read and retry on `please try again` answers. Errors include `A dapp with that name is registered`, `You must control at least one of the dapp's canisters`, `No such dapp`.
+- `Rate limited: too many changes in a short time, please try again in a minute`: per-caller limits on writes (action `dapp`: register_dapp, update_dapp; `get_rate_limits` lists them, admins set them with `admin_set_rate_limit`). Once a caller is over the limit its next calls are also refused at ingress until it refills. Nothing was stored; wait and retry.
 
 ## Common pitfalls
 - Query methods answer only query calls; sent as update calls they are refused by the ingress guard (inspect_message). Calls from other canisters are not affected.

@@ -161,7 +161,7 @@ describe('sneedex adapter', () => {
     const pocket = M.adapterPocket(A.sneedexAdapter, pay);
     expect(pocket.caps.withdrawTo).toBe('main');
     await A.sneedexAdapter.deposit(ctx, pocket, icpId.toText(), 50_000n, null);
-    expect(await A.sneedexAdapter.balance(ctx, pocket, icpId.toText())).toEqual({ total: 50_000n, available: 50_000n });
+    expect(await A.sneedexAdapter.balance(ctx, pocket, icpId.toText())).toEqual({ total: 50_000n, available: 40_000n }); // available = what can be withdrawn (quiet pocket)
     const rules = await A.sneedexAdapter.rules(ctx, pocket, icpId.toText());
     expect(rules).toMatchObject({ withdrawable: 40_000n, allOnly: true });
     const before = await bal(icpId, carol);

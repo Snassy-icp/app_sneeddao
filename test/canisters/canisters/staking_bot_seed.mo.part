@@ -1,0 +1,10 @@
+  // TEST BUILD ONLY. build.sh appends this method to copies of the staking bot source (before and
+  // after the paging fixes of spec/paging_audit.md S11: sneed_icp_staking_bot_prepaging_seed.wasm,
+  // sneed_icp_staking_bot_seed.wasm); it is never part of a release build. It writes `n` log lines
+  // through the bot's log engine and returns the instructions that took (countInstructions).
+  public shared func test_seed_logs(n : Nat) : async Nat64 {
+    TestIC.countInstructions(func() {
+      var i = 0;
+      while (i < n) { logEngine.logInfo("test", "seeded log line " # Nat.toText(i), null, []); i += 1 };
+    });
+  };

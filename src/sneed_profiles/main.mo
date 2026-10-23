@@ -10,6 +10,8 @@ import Time "mo:base/Time";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
@@ -77,6 +79,14 @@ shared (deployer) persistent actor class SneedProfiles() = this {
   };
   var admins : [Principal] = [];
 
+  // per-caller rate limits of writes (src/RateLimit.mo); admins are not limited
+  var rate_rules : [(Text, RateLimit.Rule)] = []; // admin overrides of RATE_DEFAULTS
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("dapp", { capacity = 20; per_minute = 5 }), // register_dapp, update_dapp
+  ];
+  transient let RATE_LIMITED = "Rate limited: too many changes in a short time, please try again in a minute";
+
   let dapps = Map.new<DappId, Dapp>();
   var next_dapp_id : DappId = 1;
   let dapp_index : NameIndex.State<DappId> = NameIndex.init<DappId>(); // unique dapp names, search
@@ -89,6 +99,10 @@ shared (deployer) persistent actor class SneedProfiles() = this {
   func now64() : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
   func self() : Principal = Principal.fromActor(this);
   func isAdmin(p : Principal) : Bool = Principal.isController(p) or Array.find<Principal>(admins, func(a) = a == p) != null;
+
+  func rateRule(action : Text) : RateLimit.Rule = RateRules.rule(rate_rules, RATE_DEFAULTS, action);
+  /// Takes one call of `action` from the caller's bucket; true when the caller is over the limit.
+  func limited(caller : Principal, action : Text) : Bool = not isAdmin(caller) and not limiter.take(caller, action, rateRule(action), Time.now());
   func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
 
   transient let icrc3_catalogue : Icrc3Log.Config = {
@@ -152,6 +166,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
   /// Register a dapp, as a controller of at least one of its canisters (or as the governance of the
   /// SNS that controls one). Dapp names are unique regardless of capitals.
   public shared ({ caller }) func register_dapp(d : DappInput) : async T.ResultNat {
+    if (limited(caller, "dapp")) return #err(RATE_LIMITED);
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
     switch (dappProblem(d)) { case (?p) return #err(p); case null {} };
     if (not nameFree(d.name, 0)) return #err("A dapp with that name is registered");
@@ -171,6 +186,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
   /// that controls one) or an admin. New canisters must include one the caller controls too.
   /// A new name loses the checkmark, and so does adding a canister, unless an admin does it.
   public shared ({ caller }) func update_dapp(id : DappId, d : DappInput) : async Result {
+    if (limited(caller, "dapp")) return #err(RATE_LIMITED);
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
     switch (dappProblem(d)) { case (?p) return #err(p); case null {} };
     if (not Map.has(dapps, Map.nhash, id)) return #err("No such dapp");
@@ -306,6 +322,22 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     #ok("Config updated");
   };
 
+  /// The per-caller rate limits of writes: action -> { capacity (calls at once); per_minute (refill) }.
+  /// Actions: dapp. Admins are not limited.
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Set an action's rate limit (null: back to the default; capacity 0: no limit).
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) #err(e);
+      case (#ok(r)) {
+        rate_rules := r;
+        #ok("Rate limit updated");
+      };
+    };
+  };
+
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
@@ -372,6 +404,8 @@ shared (deployer) persistent actor class SneedProfiles() = this {
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
     #admin_add_admin : Any;
     #admin_hide_dapp : Any;
     #admin_icrc3_repair_archive_controllers : Any;
@@ -398,14 +432,23 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     #verify_dapp : Any;
     #verify_dapp_by_dao : Any;
   } }) : Bool {
+    // rate limits: peek at the caller's bucket (the method takes from it)
+    let rateAction : ?Text = switch msg {
+      case (#register_dapp _ or #update_dapp _) ?"dapp";
+      case _ null;
+    };
+    switch rateAction {
+      case (?a) if (not isAdmin(caller) and not limiter.allows(caller, a, rateRule(a), Time.now())) return false;
+      case null {};
+    };
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_api_doc _ or #get_admins _ or #get_config _ or #get_dapps _ or #get_log _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_dapps _ or #search_dapps _ or #stats _ or #validate_verify_dapp_by_dao _) false;
+      case (#get_api_doc _ or #get_rate_limits _ or #get_admins _ or #get_config _ or #get_dapps _ or #get_log _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_dapps _ or #search_dapps _ or #stats _ or #validate_verify_dapp_by_dao _) false;
       // only governance canisters call these, never by ingress
       case (#verify_dapp_by_dao _) false;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case (#admin_set_icrc3_settings _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#admin_add_admin _ or #admin_hide_dapp _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_set_rate_limit _ or #admin_hide_dapp _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#verify_dapp _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#register_dapp _ or #update_dapp _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;

@@ -32,12 +32,14 @@ The discussion canister behind the forum on Sneed Hub, also used by other DAOs (
 - Every write is one update returning its result; nothing to poll afterwards.
 - `create_post`, voting and proposal setup may wait on SNS-W / SNS governance; `create_tip` waits on the ledger (one call, one more for an archive).
 - For new activity poll the cheap queries `get_current_counter()`, `get_recent_replies_count(me)`, `get_recent_tips_count(me)`, `get_recent_mentions_count(me)`; move marks with `mark_*_seen_up_to(ns)`.
-- `get_feed` walks ids downwards; it may return fewer items than asked with `has_more = true`: keep paging with `next_start_id` until `has_more` is false.
+- `get_feed` walks ids downwards; it may return fewer items than asked (even none) with `has_more = true`: keep paging with `next_start_id` until `has_more` is false. A page holds at most 500 items and about 1.5 MB (always at least one item), and stops early on long text searches.
+- A user's posts, threads, replies to them and tips page with `get_posts_by_user_page`, `get_threads_by_user_page`, `get_replies_to_user_page`, `get_tips_given_by_user_page`, `get_tips_received_by_user_page` `(user, before, limit)`: newest first, at most 100 items and about 1.5 MB a page; pass the page's `next` as `before` until it is null. The unpaged `get_*_by_user` lists can outgrow a reply for a busy user.
 
 ## Errors, retries and Busy
 - `create_thread`, `create_post`, `create_poll` and `create_tip` are NOT idempotent. After a timeout, look for the item (`get_posts_by_user`, `get_tips_given_by_user`, `get_polls_by_thread`) before retrying. Never repeat the token transfer of a tip: retry only `create_tip` with the same block index (a used block answers `AlreadyExists` naming the tip).
 - `InternalError` from SNS calls (voting) wrote nothing and is safe to retry.
 - Votes, retractions, read marks and seen marks are idempotent.
+- Writing is rate limited per caller (`get_rate_limits()`; defaults: threads 10 in a row then 2 a minute, posts and edits 10 then 4 a minute, polls 5 then 1, tips and `verify_tip` 10 then 3, votes and retractions 30 then 10). Over the limit a call is refused at ingress, or answers `InvalidInput(\"Rate limited: ...\")` (calls from canisters): wait a minute and retry. Admins, the SNS canisters the forum knows and the principals on `get_rate_limit_exempt()` are not limited: an integrator whose canister or bot writes in bursts asks Sneed DAO to be put on that list (`admin_set_rate_limit_exempt`). Admins change the limits with `admin_set_rate_limit`.
 
 ## Common pitfalls
 - Query methods sent as update calls are refused by the ingress guard (`inspect`); call them as queries.

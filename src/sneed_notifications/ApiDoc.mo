@@ -37,7 +37,8 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 
 ## Errors, retries and Busy
 - `notify` has no awaits: a rejected call recorded nothing. It is not idempotent: give messages a `dedupe` key so a retry inside the window is folded (`deduplicated = true`). The dedupe key is recorded before the balance check, so after `#no_funds` top up and retry with a different key or after the window.
-- `#rate_limited`: the user's daily message cap for the app is reached; don't retry in a loop. `#not_allowed` is normal, not an error to retry.
+- `#rate_limited`: the user's daily message cap for the app is reached, or (unverified apps) the app canister's per-minute rate limit; don't retry in a loop.
+- Rate limits per caller (`get_rate_limits()`: each action with `{ capacity; per_minute }`): registering and updating apps, permission requests and notifications from unverified apps, user settings and top-ups. Over the limit an ingress call is refused at ingress and a canister call answers `Rate limited: ...`; wait a minute. Admins and verified apps are exempt; admins set rules with `admin_set_rate_limit(action, opt rule)`. `#not_allowed` is normal, not an error to retry.
 - Top-ups credit the balance in the same message that gets the ledger's confirmation. After a timeout read `get_my_settings().balance_e8s` (or `get_app_balance`) and the remaining allowance before calling again: a second call pulls again.
 - A top-up whose ICP left your account but was never credited (`The ledger did not answer`): ask support with the ledger block. Admins check the block on the ledger and credit it with `admin_credit(principal, amount, block)`, at most once per block.
 

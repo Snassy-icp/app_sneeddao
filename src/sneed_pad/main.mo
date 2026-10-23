@@ -29,6 +29,8 @@ import Char "mo:base/Char";
 import Sha256 "mo:sha2/Sha256";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 
 import T "Types";
 import Icrc3Log "../icrc3/Log";
@@ -121,6 +123,26 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   // ---- launches ----
   stable var next_launch_id : Nat = 1;
   stable var launches : [T.Launch] = [];
+  // creator -> their launch ids, oldest first (spec/paging_audit.md S13); filled from `launches` once
+  stable var launches_by_creator = Map.new<Principal, [Nat]>();
+  stable var creator_index_built : Bool = false;
+  // per-caller rate limits (src/RateLimit.mo): admin overrides of RATE_DEFAULTS
+  stable var rate_rules : [(Text, RateLimit.Rule)] = [];
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("create_token", { capacity = 10; per_minute = 5 }),
+    ("create_index", { capacity = 10; per_minute = 5 }),
+    ("get_quote", { capacity = 120; per_minute = 60 }),
+    ("get_index_quote", { capacity = 120; per_minute = 60 }),
+  ];
+  private func rateRule(action : Text) : RateLimit.Rule { RateRules.rule(rate_rules, RATE_DEFAULTS, action) };
+  private func rateTake(caller : Principal, action : Text) : Bool { isAdmin(caller) or limiter.take(caller, action, rateRule(action), Time.now()) };
+  private func rateAllows(caller : Principal, action : Text) : Bool { isAdmin(caller) or limiter.allows(caller, action, rateRule(action), Time.now()) };
+  private func rateLimited(action : Text) : Text { "Rate limited: too many " # action # " calls; try again in a minute" };
+  transient let DEFAULT_LAUNCH_PAGE : Nat = 20;
+  transient let MAX_LAUNCH_PAGE : Nat = 50;
+  // the old list_launches / get_launches_by_creator return whole launches (logos, allocations): stop past this many bytes
+  transient let LAUNCH_LIST_BUDGET : Nat = 1_500_000;
   stable var next_correlation_id : Nat = 1;
   private func newCid() : Nat { let c = next_correlation_id; next_correlation_id += 1; c };
 
@@ -211,8 +233,47 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     out;
   };
   private func findLaunch(id : Nat) : ?T.Launch { Array.find<T.Launch>(launches, func(l) { l.id == id }) };
+  /// `launches` is appended as launches are paid for, so almost always in id order: a binary
+  /// search, then a plain scan for the rare launch whose payment overtook an earlier one's.
+  private func findLaunchFast(id : Nat) : ?T.Launch {
+    var lo = 0; var hi = launches.size();
+    while (lo < hi) {
+      let mid = (lo + hi) / 2;
+      let x = launches[mid].id;
+      if (x == id) { return ?launches[mid] };
+      if (x < id) { lo := mid + 1 } else { hi := mid };
+    };
+    findLaunch(id);
+  };
+  private func sortedIds(ids : [Nat]) : [Nat] {
+    var ok = true; var i = 1;
+    while (ok and i < ids.size()) { if (ids[i - 1] > ids[i]) { ok := false }; i += 1 };
+    if (ok) { ids } else { Array.sort<Nat>(ids, Nat.compare) };
+  };
+  /// A creator's launch ids, ascending.
+  private func creatorIds(p : Principal) : [Nat] { switch (Map.get(launches_by_creator, phash, p)) { case (?x) { sortedIds(x) }; case null { [] } } };
+  /// About how many bytes a whole launch takes in a reply.
+  private func launchBytes(l : T.Launch) : Nat {
+    2_000 + (switch (l.config.logo) { case (?t) { t.size() }; case null { 0 } }) + 100 * l.config.allocations.size();
+  };
+  private func summaryOf(l : T.Launch) : T.LaunchSummary {
+    var allocated = 0;
+    for (a in l.config.allocations.vals()) { allocated += a.amount };
+    {
+      id = l.id; creator = l.creator; created_at = l.created_at; name = l.config.name; symbol = l.config.symbol; decimals = l.config.decimals;
+      transfer_fee = l.config.transfer_fee; logo_bytes = switch (l.config.logo) { case (?t) { t.size() }; case null { 0 } };
+      allocations = l.config.allocations.size(); allocated; minting = l.config.minting; fee_collector = l.config.fee_collector;
+      control = l.config.control; with_index = l.config.with_index; quote = l.quote; paid_e8s = l.paid_e8s; ledger = l.ledger; index = l.index;
+      ledger_wasm_hash = l.ledger_wasm_hash; index_wasm_hash = l.index_wasm_hash; controllers = l.controllers;
+      registration_proposal = l.registration_proposal; status = l.status; steps = l.steps;
+    };
+  };
+  private func addCreatorIndex(p : Principal, id : Nat) {
+    let ids = switch (Map.get(launches_by_creator, phash, p)) { case (?x) { x }; case null { [] } };
+    if (Array.find<Nat>(ids, func(x) { x == id }) == null) { Map.set(launches_by_creator, phash, p, Array.append(ids, [id])) };
+  };
   private func putLaunch(l : T.Launch) {
-    if (findLaunch(l.id) == null) { launches := Array.append(launches, [l]) }
+    if (findLaunch(l.id) == null) { launches := Array.append(launches, [l]); addCreatorIndex(l.creator, l.id) }
     else { launches := Array.map<T.Launch, T.Launch>(launches, func(x) { if (x.id == l.id) { l } else { x } }) };
   };
   private func step(l : T.Launch, name : Text) : T.Launch { { l with steps = Array.append(l.steps, [(name, Time.now())]) } };
@@ -312,6 +373,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   /// What a launch with this configuration costs the caller today (an update call: it asks the CMC for the rate and Sneed Premium for the membership).
   public shared ({ caller }) func get_quote(c : T.TokenConfig) : async { #Ok : T.Quote; #Err : Text } {
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
+    if (not rateTake(caller, "get_quote")) { return #Err(rateLimited("get_quote")) };
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
     #Ok(makeQuote(c, rate, premium, specialFor(caller)).0);
@@ -326,6 +388,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (paused) { return #Err("the launchpad is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
+    if (not rateTake(caller, "create_token")) { return #Err(rateLimited("create_token")) };
     let wasm = switch (ledger_wasm) { case (?w) { w }; case null { return #Err("no ledger wasm is loaded yet (the pad fetches the NNS's latest ledger version once a day); try again later or call refresh_wasms") } };
     let idxWasm = if (c.with_index) { switch (index_wasm) { case (?w) { ?w }; case null { return #Err("no index wasm is loaded yet; launch without an index or try again later") } } } else { null };
     switch (c.control) { case (#sns(root)) { if (not (await* isDeployedSnsRoot(root))) { return #Err("that is not the root canister of a deployed SNS") } }; case _ {} };
@@ -539,6 +602,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   /// What an index for an existing ledger costs the caller today.
   public shared ({ caller }) func get_index_quote(c : T.IndexConfig) : async { #Ok : T.Quote; #Err : Text } {
     switch (validateControl(c.control)) { case (?e) { return #Err(e) }; case null {} };
+    if (not rateTake(caller, "get_index_quote")) { return #Err(rateLimited("get_index_quote")) };
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
     #Ok(makeIndexQuote(c.control, rate, premium, specialFor(caller)).0);
@@ -550,6 +614,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (paused) { return #Err("the launchpad is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     switch (validateControl(c.control)) { case (?e) { return #Err(e) }; case null {} };
+    if (not rateTake(caller, "create_index")) { return #Err(rateLimited("create_index")) };
     let iw = switch (index_wasm) { case (?w) { w }; case null { return #Err("no index wasm is loaded yet; try again later") } };
     switch (c.control) { case (#sns(root)) { if (not (await* isDeployedSnsRoot(root))) { return #Err("that is not the root canister of a deployed SNS") } }; case _ {} };
     // the ledger must at least answer like one
@@ -664,12 +729,94 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
 
   // ---- queries ----
   public query func get_launch(id : Nat) : async ?T.Launch { findLaunch(id) };
+  /// Launches in id order from `start`: at most 50, and fewer once their logos and allocations pass
+  /// about 1.5 MB (`total` counts all). list_launch_summaries pages without logos.
   public query func list_launches(start : Nat, length : Nat) : async { total : Nat; launches : [T.Launch] } {
     let n = launches.size();
-    let from = Nat.min(start, n); let to = Nat.min(from + length, n);
-    { total = n; launches = Array.tabulate<T.Launch>(to - from, func(i) { launches[from + i] }) };
+    let from = Nat.min(start, n); let to = Nat.min(from + Nat.min(length, MAX_LAUNCH_PAGE), n);
+    let out = Buffer.Buffer<T.Launch>(to - from);
+    var bytes = 0;
+    label fill for (i in Iter.range(from, to - 1)) {
+      let l = launches[i];
+      if (out.size() > 0 and bytes + launchBytes(l) > LAUNCH_LIST_BUDGET) { break fill };
+      bytes += launchBytes(l);
+      out.add(l);
+    };
+    { total = n; launches = Buffer.toArray(out) };
   };
-  public query func get_launches_by_creator(p : Principal) : async [T.Launch] { Array.filter<T.Launch>(launches, func(l) { l.creator == p }) };
+  /// A creator's launches, oldest first: the newest that fit in about 1.5 MB (at most 50).
+  /// list_launch_summaries with `creator` pages through all of them.
+  public query func get_launches_by_creator(p : Principal) : async [T.Launch] {
+    let ids = creatorIds(p);
+    let out = Buffer.Buffer<T.Launch>(8);
+    var bytes = 0;
+    var i = ids.size();
+    label fill while (i > 0 and out.size() < MAX_LAUNCH_PAGE) {
+      i -= 1;
+      switch (findLaunchFast(ids[i])) {
+        case (?l) {
+          if (out.size() > 0 and bytes + launchBytes(l) > LAUNCH_LIST_BUDGET) { break fill };
+          bytes += launchBytes(l);
+          out.add(l);
+        };
+        case null {};
+      };
+    };
+    Array.reverse(Buffer.toArray(out));
+  };
+  /// A page of launches (all, or one creator's), newest first, without logos and allocation lists.
+  /// Pass `next` back as `before` until it is null.
+  public query func list_launch_summaries(a : T.LaunchPageArgs) : async T.LaunchPage {
+    let limit = if (a.limit == 0) { DEFAULT_LAUNCH_PAGE } else { Nat.min(a.limit, MAX_LAUNCH_PAGE) };
+    let out = Buffer.Buffer<T.LaunchSummary>(limit);
+    var next : ?Nat = null;
+    let take = func(l : T.Launch) : Bool {
+      switch (a.before) { case (?b) { if (l.id >= b) { return true } }; case null {} };
+      if (out.size() >= limit) { next := ?(out.get(out.size() - 1).id); return false };
+      out.add(summaryOf(l));
+      true;
+    };
+    let total = switch (a.creator) {
+      case (?p) {
+        let ids = creatorIds(p);
+        var i = ids.size();
+        label scan while (i > 0) { i -= 1; switch (findLaunchFast(ids[i])) { case (?l) { if (not take(l)) { break scan } }; case null {} } };
+        ids.size();
+      };
+      case null {
+        let raw = Array.map<T.Launch, Nat>(launches, func(l) { l.id });
+        let ids = sortedIds(raw);
+        let inOrder = Array.equal<Nat>(raw, ids, Nat.equal);
+        var i = ids.size();
+        label scan while (i > 0) {
+          i -= 1;
+          let l = if (inOrder) { ?launches[i] } else { findLaunchFast(ids[i]) };
+          switch (l) { case (?x) { if (not take(x)) { break scan } }; case null {} };
+        };
+        launches.size();
+      };
+    };
+    { total; items = Buffer.toArray(out); next };
+  };
+  /// A launch's logo (a data URL), fetched on its own so lists stay small.
+  public query func get_launch_logo(id : Nat) : async ?Text {
+    switch (findLaunchFast(id)) { case (?l) { l.config.logo }; case null { null } };
+  };
+  /// The per-caller rate limits (calls at once, refilled per minute; capacity 0 = no limit).
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+  /// Set a per-caller rate limit (admin; null: back to the default). Actions: see get_rate_limits.
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admin only") };
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) { #Err(e) };
+      case (#ok(r)) {
+        rate_rules := r;
+        let v : T3.Value = switch (rule) { case (?x) { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) }; case null { #Text("default") } };
+        icrc3_add("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
+        #Ok;
+      };
+    };
+  };
   public query func get_launch_by_ledger(ledger : Principal) : async ?T.Launch { Array.find<T.Launch>(launches, func(l) { l.ledger == ?ledger }) };
   public query func get_config() : async T.Config {
     {
@@ -917,6 +1064,11 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public query func icrc3_registration_status() : async Icrc3Sns.Status { Icrc3Sns.status(icrc3_sns, icrc3_sns_env()) };
 
   system func postupgrade() { ensure_icrc3_timer<system>(); ensure_wasm_timer<system>() };
+  // the creator index, built once from the launches made before it existed
+  if (not creator_index_built) {
+    for (l in launches.vals()) { addCreatorIndex(l.creator, l.id) };
+    creator_index_built := true;
+  };
   ensure_icrc3_timer<system>();
   ensure_wasm_timer<system>();
 
@@ -938,13 +1090,14 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
 
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
-  system func inspect({ arg : Blob; msg : {
+  system func inspect({ caller : Principal; arg : Blob; msg : {
     #admin_add_admin : Any;
     #admin_fetch_wasms : Any;
     #admin_remove_admin : Any;
     #admin_set_canister_controllers : Any;
     #admin_set_canisters : Any;
     #admin_set_config : Any;
+    #admin_set_rate_limit : Any;
     #admin_set_registration_neuron : Any;
     #admin_set_wasm_hashes : Any;
     #admin_withdraw_icp : Any;
@@ -959,10 +1112,12 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #get_indexes_of_ledger : Any;
     #get_launch : Any;
     #get_launch_by_ledger : Any;
+    #get_launch_logo : Any;
     #get_launch_price_tiers : Any;
     #get_launches_by_creator : Any;
     #get_ledger_registration_status : Any;
     #get_quote : () -> T.TokenConfig;
+    #get_rate_limits : Any;
     #get_special_prices : Any;
     #get_special_prices_for : Any;
     #get_text_log : Any;
@@ -974,6 +1129,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #icrc3_registration_status : Any;
     #icrc3_supported_block_types : Any;
     #list_index_launches : Any;
+    #list_launch_summaries : Any;
     #list_launches : Any;
     #refresh_wasms : Any;
     #remove_partner_prices : Any;
@@ -989,6 +1145,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         or #get_indexes_of_ledger _
         or #get_launch _
         or #get_launch_by_ledger _
+        or #get_launch_logo _
+        or #get_rate_limits _
         or #get_launch_price_tiers _
         or #get_index_launch_price_tiers _
         or #get_special_prices _
@@ -1004,13 +1162,15 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         or #icrc3_registration_status _
         or #icrc3_supported_block_types _
         or #list_index_launches _
+        or #list_launch_summaries _
         or #list_launches _
       ) false;
       // the limits of validate / validateControl
-      case (#create_token f) tokenConfigOk(arg, f());
-      case (#get_quote f) tokenConfigOk(arg, f());
-      case (#create_index f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
-      case (#get_index_quote f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
+      // rate limits peek here (admins are not limited); the methods take the token
+      case (#create_token f) tokenConfigOk(arg, f()) and rateAllows(caller, "create_token");
+      case (#get_quote f) tokenConfigOk(arg, f()) and rateAllows(caller, "get_quote");
+      case (#create_index f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control) and rateAllows(caller, "create_index");
+      case (#get_index_quote f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control) and rateAllows(caller, "get_index_quote");
       case (#set_partner_prices f) arg.size() <= IngressGuard.SMALL_ARG and IngressGuard.text(f().1.label_, SP.MAX_LABEL_CHARS);
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };

@@ -54,6 +54,7 @@ Calls are authorised by the signing principal only; there is nothing else to reg
 - Pass the pool's own `token0`/`token1` to `create_position_lock`, in the pool's order: they are checked against the pool's `metadata()` and anything else is refused.
 - `getEffectiveLockFee` and `getPaymentBalance` are update calls.
 - Transferring a lock NFT moves its unclaimed position fees too.
+- Per-caller rate limits (`get_rate_limits`) on lock creation and fee claims: once spent, calls are refused at ingress until the bucket refills (minutes).
 
 ## Start with these methods
 

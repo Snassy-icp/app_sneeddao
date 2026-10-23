@@ -80,6 +80,7 @@ Before it accepts an update call from outside the IC, the canister checks it (it
 - **Texts are checked against the text limits.** `create_forum`, `update_forum`, `create_topic`, `update_topic`, `create_thread`, `update_thread`, `create_post`, `update_post` and `create_poll` are refused when a title, description or body is longer than the current limit (a body may be as long as the premium limit when premium is configured; the method itself then decides whether the caller is premium). The whole argument may be at most 4 KiB plus 4 bytes per allowed character.
 - **Neuron lists are capped.** `vote_on_post_with_neurons`, `retract_vote_with_neurons` and `vote_on_poll_with_neurons` take at most 1,000 neuron ids and a 64 KiB argument. A poll has at most 100 options.
 - **The activity log's admin methods** (`admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are refused unless the caller is an admin.
+- **Writing is rate limited** per caller (section 4): a call is refused while the caller has used up the limit of its action.
 - **Everything else** takes at most 4 KiB of argument.
 
 Canisters calling the forum are not affected: the check only applies to calls from outside the IC.
@@ -205,6 +206,7 @@ For admins (`is_admin(caller)`), `get_forum`, `get_forums`, `get_topic`, `get_to
 | `get_threads_by_activity(topic_id, start_from, length, reverse)` | by highest post id (threads without posts count as 0); `reverse = true` puts the most recent activity first | `start_from` is an index into the sorted list; the reply carries `has_more` and `next_start_from` | — |
 | `get_threads_by_activity_with_unread_counts(...)` | as above | as above | unread and total counts for the caller |
 | `get_threads_by_user(user)` | newest first | none | live threads only |
+| `get_threads_by_user_page(user, before, limit)` | newest first | `before` / `next` (positions in the user's list), at most 100 per page | live threads only |
 
 Unread counts are relative to the caller's read marks (3.10), so call these with the user's identity; with an unsigned query every post is unread. In `ThreadResponse` the two count fields are `[]` when the method does not compute them.
 
@@ -315,7 +317,9 @@ Read with `get_poll(id)`, `get_polls_by_thread(thread_id)` (the thread's own pol
 
 `get_feed({ start_id; length; filter })` walks the id counter downwards from `start_id` (that id included; `[]` starts at the newest id) and returns live forums, topics, threads and posts as `FeedItem`s with their context (forum, topic and thread titles, the SNS root, the poll id, and for replies the post replied to). Tips and polls occupy ids but are not feed items.
 
-`filter` narrows by `sns_root_canister_ids`, `topic_ids`, `creator_principals` and a case-insensitive (ASCII) `search_text` in title or body. A call checks at most `length × 10` ids, so a narrow filter can return fewer than `length` items, even none, with `has_more = true`; keep paging with `next_start_id`. Stop when `has_more` is false.
+`filter` narrows by `sns_root_canister_ids`, `topic_ids`, `creator_principals` and a case-insensitive (ASCII) `search_text` in title or body. A call checks at most `length × 10` ids (at most 5,000), so a narrow filter can return fewer than `length` items, even none, with `has_more = true`; keep paging with `next_start_id`. Stop when `has_more` is false.
+
+A page is bounded inside the canister: `length` is clamped to 500, a page stops at about 1.5 MB of text (it always holds at least one item, however long), and a page stops early when a search has used most of the query's instruction budget. A page cut short says `has_more = true` with `next_start_id` at the first id it did not look at, so following `next_start_id` never skips an item.
 
 ```js
 async function* feed(forum, filter = []) {
@@ -340,7 +344,7 @@ Three "since last seen" counters power the header chips on Sneed Hub. Each has a
 
 | Kind | Count | List | Mark |
 |---|---|---|---|
-| Replies | `get_recent_replies_count(user)`: live replies to the user's live posts, plus live root-level posts by others in the user's live threads, newer than the mark | `get_replies_to_user(user)` (all, not only recent) | `mark_replies_seen_up_to(ts)`, `get_last_seen_replies_timestamp(user)` |
+| Replies | `get_recent_replies_count(user)`: live replies to the user's live posts, plus live root-level posts by others in the user's live threads, newer than the mark (from a per-user index: the cost is the number of replies since the mark) | `get_replies_to_user(user)` (all, not only recent), `get_replies_to_user_page(user, before, limit)` | `mark_replies_seen_up_to(ts)`, `get_last_seen_replies_timestamp(user)` |
 | Tips | `get_recent_tips_count(user)` | `get_recent_tips_received(user)`, `get_tips_received_since(user, ts)` | `mark_tips_seen_up_to(ts)`, `get_last_seen_tip_timestamp(user)` |
 | Mentions | `get_recent_mentions_count(user)` | `get_mentions_of_user(user, before, limit)` | `mark_mentions_seen_up_to(ts)`, `get_last_seen_mentions_timestamp(user)` |
 
@@ -386,6 +390,21 @@ Without a mark, everything counts as new. The `mark_*` methods set the caller's 
 Sneed Premium members get `premium_thread_body_max_length` and `premium_post_body_max_length` from `get_premium_config()` (defaults 50,000; production 12,000) while `sneed_premium_canister_id` is set. `check_user_premium_status(user)` (an update call, since it may ask Sneed Premium) tells you whether a user qualifies. Admins change the limits; always read them rather than hard-coding.
 
 Other bounds: 10 counted mentions per text, 100 mentions per `get_mentions_of_user` page, 100 poll options, 1,000 neuron ids per call, and the reachable-neuron lookup reads at most 100 neurons per principal from SNS governance.
+
+**Pages.** `get_feed` returns at most 500 items and about 1.5 MB per page (3.9). The per-user pages (`get_posts_by_user_page`, `get_threads_by_user_page`, `get_replies_to_user_page`, `get_tips_given_by_user_page`, `get_tips_received_by_user_page`) take `(user, before : opt nat, limit : nat)` and return `{ items; next : opt nat }`, newest first: at most 100 items (`limit` 0 or above 100 means 100), about 1.5 MB, and at most 1,000 entries looked at per page (deleted ones are skipped, so a page may hold fewer items than asked, even none, while `next` is set). `before` and `next` are positions in the user's list, not ids: start with `before = []` and pass `next` until it is `[]`. The unpaged `get_*_by_user` lists return everything and can outgrow a reply for a very active user; use the pages.
+
+**Rate limits.** Writing is limited per caller and action with a token bucket: `capacity` calls in a row, refilled at `per_minute` calls a minute. `get_rate_limits()` returns the live rules; the defaults are:
+
+| Action | Methods | Default |
+|---|---|---|
+| `thread` | `create_thread`, `create_proposal_thread`, `create_proposal_thread_with_auto_setup`, `create_special_topic`, `create_sns_forum_setup` | 10 in a row, then 2 a minute |
+| `post` | `create_post` (posts and replies) | 10, then 4 a minute |
+| `edit` | `update_post`, `update_thread` | 10, then 4 a minute |
+| `poll` | `create_poll` | 5, then 1 a minute |
+| `tip` | `create_tip`, `verify_tip` | 10, then 3 a minute |
+| `vote` | `vote_on_post`, `vote_on_post_with_neurons`, `retract_vote`, `retract_vote_with_neurons`, `vote_on_poll_with_neurons` | 30, then 10 a minute |
+
+Over the limit, a call from outside the IC is refused at ingress; a call that gets through anyway (or comes from a canister) answers `InvalidInput("Rate limited: at most <capacity> <action> calls in a row and <per_minute> a minute after that. Please try again in a minute.")` and writes nothing. Not limited: admins; the SNS canisters the forum knows (the SNS root of any forum, and the root and governance canisters in its SNS-W cache, which fills on the first post or vote after an upgrade); and the principals on the exempt list (`get_rate_limit_exempt()`). An integrator whose canister or bot writes in bursts (for example a proposal thread for each of many proposals) asks Sneed DAO to put its principal on that list instead of raising the limits for everyone. Rules are capped at 100,000 for `capacity` and `per_minute`. The buckets live in memory, so an upgrade refills them. A tip whose `create_tip` was refused can be recorded later with the same block index.
 
 ---
 
@@ -440,6 +459,9 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_post_replies(post_id)` *query* | `vec PostResponse` | Direct live replies. |
 | `get_posts_by_user(user)` *query* | `vec PostResponse` | Live, newest first. |
 | `get_replies_to_user(user)` *query* | `vec PostResponse` | Live replies to the user's posts and root posts by others in the user's threads. |
+| `get_posts_by_user_page(user, before : opt nat, limit : nat)` *query* | `PostsPage` | `get_posts_by_user`, paged (4). |
+| `get_replies_to_user_page(user, before : opt nat, limit : nat)` *query* | `PostsPage` | `get_replies_to_user`, paged (4). |
+| `get_threads_by_user_page(user, before : opt nat, limit : nat)` *query* | `ThreadsPage` | `get_threads_by_user`, paged (4). |
 | `get_feed(GetFeedInput)` *query* | `GetFeedResponse` | 3.9. |
 
 ### 6.3 Writing content (updates)
@@ -485,6 +507,7 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_tip(id)` | query | `opt TipResponse` |
 | `get_tips_by_post(post_id)` / `get_tips_by_thread(thread_id)` | query | `vec TipResponse` |
 | `get_tips_given_by_user(user)` / `get_tips_received_by_user(user)` | query | `vec TipResponse` |
+| `get_tips_given_by_user_page(user, before : opt nat, limit : nat)` / `get_tips_received_by_user_page(...)` | query | `TipsPage`: the same lists, newest first, paged (4) |
 | `get_tips_received_since(user, since : int)` | query | `vec TipResponse` (strictly newer; verified only) |
 | `get_recent_tips_received(user)` / `get_recent_tips_count(user)` | query | since the user's tip mark; verified only |
 | `get_tip_tokens_received_by_user(user)` | query | `vec TipTokenSummary` (verified only) |
@@ -527,6 +550,8 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_api_doc()` | query | `text`: a short Markdown guide for AI agents (units, authentication, irreversible actions, polling, pitfalls) linking this document and `https://app.sneeddao.com/llms.txt` |
 | `check_user_premium_status(user)` | update | `bool` |
 | `get_notifications_canister()` | query | `opt principal` |
+| `get_rate_limits()` | query | `vec record { text; RateRule }`: the rate limit of each action (4) |
+| `get_rate_limit_exempt()` | query | `vec principal`: principals exempt from the rate limits (4) |
 | `get_admins()` | query | `vec AdminInfo` (the listed admins; Sneed governance and the controllers are admins without being listed) |
 | `is_admin(principal)` | query | `bool` |
 
@@ -546,6 +571,8 @@ Admins are Sneed DAO's governance canister (`fi3zi-fyaaa-aaaaq-aachq-cai`), the 
 | `update_text_limits(UpdateTextLimitsInput)` | Change limits; `[]` fields keep their value. |
 | `update_premium_config(UpdatePremiumConfigInput)` | Premium canister and premium body limits (`sneed_premium_canister_id`: `[]` no change, `[[]]` clear, `[[id]]` set). |
 | `admin_set_notifications(opt principal)` | Where notifications go (`Admins only`). |
+| `admin_set_rate_limit_exempt(principal, exempt : bool)` | Put a principal on the rate-limit exempt list or take it off (`get_rate_limit_exempt()` lists it). Logged as `config_update` with key `rate_limit_exempt`, `principal`, and `old_value` / `value` 1 (exempt) or 0. |
+| `admin_set_rate_limit(action : text, opt RateRule)` | Set the rate limit of an action (`thread`, `post`, `edit`, `poll`, `tip`, `vote`; `[]` back to the default; capacity 0 turns it off). Logged as `config_update` with key `rate_limit.<action>`. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([8](#8-activity-log-icrc-3)). |
 
 ---
@@ -633,6 +660,10 @@ type MentionResponse = record {
   thread_title : opt text; title : opt text; excerpt : text;   // excerpt: first 200 characters
 };
 type MentionsPage = record { items : vec MentionResponse; next : opt nat };
+type PostsPage = record { items : vec PostResponse; next : opt nat };
+type ThreadsPage = record { items : vec ThreadResponse; next : opt nat };
+type TipsPage = record { items : vec TipResponse; next : opt nat };
+type RateRule = record { capacity : nat; per_minute : nat };
 
 type FeedItemType = variant { forum; topic; thread; post };
 type FeedItem = record {
@@ -733,7 +764,7 @@ All types carry the `sneedforum_` prefix. A block is appended only once its acti
 | `sneedforum_admin_add` / `sneedforum_admin_remove` | `add_admin` / `remove_admin` | `caller`, `principal` |
 | `sneedforum_config_update` | A setting changed. | `caller`, `key`, `old_value`, `value` |
 
-`sneedforum_config_update` keys: the text limits `post_title_max_length`, `post_body_max_length`, `thread_title_max_length`, `thread_body_max_length`, `topic_title_max_length`, `topic_description_max_length`, `forum_title_max_length`, `forum_description_max_length`; the premium settings `sneed_premium_canister_id`, `premium_post_body_max_length`, `premium_thread_body_max_length`; `notifications_canister`; and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedforum_config_update` keys: `rate_limit_exempt` (with a `principal` field; values 1 exempt, 0 not); the rate limits `rate_limit.thread`, `rate_limit.post`, `rate_limit.edit`, `rate_limit.poll`, `rate_limit.tip`, `rate_limit.vote` (values are Maps `{ capacity; per_minute }`); the text limits `post_title_max_length`, `post_body_max_length`, `thread_title_max_length`, `thread_body_max_length`, `topic_title_max_length`, `topic_description_max_length`, `forum_title_max_length`, `forum_description_max_length`; the premium settings `sneed_premium_canister_id`, `premium_post_body_max_length`, `premium_thread_body_max_length`; `notifications_canister`; and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
 Not logged: ordinary threads, posts and replies, an author's edits and deletions of their own content, votes on posts, polls and poll votes, mentions, read marks and seen marks, mention-SMS settings, and tips the ledger has not confirmed (they count nowhere; they are logged when `verify_tip` settles them). All of these are public in the canister already.
 
@@ -752,6 +783,7 @@ Not logged: ordinary threads, posts and replies, an author's edits and deletions
 - [ ] Find a DAO's forum with `get_forum_by_sns_root`; if there is none, `create_sns_forum_setup` makes the standard structure.
 - [ ] Read `get_text_limits()` (and `get_premium_config()`) and check lengths before sending; production limits are lower than the code defaults.
 - [ ] Sign query calls that use the caller (unread counts, read marks), or every post looks unread.
+- [ ] Page with `next_start_id` / `next` until the end instead of asking for huge pages; handle a rate-limited write by waiting a minute.
 - [ ] Build reply trees from `reply_to_post_id`; hide or grey out `deleted` items where a method may return them.
 - [ ] Vote with neurons: show users which reachable neurons will vote (`get_thread_votes_for_neurons` for their current votes) and pass explicit ids for polls.
 - [ ] For tips, transfer from the user's main account to the author's main account first, then `create_tip` with the block index; if it fails, never repeat the transfer. Show and count only tips with `verified = ?true`.

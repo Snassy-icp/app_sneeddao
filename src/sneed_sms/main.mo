@@ -14,6 +14,9 @@ import Char "mo:base/Char";
 import Debug "mo:base/Debug";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
+import Iter "mo:base/Iter";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
@@ -130,6 +133,16 @@ persistent actor SneedSMS {
 
     // Premium membership cache (principal -> expiration)
     var stable_premium_cache = PremiumClient.emptyCache();
+
+    // Burst limit of send_message per sender (src/RateLimit.mo, rule in src/RateRules.mo), on top of
+    // the minutes between messages (rate_limit_minutes): it refuses a flood at ingress, before the
+    // premium check and before any work. Admins set it (admin_set_send_rate_limit) and keep a list of
+    // exempt principals (integrators' canisters and bots); the buckets are transient.
+    var stable_rate_rules : RateRules.Rules = [];
+    let stable_rate_exempt = Map.new<Principal, ()>();
+    transient let limiter = RateLimit.Limiter();
+    transient let RATE_DEFAULTS : RateRules.Rules = [("send", { capacity = 10; per_minute = 2 })];
+    func send_rule() : RateLimit.Rule = RateRules.rule(stable_rate_rules, RATE_DEFAULTS, "send");
     
     // Sneed Notifications (spec/sneed_notifications.md): when set, a message a person sends with
     // send_message also gives each recipient a heads-up there ("New message from ..."; the subject,
@@ -296,8 +309,8 @@ persistent actor SneedSMS {
     };
 
     private func check_rate_limit(caller: Principal, rate_limit_minutes: Nat) : Result<(), SMSError> {
-        if (is_admin(caller)) {
-            return #ok(); // Admins bypass rate limits
+        if (rate_exempt(caller)) {
+            return #ok(); // Admins and exempt principals bypass rate limits
         };
 
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -774,11 +787,65 @@ persistent actor SneedSMS {
         #ok(message_id)
     };
 
+    // ---- Send rate limit (src/RateLimit.mo) ----
+
+    public type RateRule = { capacity : Nat; per_minute : Nat };
+
+    /// Not limited (neither the burst limit nor the minutes between messages): admins and the
+    /// principals on the exempt list.
+    private func rate_exempt(caller : Principal) : Bool {
+        is_admin(caller) or Map.has(stable_rate_exempt, Map.phash, caller)
+    };
+
+    /// Whether the sender may send now; `take` consumes one send.
+    private func send_rate_ok(caller : Principal, take : Bool) : Bool {
+        if (rate_exempt(caller)) return true;
+        if (take) limiter.take(caller, "send", send_rule(), Time.now())
+        else limiter.allows(caller, "send", send_rule(), Time.now())
+    };
+
+    /// The send_message burst limit per sender: `capacity` messages in a row, refilled at `per_minute`
+    /// a minute (capacity 0: no limit). The minutes between messages (get_config, get_premium_config)
+    /// apply as well.
+    public query func get_send_rate_limit() : async RateRule { send_rule() };
+
+    /// Admins: sets the send_message burst limit. Logged as config_update with key "send_rate_limit".
+    public shared ({ caller }) func admin_set_send_rate_limit(rule : RateRule) : async Result<(), SMSError> {
+        if (not is_admin(caller)) return #err(#Unauthorized("Only admins can set the send rate limit"));
+        let old = send_rule();
+        switch (RateRules.set(stable_rate_rules, RATE_DEFAULTS, "send", ?rule)) {
+            case (#err e) return #err(#InvalidInput(e));
+            case (#ok rules) stable_rate_rules := rules;
+        };
+        let v = func(r : RateRule) : T3.Value = #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]);
+        if (old != rule) configBlock(caller, "send_rate_limit", v(old), v(rule));
+        #ok()
+    };
+
+    /// Principals exempt from the burst limit and the minutes between messages (besides admins).
+    public query func get_rate_limit_exempt() : async [Principal] {
+        Iter.toArray(Map.keys(stable_rate_exempt))
+    };
+
+    /// Admins: puts a principal on the exempt list or takes it off. Logged as config_update with key
+    /// "rate_limit_exempt", the principal, and old_value / value 1 (exempt) or 0.
+    public shared ({ caller }) func admin_set_rate_limit_exempt(principal : Principal, exempt : Bool) : async Result<(), SMSError> {
+        if (not is_admin(caller)) return #err(#Unauthorized("Only admins can set rate limit exemptions"));
+        let was = Map.has(stable_rate_exempt, Map.phash, principal);
+        if (exempt) Map.set(stable_rate_exempt, Map.phash, principal, ()) else Map.delete(stable_rate_exempt, Map.phash, principal);
+        if (was != exempt) block("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", Icrc3Log.principal(principal)),
+            ("old_value", #Nat(if was 1 else 0)), ("value", #Nat(if exempt 1 else 0))]);
+        #ok()
+    };
+
     // Message management endpoints
     public shared ({ caller }) func send_message(input: CreateMessageInput) : async Result<Nat, SMSError> {
         // Reject anonymous callers
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Anonymous callers cannot send messages"));
+        };
+        if (not send_rate_ok(caller, true)) {
+            return #err(#RateLimited("Too many messages in a row: at most " # Nat.toText(send_rule().capacity) # ", then " # Nat.toText(send_rule().per_minute) # " a minute. Please try again in a minute."));
         };
 
         // Premium members get the premium limits (checked before any state is read, since it may await)
@@ -1241,6 +1308,42 @@ persistent actor SneedSMS {
         }
     };
 
+    // Admins: every message, newest first (descending ids below `before`; null for the newest), at
+    // most MAX_PAGE messages and about PAGE_BYTE_BUDGET bytes per page (always at least one message),
+    // at most ADMIN_PAGE_SCAN ids looked at (ids of deleted messages are gaps). `next_before` is the
+    // `before` of the next page, null at the end; `total` is the number of messages. Empty for others.
+    public type AdminMessagePage = {
+        messages : [MessageResponse];
+        total : Nat;
+        next_before : ?Nat;
+    };
+    transient let ADMIN_PAGE_SCAN : Nat = 10_000;
+
+    public query ({ caller }) func admin_get_messages_page(before : ?Nat, limit : Nat) : async AdminMessagePage {
+        if (not is_admin(caller)) return { messages = []; total = 0; next_before = null };
+        let cap = Nat.min(limit, MAX_PAGE);
+        var id : Nat = switch (before) { case (?b) Nat.min(b, state.next_id); case null state.next_id };
+        let page = Buffer.Buffer<MessageResponse>(cap);
+        var bytes = 0;
+        var scanned = 0;
+        label fill while (id > 0 and page.size() < cap and scanned < ADMIN_PAGE_SCAN) {
+            switch (Map.get(state.messages, Map.nhash, id - 1)) {
+                case (?m) {
+                    let size = Text.encodeUtf8(m.subject).size() + Text.encodeUtf8(m.body).size() + 64 * (m.recipients.size() + 2);
+                    if (page.size() > 0 and bytes + size > PAGE_BYTE_BUDGET) break fill; // starts the next page
+                    switch (convert_message_to_response(caller, m)) {
+                        case (?r) { page.add(r); bytes += size };
+                        case null {};
+                    };
+                };
+                case null {};
+            };
+            id -= 1;
+            scanned += 1;
+        };
+        { messages = Buffer.toArray(page); total = Map.size(state.messages); next_before = if (id > 0) ?id else null }
+    };
+
     public query ({ caller }) func get_all_messages_admin() : async [MessageResponse] {
         if (not is_admin(caller)) {
             return [];
@@ -1444,6 +1547,11 @@ persistent actor SneedSMS {
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
+        #admin_get_messages_page : Any;
+        #get_send_rate_limit : Any;
+        #admin_set_send_rate_limit : Any;
+        #get_rate_limit_exempt : Any;
+        #admin_set_rate_limit_exempt : Any;
         #add_admin : Any;
         #admin_icrc3_repair_archive_controllers : Any;
         #admin_icrc3_spill_now : Any;
@@ -1494,6 +1602,9 @@ persistent actor SneedSMS {
                 or #get_admins _
                 or #get_all_messages _
                 or #get_all_messages_admin _
+                or #admin_get_messages_page _
+                or #get_send_rate_limit _
+                or #get_rate_limit_exempt _
                 or #get_authorized_senders _
                 or #get_config _
                 or #get_last_seen_messages_timestamp _
@@ -1527,7 +1638,8 @@ persistent actor SneedSMS {
                 let maxBody = if premium Nat.max(state.config.max_body_length, stable_premium_max_body_length) else state.config.max_body_length;
                 let maxRecipients = if premium Nat.max(state.config.max_recipients, stable_premium_max_recipients) else state.config.max_recipients;
                 let replies = switch (i.reply_to) { case null 0; case (?ids) ids.size() };
-                replies <= MAX_REPLY_TO and i.recipients.size() <= maxRecipients
+                send_rate_ok(caller, false) // the sender's burst limit, before any work
+                and replies <= MAX_REPLY_TO and i.recipients.size() <= maxRecipients
                 and arg.size() <= IngressGuard.textArg(maxSubject + maxBody) + 32 * (maxRecipients + replies)
                 and IngressGuard.text(i.subject, maxSubject) and IngressGuard.text(i.body, maxBody)
             };

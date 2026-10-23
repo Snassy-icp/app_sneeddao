@@ -163,6 +163,18 @@ git archive "$PID_NAMES_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_pid_names_prod.wasm"
+# sneed_pid_names as production runs it now (proposal #441, EXT avatars): `dfx +0.28.0 build --network
+# ic sneed_pid_names` of commit 2a989d5d at /home/snassy/app_sneeddao gives the live module hash
+# 6653ee81… (checked 2026-10-23). Here built with moc from the same source (same code, other hash), for
+# the hotkey-paging upgrade test (naming-paging-rate-limits.test.js) with keep
+PID_NAMES_441_COMMIT=2a989d5d
+echo "== sneed_pid_names at $PID_NAMES_441_COMMIT (moc, EOP, sneed_pid_names_441)"
+PREV_SRC="$(mktemp -d)"
+git archive "$PID_NAMES_441_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_441.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_pid_names_441.wasm"
 # sneed_pid_nicknames as production runs it (`dfx +0.28.0 build --network ic sneed_pid_nicknames` of
 # this code at /home/snassy/app_sneeddao gives the live module hash 1d48a9e5…), for the test that
 # upgrades from it with keep to account nicknames and pockets (EOP, as dfx.json builds it)
@@ -209,6 +221,35 @@ git archive "$SMS_LIVE_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sms/main.mo" -o "$OUT/sneed_sms_live.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_sms_live.wasm"
+# sneed_sns_forum and sneed_sms before the paging fixes and rate limits (spec/paging_audit.md S3-S5 and
+# the forum's per-user items): their source at 1788bfee (HEAD then; src/sneed_sns_forum unchanged since
+# 1d5cd986, what production runs; src/sneed_sms with the undeployed paged inbox reads of 2a0164bc). For
+# the fail-before runs (FORUM_WASM=sneed_sns_forum_prepaging, SMS_WASM=sneed_sms_prepaging) and the
+# upgrades with keep; the *_seed builds (this source and the current one) add a test-only method
+# (canisters/forum_seed_posts.mo.part) that writes many posts at once, for the large-forum tests
+FS_PREPAGING_COMMIT=1788bfee
+echo "== sneed_sns_forum, sneed_sms at $FS_PREPAGING_COMMIT (moc, EOP, *_prepaging) and the forum seed builds"
+PREV_SRC="$(mktemp -d)"
+git archive "$FS_PREPAGING_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneed_sns_forum sneed_sms; do
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_prepaging.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_prepaging.wasm"
+done
+SEED_SRC="$(mktemp -d)"
+tar -C "$ROOT" --exclude=src/app_sneeddao_frontend --exclude=src/declarations -cf - src | tar -x -C "$SEED_SRC" # the current source, without the frontend
+for pair in "$PREV_SRC:sneed_sns_forum_prepaging_seed" "$SEED_SRC:sneed_sns_forum_seed"; do
+  dir="${pair%%:*}"; out="${pair##*:}"
+  SEED_MAIN="$dir/src/sneed_sns_forum/main.mo"
+  sed -i 's/^        #verify_tip : Any;$/        #verify_tip : Any;\n        #test_seed_posts : Any;/' "$SEED_MAIN"
+  grep -q '#test_seed_posts : Any;' "$SEED_MAIN"
+  sed -i '$ d' "$SEED_MAIN" # the actor's closing brace
+  { cat "$HERE/canisters/forum_seed_posts.mo.part"; echo "};"; } >> "$SEED_MAIN"
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS --enhanced-orthogonal-persistence "$SEED_MAIN" -o "$OUT/$out.wasm" 2>&1 | grep -i "error" -A5 | head -10 || true
+  test -s "$OUT/$out.wasm"
+done
+rm -rf "$PREV_SRC" "$SEED_SRC"
 # sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
 # upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
 MON_STAGING_COMMIT=1bbee49a
@@ -267,6 +308,27 @@ git archive "$RLL_ICRC3_COMMIT" src/sneed_rewards src/IngressGuard.mo src/icrc3 
 "$MOC" $PKGS "$PREV_SRC/src/sneed_rewards/main.mo" -o "$OUT/rll_icrc3.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/rll_icrc3.wasm"
+# rll as production runs it now (commit ea66c7eb, event-statistics counters; `dfx +0.28.0 build
+# --network ic rll` of this code gives the production module hash c5e52913…), before the paging
+# fixes of spec/paging_audit.md (U1, U2, S1, S2): rll_prepaging for the fail-before runs
+# (RLL_WASM=rll_prepaging) and the upgrade test from production; rll_prepaging_seed adds the
+# test-only seeding methods (canisters/rll_seed_events.mo.part, canisters/rll_seed_votes.mo.part)
+RLL_PREPAGING_COMMIT=ea66c7eb
+echo "== rll at $RLL_PREPAGING_COMMIT (moc, rll_prepaging and rll_prepaging_seed)"
+PREV_SRC="$(mktemp -d)"
+git archive "$RLL_PREPAGING_COMMIT" src/sneed_rewards src/IngressGuard.mo src/icrc3 | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneed_rewards/main.mo" -o "$OUT/rll_prepaging.wasm" 2>&1 | grep -i "error" | head -5 || true
+SEED_MAIN="$PREV_SRC/src/sneed_rewards/main.mo"
+sed -i 's/^    #get_api_doc : Any;$/    #get_api_doc : Any;\n    #test_seed_events : Any;\n    #test_seed_neurons : Any;\n    #test_seed_proposals : Any;/' "$SEED_MAIN"
+grep -q '#test_seed_proposals : Any;' "$SEED_MAIN"
+sed -i '$ d' "$SEED_MAIN" # the actor's closing brace
+{ cat "$HERE/canisters/rll_seed_events.mo.part" "$HERE/canisters/rll_seed_votes.mo.part"; echo "};"; } >> "$SEED_MAIN"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$SEED_MAIN" -o "$OUT/rll_prepaging_seed.wasm" 2>&1 | grep -i "error" -A5 | head -10 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/rll_prepaging.wasm"
+test -s "$OUT/rll_prepaging_seed.wasm"
 # sneed_premium as production and staging run it (no ICRC-3 log; `dfx build --network ic
 # sneed_premium` of this code gives their module hash 1c403b42…; src/sneed_premium unchanged
 # from 25b88246 until the log), for the test that upgrades from it and starts an empty log
@@ -352,6 +414,22 @@ for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool 
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true
   test -s "$OUT/$c.wasm"
 done
+# the naming canisters, sneed_notifications, sneed_premium, sneed_pad and sneed_guardian before the
+# paging and rate-limit fixes (spec/paging_audit.md S12-S14, premium): their source at 1788bfee (HEAD
+# then). premium, notifications (ic) and pad, guardian (staging) run exactly this (`dfx +0.28.0 build`
+# of it at /home/snassy/app_sneeddao gives 506fde4b…, 7c32ae81…, c7839ee6…, bca9a14e…). For the
+# fail-before runs (PID_NAMES_WASM=sneed_pid_names_prepaging etc.) and the upgrades with keep
+NAMES_PREPAGING_COMMIT=1788bfee
+echo "== naming, notifications, premium, pad, guardian at $NAMES_PREPAGING_COMMIT (moc, *_prepaging)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NAMES_PREPAGING_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles sneed_notifications sneed_premium sneed_pad sneed_guardian; do
+  case "$c" in sneed_premium|sneed_pad|sneed_guardian) EOP="" ;; *) EOP="--enhanced-orthogonal-persistence" ;; esac
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS $EOP "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_prepaging.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_prepaging.wasm"
+done
+rm -rf "$PREV_SRC"
 # app_sneeddao_backend and sneed_notifications before the support-audit fixes (spec/support_audit.md
 # P0-7, P0-8, P1-9, P2-19): their source at d20ab1bf is what production runs (`dfx +0.28.0 build
 # --network ic` of it at /home/snassy/app_sneeddao gives the module hashes 3d2a5468… and e78123ff…),
@@ -384,4 +462,49 @@ echo "== Icrc3Archive"
 # shellcheck disable=SC2086
 "$MOC" -c $PKGS -o "$OUT/Icrc3Archive.wasm" "$ROOT/src/icrc3/Archive.mo" 2>&1 | grep -i "error" -A5 || true
 test -s "$OUT/Icrc3Archive.wasm"
+# sneedex and sneed_lock before the paging fixes and rate limits (spec/paging_audit.md S6, S7, S15):
+# their source at 36ca7f48 (unchanged to 1788bfee), what proposals #461 (sneed_lock) and #462
+# (sneedex) install. For the fail-before runs (SNEEDEX_WASM=sneedex_prepaging,
+# SNEED_LOCK_WASM=sneed_lock_prepaging) and the upgrade tests from it (classic persistence)
+DEX_LOCK_PREPAGING_COMMIT=36ca7f48
+echo "== sneedex, sneed_lock at $DEX_LOCK_PREPAGING_COMMIT (moc, *_prepaging)"
+PREV_SRC="$(mktemp -d)"
+git archive "$DEX_LOCK_PREPAGING_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneedex sneed_lock; do
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_prepaging.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_prepaging.wasm"
+done
+rm -rf "$PREV_SRC"
+# the trading and staking bots before the paging fixes (spec/paging_audit.md S8-S11, bot items): their
+# source at 2a0164bc (unchanged to 1788bfee; the unpublished trading bot 0.9.4 / staking bot 0.9.5), for
+# the fail-before runs of bots-paging.test.js (BOTS_BUILD=prepaging); and test builds of that source and
+# of the current one with test-only seeding methods (canisters/*_bot_seed.mo.part): *_prepaging_seed,
+# *_seed. The published versions the upgrade tests start from are the wasms in releases/.
+BOTS_PREPAGING_COMMIT=2a0164bc
+echo "== sneed_trading_bot, sneed_icp_staking_bot at $BOTS_PREPAGING_COMMIT and now (+ test seeding)"
+for variant in prepaging current; do
+  PREV_SRC="$(mktemp -d)"
+  if [ "$variant" = prepaging ]; then git archive "$BOTS_PREPAGING_COMMIT" src | tar -x -C "$PREV_SRC"; sfx=_prepaging
+  else mkdir -p "$PREV_SRC/src"; cp -r "$ROOT/src/sneed_bots" "$ROOT/src/IngressGuard.mo" "$PREV_SRC/src/"; sfx=""; fi
+  for pair in sneed_trading_bot:trading:addCircuitBreakerRule sneed_icp_staking_bot:staking:addDistributionList; do
+    IFS=: read -r c part anchor <<< "$pair"
+    MAIN="$PREV_SRC/src/sneed_bots/$c/main.mo"
+    if [ "$variant" = prepaging ]; then
+      # shellcheck disable=SC2086
+      "$MOC" $PKGS "$MAIN" -o "$OUT/${c}_prepaging.wasm" 2>&1 | grep -E "error \[M" -A5 | head -10 || true
+      test -s "$OUT/${c}_prepaging.wasm"
+    fi
+    methods="$(grep -o 'public shared func test_[a-z_]*' "$HERE/canisters/${part}_bot_seed.mo.part" | sed 's/public shared func //')"
+    for m in $methods; do sed -i "s/^      #$anchor : Any;$/      #$anchor : Any;\n      #$m : Any;/" "$MAIN"; done
+    sed -i '1i import TestIC "mo:base/ExperimentalInternetComputer";' "$MAIN"
+    sed -i '1i import TestCycles "mo:base/ExperimentalCycles";' "$MAIN"
+    tac "$MAIN" | sed '0,/^};$/{/^};$/d}' | tac > "$MAIN.tmp" && mv "$MAIN.tmp" "$MAIN" # the actor's closing brace
+    { cat "$HERE/canisters/${part}_bot_seed.mo.part"; echo "};"; } >> "$MAIN"
+    # shellcheck disable=SC2086
+    "$MOC" $PKGS "$MAIN" -o "$OUT/${c}${sfx}_seed.wasm" 2>&1 | grep -E "error \[M" -A5 | head -10 || true
+    test -s "$OUT/${c}${sfx}_seed.wasm"
+  done
+  rm -rf "$PREV_SRC"
+done
 echo "== done: $(ls "$OUT" | tr '\n' ' ')"

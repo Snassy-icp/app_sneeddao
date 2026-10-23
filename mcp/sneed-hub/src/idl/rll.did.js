@@ -711,11 +711,6 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_unmatched_pending_claims' : IDL.Func([], [Result_1], ['query']),
-    'get_user_distribution_events' : IDL.Func(
-        [],
-        [IDL.Vec(UserDistributionEvent)],
-        ['query'],
-      ),
     'get_user_distribution_events_page' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [
@@ -744,30 +739,6 @@ export const idlFactory = ({ IDL }) => {
     'get_user_token_distribution_events' : IDL.Func(
         [IDL.Principal, IDL.Principal],
         [IDL.Vec(UserDistributionEvent)],
-        ['query'],
-      ),
-    'get_user_voting_history' : IDL.Func(
-        [IDL.Principal],
-        [
-          IDL.Vec(
-            IDL.Record({
-              'vote' : IDL.Int32,
-              'proposal_title' : IDL.Opt(IDL.Text),
-              'proposal_id' : IDL.Nat64,
-              'timestamp' : IDL.Nat64,
-              'proposal_action' : IDL.Nat64,
-              'neuron_votes' : IDL.Vec(
-                IDL.Record({
-                  'vote' : IDL.Int32,
-                  'timestamp' : IDL.Nat64,
-                  'voting_power' : IDL.Nat64,
-                  'neuron_id' : IDL.Text,
-                })
-              ),
-              'voting_power' : IDL.Nat64,
-            })
-          ),
-        ],
         ['query'],
       ),
     'get_wallet_known_tokens' : IDL.Func(

@@ -1,0 +1,26 @@
+
+  // TEST BUILD ONLY. build.sh appends this method to copies of the forum source (before and after
+  // the paging fixes: build/sneed_sns_forum_prepaging_seed.wasm, build/sneed_sns_forum_seed.wasm) to
+  // give a forum many posts quickly; it is never part of a release build. In thread `thread_id`,
+  // `n` times: a top-level post by `author`, then a reply to it by `replier`, both with `body` repeated `times` times (an argument over 4 KiB is refused at ingress),
+  // through the same Lib.create_post as create_post (so the indexes of each build are kept), without
+  // the SNS lookup, the premium check or the rate limits. Controllers only. Returns the posts made.
+  public shared ({ caller }) func test_seed_posts(thread_id : Nat, author : Principal, replier : Principal, n : Nat, piece : Text, times : Nat) : async Nat {
+    assert Principal.isController(caller);
+    var body = "";
+    var k = 0;
+    while (k < times) { body #= piece; k += 1 };
+    var made = 0;
+    var i = 0;
+    while (i < n) {
+      switch (Lib.create_post(state, author, thread_id, null, null, body, 0, 0, null)) {
+        case (#ok id) {
+          made += 1;
+          switch (Lib.create_post(state, replier, thread_id, ?id, null, body, 0, 0, null)) { case (#ok _) made += 1; case _ {} };
+        };
+        case _ {};
+      };
+      i += 1;
+    };
+    made
+  };

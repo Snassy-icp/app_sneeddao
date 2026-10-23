@@ -18,7 +18,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 ## Authentication
 
 - Queries answer anyone. Updates that grant membership refuse the anonymous principal (`NotAuthorized`).
-- Membership is public: `checkMembership` answers for any principal and `getActivePremiumMembers` lists every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases, claims and admin changes are public blocks in the activity log; the older claim and payment logs are admin only as a whole, and per principal (`getClaimLogFor(p, offset, limit)`, `getIcpPaymentLogFor(p, offset, limit)`) for that principal itself or an admin. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
+- Membership is public: `checkMembership` (and `checkMemberships` for up to 500 at once) answers for any principal, and `getActivePremiumMembersPage` pages through every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases, claims and admin changes are public blocks in the activity log; the older claim and payment logs are admin only as a whole, and per principal (`getClaimLogFor(p, offset, limit)`, `getIcpPaymentLogFor(p, offset, limit)`) for that principal itself or an admin. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
 - Admin methods (tiers, config, promo codes, logs, set/extend/revoke memberships) are for controllers and listed admins only.
 
 ## Fees, transfers and irreversible actions
@@ -33,7 +33,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 
 - An ICP purchase is two steps: ledger transfer to the deposit account, then `purchaseWithIcp()`.
 - `claimWithVotingPower()` calls SNS governance (`list_neurons` for the caller, owner or hotkey permission); it can refuse with `AlreadyClaimedRecently { nextClaimTime }` until `minClaimIntervalNs` (`getConfig()`) has passed.
-- Cache a membership until its `expiration` (only an admin revocation shortens it). For lists, fetch `getActivePremiumMembers()` once. No need to poll faster than your UI needs.
+- Cache a membership until its `expiration` (only an admin revocation shortens it). For lists, ask `checkMemberships(vec principal)` (at most 500 per call; more traps) for the principals you show. To list members, page `getActivePremiumMembersPage({ start; limit })` (limit capped at 500, 0 = 100; pass `next` back as `start` until it is null; `total_active` counts them all). `getActivePremiumMembers()` (the whole list in one reply) still works but grows with the membership; prefer the two above. No need to poll faster than your UI needs.
 
 ## Errors, retries and Busy
 
@@ -54,7 +54,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 
 ## Start with these methods
 
-- `checkMembership(principal)`, `getActivePremiumMembers()`, `getMembershipDetails(principal)`
+- `checkMembership(principal)`, `checkMemberships(vec principal)`, `getActivePremiumMembersPage({ start; limit })`, `getMembershipDetails(principal)`
 - `getIcpTiers()`, `getVotingPowerTiers()`, `getConfig()`, `getDepositAccount(user)`, `getPaymentStats()`, `get_icp_tier_prices_for(principal)`, `get_special_prices()`
 - `purchaseWithIcp()`, `claimWithVotingPower()`, `claimPromoCode(code)`, `withdrawDeposit()`, `withdrawDepositToken(ledger)`
 - `getClaimLogFor(p, offset, limit)`, `getIcpPaymentLogFor(p, offset, limit)` (your own history)

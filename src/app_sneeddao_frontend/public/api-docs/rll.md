@@ -143,9 +143,11 @@ While the main loop runs (`get_main_loop_status().is_running`), a distribution c
 2. **checking balances**: which whitelisted tokens the canister holds; those become known tokens.
 3. **importing neurons**: all Sneed neurons, in pages of 100.
 4. **importing proposals**: from the highest closed proposal already imported onwards, with their ballots.
-5. **distributing tokens**: for each known token, in one message: `undistributed = ledger balance − (claimable balances + in-flight claims + unresolved incidents)`; if it reaches the token's minimum, up to its maximum is shared as in 1.2, each owner's balance is increased, and a `DistributionEvent` (total) plus one `UserDistributionEvent` per owner are logged.
+5. **distributing tokens**: for each known token, in one message: `undistributed = ledger balance − (claimable balances + in-flight claims + unresolved incidents + a distribution still being credited)`; if it reaches the token's minimum, up to its maximum is shared as in 1.2, each owner's balance is increased, and a `DistributionEvent` (total) plus one `UserDistributionEvent` per owner are logged. When more owners are credited than `credit_chunk_size` (1,000 by default; `get_vote_index_status()`), the crediting goes on over several messages, that many owners each; the part not yet credited is reserved meanwhile, so it is never shared twice.
 
-Rounding down leaves a little dust; it stays undistributed and joins the next cycle. A cycle interrupted by an upgrade restarts from stage 1; because a token's share is computed and credited in one message, and the undistributed amount is recomputed from the ledger, nothing is paid twice.
+The voting power per neuron comes from an index the canister keeps up to date as it imports proposals (and rebuilds from the imported ballots after an upgrade, in slices, by a timer), not from a walk over every ballot.
+
+Rounding down leaves a little dust; it stays undistributed and joins the next cycle. A cycle interrupted by an upgrade restarts from stage 1; because a token's share is computed and credited before the upgrade can start (an upgrade first stops the canister, and crediting finishes on the way), and the undistributed amount is recomputed from the ledger, nothing is paid twice.
 
 ### 3.2 Claiming
 
@@ -169,6 +171,8 @@ Rounding down leaves a little dust; it stays undistributed and joins the next cy
 
 **Concurrent claims.** Two claims covering the same owners at the same moment can collide; the loser is rejected (the call traps and changes nothing). Retry it.
 
+**Rate limits.** `claim_full_balance_of_hotkey`, `balances_of_hotkey` and `balance_reconciliation` are limited per caller (`get_rate_limits()`; by default a burst of 30, then 10 a minute). Beyond the limit the ingress guard refuses the call before it runs; a canister calling a claim gets `Err(GenericError { error_code = 429 })`, and the other two reject. Wait a few seconds and retry; claiming each token once needs no more than that.
+
 **The balance query is not certified.** `balances_of_hotkey_neurons` trusts the neurons you pass in and is a query. Use it for display; the claim itself always asks governance.
 
 ---
@@ -190,7 +194,7 @@ Types are in section 6. "Caller" is the principal signing the call. Methods mark
 | `all_token_balances()` | query | `vec (ledger, nat)` | Same for every token. |
 | `get_all_user_balances()` | query | `vec (owner, vec (ledger, nat))` | Every non-zero balance. |
 | `balances_count()` | query | `nat` | Number of owners with a balance record. |
-| `balance_reconciliation()` | update | `vec record { token_id; local_total; server_balance; remaining; underflow }` | Reads the ledger balance of every known token and compares it with the claimable total (`remaining` = ledger − claimable, `underflow` = shortfall). Open to anyone. |
+| `balance_reconciliation()` | update | `vec record { token_id; local_total; server_balance; remaining; underflow }` | Reads the ledger balance of every known token and compares it with the claimable total (`remaining` = ledger − claimable, `underflow` = shortfall). Any signed caller (rate-limited); anonymous calls are refused. For display, use the query path: `get_known_tokens()`, each ledger's `icrc1_balance_of` of rll's main account, then `balance_reconciliation_from_balances`. |
 | `balance_reconciliation_from_balances(vec (ledger, nat))` | query | same | The same comparison with ledger balances you supply. |
 
 ### 5.2 Distributions and claim history (queries)
@@ -204,7 +208,7 @@ Types are in section 6. "Caller" is the principal signing the call. Methods mark
 | `get_distribution_events()` | `vec DistributionEvent` | Every distribution. |
 | `get_distribution_events_page(start, length)` | `record { total : nat; events : vec DistributionEvent }` | Paged, oldest first: positions `start` up to `start + length` (at most 2000 per page); `total` is the list's size, so the newest page starts at `total - length`. |
 | `get_token_distribution_events(ledger)` | `vec DistributionEvent` | Filtered by token. |
-| `get_user_distribution_events()` | `vec UserDistributionEvent` | Every per-owner credit. **Too large for one response on production** (hundreds of thousands of credits): use the paged version. |
+| `get_user_distribution_events()` | `vec UserDistributionEvent` | Every per-owner credit, while there are at most 2000. Beyond that it refuses with an error naming the paged method (production has hundreds of thousands of credits): use the paged version. |
 | `get_user_distribution_events_page(start, length)` | `record { total : nat; events : vec UserDistributionEvent }` | Paged, as above (at most 2000 per page). |
 | `get_user_specific_distribution_events(owner)` | `vec UserDistributionEvent` | One owner, oldest first (served from a per-owner index: its cost depends on this owner's credits only). |
 | `get_user_token_distribution_events(owner, ledger)` | `vec UserDistributionEvent` | One owner, one token. |
@@ -234,7 +238,8 @@ The unpaged event lists are returned whole. They grow with every cycle; use the 
 
 | Method | Returns | Notes |
 |---|---|---|
-| `get_user_voting_history(principal)` | vec record | Per proposal, the votes of every imported neuron the principal has any permission on, with summed voting power and title. |
+| `get_user_voting_history(principal)` | vec record | Per proposal (in no particular order), the votes of every imported neuron the principal has any permission on, with summed voting power and title. Served from an index; refuses beyond 15,000 ballots, pointing to the paged version. |
+| `get_user_voting_history_page(principal, start, length)` | `record { total : nat; history : vec record }` | The same entries, newest proposal first, at most 100 a page; `total` is the number of proposals. |
 | `get_neuron_voting_history(neuron_id : blob)` | vec record | One neuron's ballots. |
 | `get_proposal_ballots(proposal_id : nat64)` | `vec (text, Ballot)` | Imported ballots of a proposal, keyed by hex neuron id. |
 | `get_highest_closed_proposal_id()` | `nat64` | Upper end of the proposal range distributions use. |
@@ -250,6 +255,8 @@ The unpaged event lists are returned whole. They grow with every cycle; use the 
 |---|---|---|
 | `get_main_loop_status()` | record | `is_running`, `frequency_seconds`, `last_started`, `last_stopped`, `last_cycle_started`, `last_cycle_ended`, `next_scheduled`, `current_time` (ns). |
 | `get_import_stage()` | `text` | Current cycle stage in words. |
+| `get_vote_index_status()` | record | The vote index: `ready` (false for about a minute after an upgrade, while it is rebuilt from the imported ballots: voting power then comes from a full walk and `get_user_voting_history` asks to retry), `proposals` imported, `indexed_through` (proposals 1..n all imported), `neurons_with_votes`, `neurons_with_ballots`, `ballots`, `rebuild_started`, `rebuilt_at`, `rebuild_instructions`, `rebuild_messages`; `credit_chunk_size`, and the instructions of the last and the largest crediting message since the upgrade. |
+| `get_rate_limits()` | `vec (text, record { capacity : nat; per_minute : nat })` | Per method: calls allowed at once and refilled per minute, per caller (capacity 0: no limit). |
 | `get_neuron_import_status()`, `get_proposal_import_status()` | `Result` | `ok` text saying whether an import is running. |
 | `get_token_balance_check_status()`, `get_wallet_token_check_status()` | record | Progress of the balance scans. |
 | `list_admins()`, `principal_is_admin(principal)`, `caller_is_admin()` | | Admins are the controllers, Sneed SNS governance and the listed principals. |
@@ -272,6 +279,8 @@ Restricted to the canister's controllers, Sneed SNS governance and the principal
 | `list_claim_incidents()`, `resolve_claim_incident(id, landed)` | Unknown-outcome claims (3.2): `landed = false` re-credits the owners. |
 | `get_error_claim_events()`, `get_unmatched_pending_claims()` | Failed claims; pending claims without an outcome. |
 | `add_admin`, `remove_admin` | Admin list (governance cannot be removed). |
+| `admin_set_rate_limit(method, opt record { capacity; per_minute })` | Set the rate limit of one of the methods in 4 (capacity 0: no limit; null: back to the default). |
+| `admin_set_credit_chunk_size(n)` | Owners credited per message in a distribution (1..100,000). |
 | `clear_balances`, `clear_total_distributions`, `clear_user_distributions`, `clear_user_distribution_events`, `clear_distribution_events`, `clear_claim_events`, `clear_all_balances_and_distributions`, `clear_imported_neurons`, `clear_imported_owners`, `clear_imported_props` | Reset tools from the canister's early days. |
 
 ---
@@ -364,8 +373,8 @@ Every distribution, every owner's credit, every paid claim, every unknown-outcom
 
 | btype | when | tx fields |
 |---|---|---|
-| `rll_reconciliation` | the cycle read a known token's ledger balance (one per known token per cycle, before its distribution) | `token`, `ledger_balance`, `claimable` (sum of owner balances), `reserved` (claims awaiting the ledger + unresolved incidents), `undistributed`, `underflow` (owed above the ledger balance; normally 0), `to_distribute` (shared now: 0 under the token's minimum, capped at its maximum), `via` |
-| `rll_distribution` | a token was shared out | `token`, `amount` (total credited), `requested` (the rest is rounding dust that stays undistributed), `owners` (credited a non-zero amount), `neurons` (whose cast votes counted), `voting_power` (their total: the basis of every share), `first_proposal`, `last_proposal`, `via` |
+| `rll_reconciliation` | the cycle read a known token's ledger balance (one per known token per cycle, before its distribution) | `token`, `ledger_balance`, `claimable` (sum of owner balances), `reserved` (claims awaiting the ledger + unresolved incidents + a distribution still being credited), `undistributed`, `underflow` (owed above the ledger balance; normally 0), `to_distribute` (shared now: 0 under the token's minimum, capped at its maximum), `via` |
+| `rll_distribution` | a token was shared out | `token`, `amount` (total credited), `requested` (the rest is rounding dust that stays undistributed), `owners` (credited a non-zero amount), `neurons` (whose cast votes counted), `voting_power` (their total: the basis of every share), `first_proposal`, `last_proposal`, `via`, and `chunks` when it was credited over several messages |
 | `rll_credit` | an owner's balance grew in that distribution (non-zero credits only) | `owner`, `token`, `amount`, `voting_power` (the owner's neurons' cast voting power), `distribution` (block index of the `rll_distribution`) |
 | `rll_claim` | a claim's transfer succeeded | `caller`, `token`, `amount` (sent, net of fee), `fee`, `total` (debited), `owners` (Array of Map `owner`, `amount`: whose balances paid), `to`, `ledger_tx`, `seq` (`ClaimEvent.sequence_number`; memo `rll-claim:<seq>`) |
 | `rll_claim_incident` | a claim's outcome is unknown: the owners stay debited (3.2, step 7) | `incident_id`, `caller`, `token`, `total`, `amount`, `fee`, `owners`, `seq`, `memo`, `created_at_time`, `error` |
@@ -373,7 +382,7 @@ Every distribution, every owner's credit, every paid claim, every unknown-outcom
 | `rll_config_update` | a setting changed | `caller` or `via`, `key`, `value`, `old_value` when there was one |
 | `rll_admin_action` | an admin started or stopped a process or used a reset tool | `caller`, `action`, and its fields |
 
-`rll_config_update` keys: `admin_added`, `admin_removed` (Blob); `known_token_added` (Map `ledger`, `symbol`, `decimals`, `fee`, and `balance` when the cycle's balance check added it); `known_token_removed` (Blob); `known_tokens_cleared`, `whitelist_cleared` (Nat count); `whitelist_tokens_added` (Array of Blob, up to 100 per block); `token_min_distribution`, `token_max_distribution` (Map `ledger`, `amount`; no `amount` = none set: the default minimum of 10 × fee, or no maximum; `old_value` always present); `main_loop` (`on` / `off`); `icrc3_proposal_neuron` (Blob or `none`) and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount` (Nat).
+`rll_config_update` keys: `admin_added`, `admin_removed` (Blob); `known_token_added` (Map `ledger`, `symbol`, `decimals`, `fee`, and `balance` when the cycle's balance check added it); `known_token_removed` (Blob); `known_tokens_cleared`, `whitelist_cleared` (Nat count); `whitelist_tokens_added` (Array of Blob, up to 100 per block); `token_min_distribution`, `token_max_distribution` (Map `ledger`, `amount`; no `amount` = none set: the default minimum of 10 × fee, or no maximum; `old_value` always present); `main_loop` (`on` / `off`); `rate_limit:<method>` (Map `capacity`, `per_minute`); `credit_chunk_size` (Nat); `icrc3_proposal_neuron` (Blob or `none`) and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount` (Nat).
 
 `rll_admin_action` actions: `distribution_cycle_start`, `distribution_cycle_stop`; `neuron_import_start` (`mode` `all` / `new`), `proposal_import_start` (`mode`, `from_proposal`), `neuron_import_stop`, `proposal_import_stop`; `clear_balances` (`owners`, `totals`: Array of Map `ledger`, `amount`, what was owed and becomes undistributed), `clear_all_balances_and_distributions` (`owners`, `totals`, and the counts `distribution_events`, `user_distribution_events`, `claim_events`), `clear_total_distributions` (`totals`), `clear_user_distributions`, `clear_user_distribution_events`, `clear_distribution_events`, `clear_claim_events`, `clear_imported_neurons`, `clear_imported_owners`, `clear_imported_props` (`count`).
 

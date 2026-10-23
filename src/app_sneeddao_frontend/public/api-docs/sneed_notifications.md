@@ -68,6 +68,7 @@ Prices are per delivery, in ICP e8s, per channel kind (`get_config().prices_e8s`
 ### 1.5 Caps and repeats
 
 - **Daily message cap:** `permission.daily_cap` messages per user, per app, per UTC day (default `default_daily_cap`, 20 on production). Beyond it `notify` answers `#rate_limited`.
+- **Per-caller rate limits:** besides the caps above, each caller has a token bucket per kind of call: `capacity` calls at once, refilled at `per_minute` a minute. Defaults (`get_rate_limits()`): `register_app` 5 then 1 a minute, `update_app` 20 / 5, `request_permission` 200 / 20 and `notify` 1,000 / 600 per app canister, `notify_batch` 100 / 60 per app canister (a batch counts once), `settings` 60 / 30 (`set_settings`, `set_permission`, `allow_app`, `add_channel`, `resend_code`, `set_low_balance_alert`), `top_up` 20 / 10 (`top_up`, `top_up_app`). Admins and the canisters of **verified** apps are never limited. Over the limit, an ingress call is refused at ingress; a call from a canister answers `Rate limited: too many calls, try again in a minute` (or `#rate_limited` from `notify` / `notify_batch`). Admins change a rule with `admin_set_rate_limit`.
 - **Dedupe:** a `notify` with `dedupe = ?key` within `dedupe_window_ns` (1 hour on production) of an earlier one with the same key, for the same user and app, is folded: `#ok({ id = 0; deliveries = 0; deduplicated = true })`, nothing is sent.
 
 ### 1.6 Addresses and what each party sees
@@ -89,6 +90,7 @@ Before it accepts an update call from outside the IC the canister checks it (`in
 - **Query methods only answer query calls.**
 - **`notify`, `notify_batch` and `request_permission` are never accepted from outside the IC.** Only a canister listed in a registered app can call them, by an inter-canister call. Testing from dfx means calling through a canister of your app.
 - **Admin methods** (including the activity log's `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are accepted only from admins; **`relay_pull` and `relay_ack`** only from registered relays.
+- **Rate limits** (1.5): a caller whose bucket for the call is empty is refused.
 - **Every other update** is refused from the anonymous principal. Argument size caps: 4 KiB by default, 64 KiB for `register_app`, `update_app`, `relay_ack` and admin config calls, about 13 KiB for `add_channel`, `set_settings` and `set_permission`.
 
 ---
@@ -360,6 +362,7 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_relay_keys()` | query | `vec (ChannelKind, text)` | Each relay kind's key document (JSON, see 2.4). |
 | `get_admins()` | query | `vec principal` | Listed admins (controllers are admins too). |
 | `stats()` | query | `{ apps; users; notifications; pending; last_tick_at : int; ticking : bool }` | `users` counts principals with a channel. `last_tick_at`: when the delivery timer (every 30 s) last ran; `ticking`: a run in progress. |
+| `get_rate_limits()` | query | `vec (text, record { capacity : nat; per_minute : nat })` | Each rate-limited action with its rule (1.5); capacity 0 = no limit. |
 | `get_fee_forwarding()` | query | `FeeForwarding` | Revenue: destination, threshold, fees earned, refunded and forwarded, the backlog, what is unforwarded and owed, the last forward and error, the last 20 events (1.4). |
 | `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([8](#8-activity-log-icrc-3)); not deployed yet. |
 
@@ -385,6 +388,7 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_credit(principal, amount_e8s, ledger_block)` | Credits a top-up the canister never confirmed, after reading the block on the ledger (4). Returns the user's new balance. Errors: `... is already credited`, `... is being credited`, `... moved N e8s, not M`, `... was not sent from that principal's account`, `... was not sent to this canister`, `... is older than the top-up records ...`, `The ledger has no block N`, `Could not read the ledger: ...`. |
 | `admin_get_user(principal, history_limit)` (query) | `variant { ok : AdminUserView; err : text }`: the user's balance, low-balance alert, settings, channels (addresses as stored: encrypted), apps and permissions, open requests, top-ups (newest first, at most 100, each with `ledger_block`, `amount_e8s`, `at`, `app`, `via` = `top_up`, `app_top_up` or `admin_credit`), recent history (at most `history_limit`, 200 at most; verification codes hidden as in `get_my_history`), and the deliveries not final yet with their prices. |
 | `admin_add_admin(p)`, `admin_remove_admin(p)` | Edit the admin list. |
+| `admin_set_rate_limit(action, opt record { capacity; per_minute })` | Sets an action's rate limit (1.5); `null` restores the default, capacity 0 turns it off. Errors: `Unknown action ...`, `per_minute must be at least 1 ...`, values above 100,000. |
 | `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
 | `admin_set_fee_sweep_threshold(e8s)` | Forward once this much is unforwarded (default 10,000,000 = 0.1 ICP). |
 | `admin_forward_fees_now()` | Forwards what is unforwarded now, whatever the threshold (still minus the ledger fee, never below the liabilities). |

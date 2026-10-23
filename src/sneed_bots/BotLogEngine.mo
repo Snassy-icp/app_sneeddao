@@ -4,67 +4,71 @@ import Time "mo:base/Time";
 import Text "mo:base/Text";
 
 import BotLogTypes "BotLogTypes";
+import BotRing "BotRing";
 
 /// Reusable bot log engine.
 ///
-/// Provides efficient append, query, and filtering over a circular log buffer.
-/// Each bot canister creates one instance and passes its persistent state via callbacks.
+/// Provides append, query, and filtering over a ring buffer of log entries.
+/// Each bot canister creates one instance and passes its persistent state via the config:
+/// the stable ring (mutated in place, so an append is O(1)), the old array-based log (moved into
+/// the ring once, then emptied), and callbacks for the id counter and the level.
 ///
 /// Usage in a bot canister:
 /// ```
+///   var botLogRing: BotRing.Ring<BotLogTypes.LogEntry> = BotRing.empty();
 ///   transient let logEngine = BotLogEngine.Engine({
+///       ring = botLogRing;
 ///       getEntries = func() { botLogEntries };
 ///       setEntries = func(e) { botLogEntries := e };
 ///       getNextId = func() { botLogNextId };
 ///       setNextId = func(n) { botLogNextId := n };
 ///       getLogLevel = func() { botLogLevel };
 ///       setLogLevel = func(n) { botLogLevel := n };
-///       maxEntries = 10_000;
+///       maxEntries = botLogMaxEntries;
 ///   });
 ///   logEngine.logInfo("system", "Canister initialized", null, []);
 /// ```
 module {
 
+    /// Most entries a bot keeps (a larger setting is clamped to this).
+    public let MAX_ENTRIES_CAP : Nat = 50_000;
+    /// Most entries one getLogs reply carries.
+    public let MAX_PAGE : Nat = 500;
+    /// A getLogs reply stops adding entries at about this many bytes (well under the 2 MiB
+    /// inter-canister and 3 MiB query reply limits).
+    public let REPLY_BUDGET_BYTES : Nat = 1_000_000;
+
+    public func clampMaxEntries(n : Nat) : Nat { if (n > MAX_ENTRIES_CAP) MAX_ENTRIES_CAP else n };
+
+    /// A generous estimate of an entry's Candid size.
+    public func entryBytes(e : BotLogTypes.LogEntry) : Nat {
+        var n = 96 + e.source.size() + e.message.size();
+        for ((k, v) in e.tags.vals()) { n += 8 + k.size() + v.size() };
+        n
+    };
+
     public class Engine(config: BotLogTypes.EngineConfig) {
 
-        let setEntries = config.setEntries;
         let setNextId = config.setNextId;
         let setLogLevelNat = config.setLogLevel;
-        var maxEntries = config.maxEntries;
+        func clampMax(n : Nat) : Nat { if (n > 50_000) 50_000 else n }; // = MAX_ENTRIES_CAP
+        var maxEntries = clampMax(config.maxEntries);
 
-        // Internal buffer for efficient operations (transient, rebuilt from persistent state on init)
-        var buf: Buffer.Buffer<BotLogTypes.LogEntry> = do {
-            let initEntries = config.getEntries();
-            let b = Buffer.Buffer<BotLogTypes.LogEntry>(initEntries.size());
-            for (entry in initEntries.vals()) { b.add(entry) };
-            b
+        // The stable ring, mutated in place.
+        let ring : BotRing.Ring<BotLogTypes.LogEntry> = config.ring;
+
+        // One-time move of the old array-based log into the ring.
+        do {
+            let legacy = config.getEntries();
+            if (legacy.size() > 0) {
+                BotRing.appendAll(ring, legacy, maxEntries);
+                config.setEntries([]);
+            };
+            BotRing.trim(ring, maxEntries);
         };
+
         var nextId: Nat = config.getNextId();
         var currentLevel: Nat = config.getLogLevel();
-
-        // ============================================
-        // INTERNAL HELPERS
-        // ============================================
-
-        // Sync internal state back to persistent storage
-        func sync() {
-            setEntries(Buffer.toArray(buf));
-            setNextId(nextId);
-        };
-
-        // Trim oldest entries if over maxEntries
-        func trimIfNeeded() {
-            if (buf.size() > maxEntries) {
-                let start = buf.size() - maxEntries;
-                let newBuf = Buffer.Buffer<BotLogTypes.LogEntry>(maxEntries);
-                var i = start;
-                while (i < buf.size()) {
-                    newBuf.add(buf.get(i));
-                    i += 1;
-                };
-                buf := newBuf;
-            };
-        };
 
         // Check if an entry matches all filter criteria
         func matchesFilter(
@@ -113,8 +117,18 @@ module {
                 case (?sid) { if (entry.id < sid) return false };
                 case null {};
             };
+            switch (filter.beforeId) {
+                case (?bid) { if (entry.id >= bid) return false };
+                case null {};
+            };
 
             true
+        };
+
+        func sizeOf(e : BotLogTypes.LogEntry) : Nat { // = entryBytes
+            var n = 96 + e.source.size() + e.message.size();
+            for ((k, v) in e.tags.vals()) { n += 8 + k.size() + v.size() };
+            n
         };
 
         // ============================================
@@ -144,9 +158,8 @@ module {
                 tags = tags;
             };
             nextId += 1;
-            buf.add(entry);
-            trimIfNeeded();
-            sync();
+            ignore BotRing.push(ring, entry, maxEntries);
+            setNextId(nextId);
         };
 
         /// Convenience: log at Error level.
@@ -179,56 +192,53 @@ module {
         // ============================================
 
         /// Query log entries with filtering and pagination.
-        /// Returns entries in ascending ID order.
+        /// Returns entries in ascending ID order, at most MAX_PAGE of them and about
+        /// REPLY_BUDGET_BYTES.
         ///
         /// When `startId` is provided (Some), returns up to `limit` matching entries
         /// starting from that ID (forward scan — oldest first).
         ///
         /// When `startId` is absent (None), returns the **newest** `limit` matching
-        /// entries so the default view always shows the most recent activity.
+        /// entries so the default view always shows the most recent activity
+        /// (with `beforeId`, the newest ones below that ID: paging back).
         public func getLogs(filter: BotLogTypes.LogFilter): BotLogTypes.LogResult {
             let minLvl: Nat = switch (filter.minLevel) {
                 case (?l) { BotLogTypes.logLevelToNat(l) };
                 case null { 0 };
             };
-            let limit: Nat = switch (filter.limit) {
+            let requested: Nat = switch (filter.limit) {
                 case (?l) { l };
                 case null { 100 };
             };
+            let limit: Nat = if (requested > 500) 500 else requested; // = MAX_PAGE
 
             let hasStartId = switch (filter.startId) { case (?_) true; case null false };
 
-            // First pass: count total matching entries
             var totalMatching: Nat = 0;
-            for (entry in buf.vals()) {
+            let matching = Buffer.Buffer<BotLogTypes.LogEntry>(limit);
+            var bytes: Nat = 0;
+            var full = false;
+            let it = if (hasStartId) BotRing.vals(ring) else BotRing.valsNewestFirst(ring);
+            for (entry in it) {
                 if (matchesFilter(entry, minLvl, filter)) {
                     totalMatching += 1;
-                };
-            };
-
-            // Determine how many matching entries to skip.
-            // With explicit startId: start from the beginning (skip = 0).
-            // Without startId: skip to the tail so we return the NEWEST entries.
-            let skip: Nat = if (hasStartId) { 0 }
-                else { if (totalMatching > limit) { totalMatching - limit : Nat } else { 0 } };
-
-            // Second pass: collect entries
-            var skipped: Nat = 0;
-            let matching = Buffer.Buffer<BotLogTypes.LogEntry>(limit);
-            for (entry in buf.vals()) {
-                if (matchesFilter(entry, minLvl, filter)) {
-                    if (skipped < skip) {
-                        skipped += 1;
-                    } else if (matching.size() < limit) {
-                        matching.add(entry);
+                    if (not full) {
+                        let b = sizeOf(entry);
+                        if (matching.size() >= limit or (matching.size() > 0 and bytes + b > 1_000_000)) { // REPLY_BUDGET_BYTES
+                            full := true;
+                        } else {
+                            matching.add(entry);
+                            bytes += b;
+                        };
                     };
                 };
             };
+            if (not hasStartId) Buffer.reverse(matching);
 
             {
                 entries = Buffer.toArray(matching);
                 totalMatching = totalMatching;
-                hasMore = totalMatching > limit;
+                hasMore = totalMatching > matching.size();
             }
         };
 
@@ -243,8 +253,9 @@ module {
             var highestErrorId: Nat = 0;
             var highestWarningId: Nat = 0;
 
-            for (entry in buf.vals()) {
-                if (entry.id > sinceId) {
+            label scan for (entry in BotRing.valsNewestFirst(ring)) {
+                if (entry.id <= sinceId) break scan; // ids grow with position: the rest are older
+                do {
                     let lvl = BotLogTypes.logLevelToNat(entry.level);
                     if (lvl == 1) { // Error
                         errorCount += 1;
@@ -274,7 +285,7 @@ module {
             {
                 logLevel = BotLogTypes.natToLogLevel(currentLevel);
                 maxEntries = maxEntries;
-                entryCount = buf.size();
+                entryCount = BotRing.size(ring);
                 nextId = nextId;
             }
         };
@@ -285,21 +296,20 @@ module {
             setLogLevelNat(currentLevel);
         };
 
-        /// Set the maximum number of entries to retain.
-        /// Immediately trims if the current count exceeds the new limit.
-        public func setMaxEntries(n: Nat) {
-            maxEntries := n;
-            trimIfNeeded();
-            sync();
+        /// Set the maximum number of entries to retain (clamped to MAX_ENTRIES_CAP).
+        /// Immediately trims if the current count exceeds the new limit. Returns the value set.
+        public func setMaxEntries(n: Nat): Nat {
+            maxEntries := clampMax(n);
+            BotRing.trim(ring, maxEntries);
+            maxEntries
         };
 
         /// Clear all log entries. The nextId continues to increase (entry IDs are never reused).
         public func clear() {
-            buf := Buffer.Buffer<BotLogTypes.LogEntry>(maxEntries);
-            sync();
+            BotRing.clear(ring);
         };
 
         /// Get current entry count.
-        public func size(): Nat { buf.size() };
+        public func size(): Nat { BotRing.size(ring) };
     };
 };

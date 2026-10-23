@@ -451,3 +451,89 @@ describe('pockets in the wallet (step d)', () => {
     expect(MV.transferProblem(null, main, { me })).toMatch(/Pick a pocket/);
   });
 });
+
+describe('quiet hosts: Sneedex escrows stay out of sight unless something can be withdrawn', () => {
+  const dex = { id: 'sneedex', name: 'Sneedex', kind: 'hosted', quiet: true, withdrawTo: 'main', withdraw() {}, deposit() {} };
+  const bidItem = (n) => ({ hostKey: `bid:${n}`, account: { owner: LOCK, subaccount: sub(100 + n) }, label: `Sneedex bid ${n}`, ledgers: [L1] });
+  const make = (balances) => M.mergePockets({ me, hosted: [{ adapter: dex, items: [bidItem(1), bidItem(2)] }], balances });
+
+  it('a bid escrow with nothing withdrawable is hidden, counts nothing, and lists nowhere', () => {
+    const balances = new Map([
+      ['h:sneedex:bid:1', new Map([[L1, { total: 2_000n, available: 0n }]])], // an active bid
+      ['h:sneedex:bid:2', new Map([[L1, { total: 900n, available: 890n }]])], // lost bid: excess back
+    ]);
+    const raw = make(balances);
+    expect(raw.find((p) => p.id === 'h:sneedex:bid:1').caps.quiet).toBe(true);
+    const ps = M.applyQuiet(raw);
+    const one = ps.find((p) => p.id === 'h:sneedex:bid:1');
+    const two = ps.find((p) => p.id === 'h:sneedex:bid:2');
+    expect([one.hidden, one.quietHidden]).toEqual([true, true]);
+    expect(two.hidden).toBe(false);
+    expect(M.holders(ps, L1).map((p) => p.id)).toEqual(['h:sneedex:bid:2']);
+    expect(M.listed(ps).map((p) => p.id)).toEqual(['w:0', 'h:sneedex:bid:2']);
+    expect(M.pickable(ps, L1, 'from').map((p) => p.id)).toEqual(['h:sneedex:bid:2']);
+    // the card total counts what can leave (890), never the 2,000 committed to the active bid
+    expect(M.otherPocketsTotal(ps, L1)).toBe(890n);
+    expect(M.total(ps, L1)).toBe(890n);
+    expect(M.hasExtraPockets(M.applyQuiet(make(new Map([['h:sneedex:bid:1', new Map([[L1, { total: 2_000n, available: 0n }]])]]))))).toBe(false);
+  });
+
+  it('"Show Sneedex escrows" brings them back; a name keeps one shown; the user\'s own hide survives', () => {
+    const balances = new Map([['h:sneedex:bid:1', new Map([[L1, { total: 2_000n, available: 0n }]])]]);
+    const shown = M.applyQuiet(make(balances), { showQuiet: true });
+    expect(shown.find((p) => p.id === 'h:sneedex:bid:1').hidden).toBe(false);
+    const named = M.applyQuiet(make(balances).map((p) => (p.id === 'h:sneedex:bid:1' ? { ...p, nickname: 'Big bid' } : p)));
+    expect(named.find((p) => p.id === 'h:sneedex:bid:1').hidden).toBe(false);
+    // quiet-hidden, then toggled on: back to the user's own hidden flag
+    const userHidden = make(balances).map((p) => (p.id === 'h:sneedex:bid:1' ? { ...p, hidden: true } : p));
+    const q = M.applyQuiet(userHidden);
+    expect(M.applyQuiet(q, { showQuiet: true }).find((p) => p.id === 'h:sneedex:bid:1').hidden).toBe(true);
+    expect(M.applyQuiet(M.applyQuiet(make(balances)), { showQuiet: true }).find((p) => p.id === 'h:sneedex:bid:1').hidden).toBe(false);
+    // other hosts are not quiet
+    expect(M.isQuiet(M.adapterPocket(lockAdapter, { hostKey: 'w' }))).toBe(false);
+  });
+});
+
+describe('GLDT / sGLDT wrap actions with pockets, and ledger ids that lost their Principal', () => {
+  let W, ID;
+  const GLDT = '6c7su-kiaaa-aaaar-qaira-cai';
+  const SGLDT = 'i2s4q-syaaa-aaaan-qz4sq-cai';
+  beforeAll(async () => {
+    W = await import('../../../src/app_sneeddao_frontend/src/utils/wrapActions.js');
+    ID = await import('../../../src/app_sneeddao_frontend/src/utils/IdUtils.js');
+  });
+
+  it('a GLDT / sGLDT card with a Main balance keeps its Wrap / Unwrap button', () => {
+    const g = W.wrapAction({ ledger_canister_id: Principal.fromText(GLDT), balance: 5n, available_backend: 0n });
+    expect(g).toMatchObject({ kind: 'wrap', fromMain: 5n, needsMove: false, note: null });
+    const s = W.wrapAction({ ledger_canister_id: SGLDT, balance: 9n });
+    expect(s).toMatchObject({ kind: 'unwrap', needsMove: false });
+    // the ledger id as the wallet cache used to bring it back ({ __principal__ }): still recognised
+    expect(W.wrapAction({ ledger_canister_id: { __principal__: SGLDT }, balance: 9n }).kind).toBe('unwrap');
+    expect(W.wrapAction({ ledger_canister_id: L1, balance: 9n })).toBe(null);
+    expect(W.wrapAction({ ledger_canister_id: GLDT, balance: 0n })).toBe(null); // nothing anywhere
+  });
+
+  it('only in another pocket: "Move to Main to wrap" from the pocket that holds it', () => {
+    const ps = M.mergePockets({ me, discovered: [{ subaccount: sub(3), ledger: SGLDT, balance: 70n }] });
+    const a = W.wrapAction({ ledger_canister_id: SGLDT, balance: 0n }, { pockets: ps });
+    expect(a).toMatchObject({ kind: 'unwrap', needsMove: true, elsewhere: 70n });
+    expect(a.source.id).toBe(M.walletPocketId(sub(3)));
+    expect(a.note).toMatch(/from Main/);
+    // Main and a pocket: wraps Main's, says the rest stays
+    expect(W.wrapAction({ ledger_canister_id: SGLDT, balance: 4n }, { pockets: ps }).note).toMatch(/other pockets stays/);
+    // only in the Sneed Lock wallet (free part), no pockets model: move from Sneed Lock
+    const l = W.wrapAction({ ledger_canister_id: GLDT, balance: 0n, available_backend: 30n });
+    expect(l).toMatchObject({ needsMove: true, source: { id: M.LOCK_POCKET_ID } });
+  });
+
+  it('normalizeId reads Principals, { __principal__ }, { _arr } and raw bytes (never "[object Object]")', () => {
+    const p = Principal.fromText(GLDT);
+    expect(ID.normalizeId(p)).toBe(GLDT);
+    expect(ID.normalizeId({ __principal__: GLDT })).toBe(GLDT);
+    expect(ID.normalizeId({ _arr: p.toUint8Array() })).toBe(GLDT);
+    expect(ID.normalizeId({ _arr: { ...Array.from(p.toUint8Array()) } })).toBe(GLDT); // a cached Uint8Array as an object
+    expect(ID.normalizeId(p.toUint8Array())).toBe(GLDT);
+    expect(ID.normalizeId(JSON.parse(JSON.stringify({ id: p })).id)).toBe(GLDT); // what JSON makes of a Principal
+  });
+});

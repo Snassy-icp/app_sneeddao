@@ -86,6 +86,39 @@ module {
     state : OpState;
   };
 
+  /// An op as the lists show it: an install's upgrade argument is given by size and SHA-256 only
+  /// (the bytes come with get_op), so a page of ops stays small.
+  public type OpKindSummary = {
+    #set_controllers : [Principal];
+    #install : { hash : Blob; arg_size : ?Nat; arg_sha256 : ?Blob };
+    #set_policy : Policy;
+    #set_config : ConfigUpdate;
+    #set_approvers : { approvers : [Principal]; threshold : Nat };
+  };
+  public type OpSummary = {
+    id : Nat;
+    child : Principal;
+    kind : OpKindSummary;
+    staged_by : Principal;
+    staged_at : Int;
+    memo : Text;
+    payer : Principal;
+    fee_e8s : Nat;
+    fee_paid_e8s : Nat;
+    refunded_e8s : Nat;
+    approvals : [Principal];
+    oks : [Principal];
+    vetoes : [Principal];
+    state : OpState;
+  };
+  /// A page of ops, newest first. `open`: only pending and approved ones; `child`: only ops on that
+  /// canister; `before`: ids below this one (the `next` of the previous page); `limit`: at most 100
+  /// (0 = 50).
+  public type OpPageArgs = { open : Bool; child : ?Principal; before : ?Nat; limit : Nat };
+  public type OpPage = { items : [OpSummary]; next : ?Nat };
+  /// Anti-spam limits on staging ops.
+  public type OpLimits = { max_open_ops_per_caller : Nat; max_install_arg_bytes : Nat; max_page : Nat };
+
   public type Config = {
     name : Text;
     approvers : [Principal];

@@ -28,6 +28,7 @@ import T "Types";
 import CircularBuffer "CircularBuffer";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
 import SP "../SpecialPrices";
 import ApiDoc "ApiDoc";
 import Timer "mo:base/Timer";
@@ -275,6 +276,58 @@ shared (deployer) persistent actor class SneedLock() = this {
     public let principal_position_ownerships: T.PrincipalSwapPositionsMap = HashMap.HashMap<Principal, T.SwapPositionsMap>(100, Principal.equal, Principal.hash);
   };
 
+  // Owner indexes of the state above (ephemeral like it, kept up to date by the few helpers that
+  // change it: add_lock_for_principal, remove_token_lock, clear_expired_locks_for_principal,
+  // add_position_ownership_for_principal, clear_position_claim; postupgrade rebuilds them through
+  // the same helpers). They answer "who holds this lock / position" without a scan of every
+  // owner (spec/paging_audit.md S15): lock id -> the (owner, ledger) record lists that hold it,
+  // and position key -> the principals holding a claim on it.
+  transient let token_lock_index = Map.new<Nat, [(Principal, Principal)]>();
+  transient let claim_index = Map.new<Text, [Principal]>();
+
+  /// Re-reads whether `owner`'s record list for `ledger` holds lock `lock_id` and files it in
+  /// token_lock_index accordingly. Called after every change of that list.
+  private func reindex_token_lock(owner : Principal, ledger : Principal, lock_id : Nat) {
+    let present = switch (state.principal_token_locks.get(owner)) {
+      case (?m) switch (m.get(ledger)) { case (?l) List.some<Lock>(l, func(x) { x.lock_id == lock_id }); case null false };
+      case null false;
+    };
+    let cur = switch (Map.get(token_lock_index, nhash, lock_id)) { case (?a) a; case null [] };
+    let others = Array.filter<(Principal, Principal)>(cur, func((o, l)) { not (o == owner and l == ledger) });
+    let next = if (present) Array.append(others, [(owner, ledger)]) else others;
+    if (next.size() == 0) Map.delete(token_lock_index, nhash, lock_id) else Map.set(token_lock_index, nhash, lock_id, next);
+  };
+
+  /// Re-reads whether `principal` holds a claim on the position and files it in claim_index.
+  private func reindex_claim(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) {
+    let k = position_key(swap_canister_id, position_id);
+    let cur = switch (Map.get(claim_index, thash, k)) { case (?a) a; case null [] };
+    let others = Array.filter<Principal>(cur, func(o) { o != principal });
+    let next = if (has_claim_record(principal, swap_canister_id, position_id)) Array.append(others, [principal]) else others;
+    if (next.size() == 0) Map.delete(claim_index, thash, k) else Map.set(claim_index, thash, k, next);
+  };
+
+  /// token_lock_records through the index: the same records (possibly in another order), reading
+  /// only the record lists that hold the lock.
+  private func token_lock_records_indexed(lock_id : T.LockId) : [(Principal, TokenType, Lock)] {
+    let out = Buffer.Buffer<(Principal, TokenType, Lock)>(1);
+    switch (Map.get(token_lock_index, nhash, lock_id)) {
+      case (?pairs) {
+        for ((owner, ledger) in pairs.vals()) {
+          switch (state.principal_token_locks.get(owner)) {
+            case (?m) switch (m.get(ledger)) {
+              case (?l) { for (lock in List.toIter(l)) { if (lock.lock_id == lock_id) out.add((owner, ledger, lock)) } };
+              case null {};
+            };
+            case null {};
+          };
+        };
+      };
+      case null {};
+    };
+    Buffer.toArray(out);
+  };
+
   // Archive HashMaps (ephemeral, rebuilt from stable storage on upgrade)
   transient let archived_token_locks = HashMap.HashMap<T.LockId, ArchivedTokenLock>(1000, Nat.equal, Hash.hash);
   transient let archived_position_locks = HashMap.HashMap<T.LockId, ArchivedPositionLock>(1000, Nat.equal, Hash.hash);
@@ -466,16 +519,14 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// the position moved to someone else at the pool must never act for it (claim_position
   /// removes such claims, and this refuses any that predate that).
   private func has_claimed_position_impl(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId): Bool {
-    if (not has_claim_record(principal, swap_canister_id, position_id)) { return false };
-    for (other in state.principal_position_ownerships.keys()) {
-      if (other != principal and has_claim_record(other, swap_canister_id, position_id)) { return false };
-    };
-    true;
+    // the claim index holds exactly the principals with a claim record on the position
+    let c = position_claimants(swap_canister_id, position_id);
+    c.size() == 1 and c[0] == principal;
   };
 
   /// Every principal holding a claim on the position.
   private func position_claimants(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : [Principal] {
-    Iter.toArray(Iter.filter<Principal>(state.principal_position_ownerships.keys(), func(p) { has_claim_record(p, swap_canister_id, position_id) }));
+    switch (Map.get(claim_index, thash, position_key(swap_canister_id, position_id))) { case (?a) a; case null [] };
   };
 
   /// An unexpired lock on the position, whoever's record it is in.
@@ -985,6 +1036,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let new_position_ids = List.filter<T.PositionId>(position_ids, func test_position_id { test_position_id != position_id; } );
     allPositions.put(swap_canister_id, new_position_ids);
     state.principal_position_ownerships.put(principal, allPositions);
+    reindex_claim(principal, swap_canister_id, position_id);
   };
 
   private func remove_position_lock_from_principal(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : ?T.PositionLock {
@@ -1117,6 +1169,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let filteredLocks = List.filter<Lock>(locks, func (l) { l.lock_id != lock_id; });
     allLocks.put(token_type, filteredLocks);
     state.principal_token_locks.put(principal, allLocks);
+    reindex_token_lock(principal, token_type, lock_id);
   };
 
   public shared ({ caller }) func transfer_token_lock_ownership(
@@ -1573,6 +1626,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
   /// to period + delay, and the tokens stay locked until the lock has dissolved.
   public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async CreateLockResult {
+      if (not rate_take(caller, "create_lock")) { return #Err({ message = rate_limited_text("create_lock"); transfer_error = null }) };
       // Serialized with every other token operation of the caller (the balance checked here
       // must still be there when the lock is recorded after the fee check's awaits) and with
       // the caller's payment-balance withdrawal (the fee verified must still be there to charge).
@@ -1765,6 +1819,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     token0 : T.TokenType,
     token1 : T.TokenType,
     dissolve_delay : ?Nat64) : async T.CreateLockResult {
+      if (not rate_take(caller, "create_position_lock")) { return #Err({ message = rate_limited_text("create_position_lock"); transfer_error = null }) };
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Creating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
       // One lock creation (or payment-balance withdrawal) per caller at a time: the lock fee is
@@ -2100,6 +2155,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let newLocks = List.push<Lock>(lock, locks);
     allLocks.put(tokenType, newLocks);
     state.principal_token_locks.put(principal, allLocks);
+    reindex_token_lock(principal, tokenType, lock.lock_id);
 
   };
 
@@ -2121,6 +2177,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       let new_position_ids = List.push<T.PositionId>(position_id, position_ids);
       all_positions.put(swap_canister_id, new_position_ids);
       state.principal_position_ownerships.put(principal, all_positions);
+      reindex_claim(principal, swap_canister_id, position_id);
 
     };
 
@@ -2197,6 +2254,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
 
       allLocks.put(token, valid_locks);
+      state.principal_token_locks.put(principal, allLocks);
+      for (lock in List.toIter(expired_locks)) { reindex_token_lock(principal, token, lock.lock_id) };
     };
 
     state.principal_token_locks.put(principal, allLocks);
@@ -2204,7 +2263,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     // with an unknown outcome keeps it on both parties until reconciled).
     if (token_nfts_activated) {
       for (id in List.toIter(archived_ids)) {
-        if (token_lock_records(id).size() == 0) {
+        if (token_lock_records_indexed(id).size() == 0) {
           let label_ = nft_label(id);
           Map.delete(nft_labels, nhash, id);
           Map.delete(nft_token_approvals, nhash, id);
@@ -2569,7 +2628,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         // a live token lock (exactly one record: none = archived or never, two = a transfer
         // with an unknown outcome awaiting reconciliation)
         if (not token_nfts_activated) { return null };
-        let r = token_lock_records(tid);
+        let r = token_lock_records_indexed(tid);
         if (r.size() == 1) ?{ owner = r[0].0; subaccount = nft_label(tid) } else null;
       };
       case (?p) {
@@ -3027,8 +3086,29 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     Array.sort<Nat>(Iter.toArray(Map.keys(ids)), Nat.compare);
   };
+  /// The NFTs `a` holds, ascending: the same as filtering nft_ids_sorted() by nft_owner, but read
+  /// from the owner's own records (its token locks and claimed positions) instead of checking every
+  /// NFT against every lock (spec/paging_audit.md S15).
   private func nft_ids_of(a : N.Account) : [Nat] {
-    Array.filter<Nat>(nft_ids_sorted(), func(tid) { switch (nft_owner(tid)) { case (?o) N.sameAccount(o, a); case null false } });
+    let ids = Map.new<Nat, ()>();
+    if (token_nfts_activated) {
+      switch (state.principal_token_locks.get(a.owner)) {
+        case (?m) { for ((_, locks) in m.entries()) { for (l in List.toIter(locks)) Map.set(ids, nhash, l.lock_id, ()) } };
+        case null {};
+      };
+    };
+    switch (state.principal_position_ownerships.get(a.owner)) {
+      case (?m) {
+        for ((swap, pids) in m.entries()) {
+          for (pid in List.toIter(pids)) {
+            switch (Map.get(nft_by_position, thash, position_key(swap, pid))) { case (?t) Map.set(ids, nhash, t, ()); case null {} };
+          };
+        };
+      };
+      case null {};
+    };
+    let sorted = Array.sort<Nat>(Iter.toArray(Map.keys(ids)), Nat.compare);
+    Array.filter<Nat>(sorted, func(tid) { switch (nft_owner(tid)) { case (?o) N.sameAccount(o, a); case null false } });
   };
   public query func icrc7_balance_of(accounts : [N.Account]) : async [Nat] {
     if (accounts.size() > N.MAX_QUERY_BATCH) { Debug.trap("too many accounts") };
@@ -4429,6 +4509,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Claim the accrued trading fees of a locked position. The pool delivers
   /// them to the caller's wallet subaccount on this canister.
   public shared ({ caller }) func claim_position_fees(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async T.ClaimFeesResult {
+    if (not rate_take(caller, "claim")) { return #Err(rate_limited_text("claim")) };
     let correlation_id = get_next_correlation_id();
     switch (await* claim_position_fees_internal(caller, swap_canister_id, position_id, correlation_id)) {
       case (#Err(e)) { #Err(e) };
@@ -4447,6 +4528,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// synchronously and returns the history id, which get_claim_request_status
   /// then reports as completed or failed.
   public shared ({ caller }) func request_claim_and_withdraw(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async ClaimAndWithdrawResult {
+    if (not rate_take(caller, "claim")) { return #Err(rate_limited_text("claim")) };
     let correlation_id = get_next_correlation_id();
     switch (await* claim_position_fees_internal(caller, swap_canister_id, position_id, correlation_id)) {
       case (#Ok(request)) { #Ok(request.request_id) };
@@ -5267,6 +5349,66 @@ shared (deployer) persistent actor class SneedLock() = this {
   ensure_icrc3_timer<system>();
   schedule_icrc3_import<system>();
 
+  ////////////////
+  // rate limits (src/RateLimit.mo): per-caller token buckets for the calls anyone can make that
+  // add records here (locks, claim history). Peeked in inspect, taken in the method.
+  ////////////////
+
+  /// The rate-limited actions and their defaults: generous for a person, a wall for a script.
+  /// "claim" covers claim_position_fees and request_claim_and_withdraw (one claim history).
+  transient let RATE_LIMIT_DEFAULTS : [(Text, RateLimit.Rule)] = [
+    ("create_lock", { capacity = 30; per_minute = 10 }),
+    ("create_position_lock", { capacity = 30; per_minute = 10 }),
+    ("claim", { capacity = 30; per_minute = 10 }),
+  ];
+  /// Admin overrides of the defaults (admin_set_rate_limit); capacity 0 = no limit.
+  stable var rate_limit_rules = Map.new<Text, RateLimit.Rule>();
+  transient let rate_limiter = RateLimit.Limiter();
+
+  private func rate_rule(action : Text) : RateLimit.Rule {
+    switch (Map.get(rate_limit_rules, thash, action)) {
+      case (?r) r;
+      case null {
+        for ((a, r) in RATE_LIMIT_DEFAULTS.vals()) { if (a == action) return r };
+        { capacity = 0; per_minute = 0 };
+      };
+    };
+  };
+  /// For inspect: whether `caller` has a call of `action` left (does not consume one).
+  private func rate_allows(caller : Principal, action : Text) : Bool = rate_limiter.allows(caller, action, rate_rule(action), Time.now());
+  /// In the method: consumes one call of `action`; false when the caller is over the limit.
+  private func rate_take(caller : Principal, action : Text) : Bool = rate_limiter.take(caller, action, rate_rule(action), Time.now());
+  private func rate_limited_text(action : Text) : Text {
+    let r = rate_rule(action);
+    "Rate limited: at most " # Nat.toText(r.capacity) # " " # action # " calls at once, then " # Nat.toText(r.per_minute) # " a minute; try again shortly";
+  };
+
+  /// The rate limit of every limited action, as it applies now (defaults with admin overrides).
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] {
+    Array.map<(Text, RateLimit.Rule), (Text, RateLimit.Rule)>(RATE_LIMIT_DEFAULTS, func((a, _)) { (a, rate_rule(a)) });
+  };
+
+  /// Admin: set the rate limit of one action (`rule = null` goes back to the default; capacity 0
+  /// means no limit). Logged as a config-update block.
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("Only admins can set rate limits") };
+    if (Array.find<(Text, RateLimit.Rule)>(RATE_LIMIT_DEFAULTS, func((a, _)) { a == action }) == null) {
+      return #Err("Unknown action; the limited actions are " # Text.join(", ", Iter.map<(Text, RateLimit.Rule), Text>(RATE_LIMIT_DEFAULTS.vals(), func((a, _)) { a })));
+    };
+    switch (rule) {
+      case (?r) { if (r.capacity > 0 and (r.per_minute == 0 or r.capacity > 1_000_000 or r.per_minute > 1_000_000)) { return #Err("per_minute must be 1..1,000,000 and capacity at most 1,000,000 (capacity 0 = no limit)") } };
+      case null {};
+    };
+    let ruleV = func(r : RateLimit.Rule) : T3.Value { #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]) };
+    let old = rate_rule(action);
+    switch (rule) {
+      case (?r) Map.set(rate_limit_rules, thash, action, r);
+      case null Map.delete(rate_limit_rules, thash, action);
+    };
+    icrc3_config(caller, get_next_correlation_id(), "rate_limit." # action, ruleV(rate_rule(action)), ?ruleV(old));
+    #Ok;
+  };
+
   // An NFT batch of the ingress guard below: a few accounts, ids and a memo per item
   func nftBatchOk(arg : Blob, items : Nat) : Bool =
     items <= N.MAX_UPDATE_BATCH and arg.size() <= IngressGuard.SMALL_ARG + N.MAX_UPDATE_BATCH * (N.MAX_MEMO + 512);
@@ -5277,8 +5419,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
-  system func inspect({ arg : Blob; msg : {
+  system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
     #get_log_entries_for : Any;
     #get_payment_log_for : Any;
     #get_claim_requests_page_for : Any;
@@ -5480,7 +5624,12 @@ shared (deployer) persistent actor class SneedLock() = this {
         or #icrc7_tokens_of _
         or #icrc7_total_supply _
         or #icrc7_tx_window _
+        or #get_rate_limits _
       ) false;
+      // rate limits: a caller with no call left is refused here, before the call costs anything
+      case (#create_lock _) rate_allows(caller, "create_lock") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#create_position_lock _) rate_allows(caller, "create_position_lock") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#claim_position_fees _ or #request_claim_and_withdraw _) rate_allows(caller, "claim") and arg.size() <= IngressGuard.SMALL_ARG;
       // ICRC-7/37 batches: at most icrc7_max_update_batch_size items (the memos inside are checked
       // per item by the method, against icrc7_max_memo_size)
       case (#icrc7_transfer f) nftBatchOk(arg, f().size());

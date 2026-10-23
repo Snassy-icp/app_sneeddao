@@ -30,6 +30,7 @@ const fullIdl = ({ IDL: I }) => {
     ...Object.fromEntries(smsIdl({ IDL: I })._fields),
     get_received_messages_page: I.Func([Args], [Page], ['query']),
     get_sent_messages_page: I.Func([Args], [Page], ['query']),
+    admin_set_send_rate_limit: I.Func([I.Record({ capacity: I.Nat, per_minute: I.Nat })], [I.Variant({ ok: I.Null, err: I.Reserved })], []),
   });
 };
 
@@ -63,6 +64,8 @@ async function readAll(actor, method, limit, { after } = {}) {
 async function freshSms() {
   const id = await install(pic, { name: SMS_WASM });
   unwrap(await as(id, admin).update_config([0n], [], [], [])); // no wait between messages
+  // no burst limit either (builds without it have no setter); sms-paging.test.js covers it
+  await as(id, admin).admin_set_send_rate_limit({ capacity: 0n, per_minute: 0n }).catch(() => {});
   return id;
 }
 

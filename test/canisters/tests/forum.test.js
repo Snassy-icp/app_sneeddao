@@ -13,6 +13,14 @@ import { createPic, install, actorAs, wasm, admin, alice, bob, carol, user, SNEE
 import { premiumIdl } from '../lib/idl.js';
 import { idlFactory as forumIdl } from '../build/sneed_sns_forum.did.js';
 
+/// Turns the forum's rate limits off (the setter is an admin method; builds without it are left as they are).
+const rateLimitIdl = ({ IDL: I }) => I.Service({ admin_set_rate_limit: I.Func([I.Text, I.Opt(I.Record({ capacity: I.Nat, per_minute: I.Nat }))], [I.Variant({ ok: I.Null, err: I.Reserved })], []) });
+async function rateLimitsOff(pic, id) {
+  for (const a of ['thread', 'post', 'edit', 'poll', 'tip', 'vote']) {
+    await actorAs(pic, rateLimitIdl, id, admin).admin_set_rate_limit(a, [{ capacity: 0n, per_minute: 0n }]).catch(() => {});
+  }
+}
+
 const SNS_W = Principal.fromText('qaa6y-5yaaa-aaaaa-aaafa-cai');
 const dave = user('dave'); const eve = user('eve');
 const anon = Principal.anonymous();
@@ -62,6 +70,7 @@ describe('sneed_sns_forum', () => {
     gov3Id = await install(pic, { name: 'MockForumGovernance' }); // nameless, serves root4
     premiumId = await install(pic, { name: 'MockPremium' });
     forumId = await install(pic, { name: 'sneed_sns_forum' });
+    await rateLimitsOff(pic, forumId); // these tests script bursts of writes; forum-paging.test.js covers the limits
     await actorAs(pic, directoryIdl, SNS_W, admin).set_instances([[SNEED_SNS_ROOT, gov1Id], [root2, gov2Id], [root3, gov2Id], [root4, gov3Id]]);
     gov1 = actorAs(pic, neuronsIdl, gov1Id, admin); gov2 = actorAs(pic, neuronsIdl, gov2Id, admin); gov3 = actorAs(pic, neuronsIdl, gov3Id, admin);
     await gov2.set_name(['Beta']); await gov3.set_name([]);

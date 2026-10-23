@@ -754,7 +754,13 @@ Chore type ID: `"snapshot"`
 
 Default interval: 3600 seconds (1 hour); task timeout 600 seconds. Pipeline: Phase 0 metadata refresh → Phase 1 prices for all registered tokens (each → ICP, plus ICP → ckUSDC) → Phase 2 balance snapshots (main account and enabled purses) → Phase 3 archive daily summaries (OHLC) → `#Done`.
 
-Related settings and queries: `getPortfolioSnapshots`, `getPortfolioSnapshotStats`, `clearPortfolioSnapshots`, `getPursePortfolioSnapshots(purseId, q)`, `listPurseSnapshotPurses`, `getDailyPortfolioSummaries`, `getDailyPriceCandles`, `getPriceHistory`, `getLastKnownPrices`, `get/setPriceStaleness` (default 300 s), `get/setMetadataStaleness` (default 3600 s), `get/setPriceHistoryMaxSize` (default 5000), `getCapitalFlows`, `adjustCapitalDeployed`.
+Related settings and queries: `getPortfolioSnapshots`, `getPortfolioSnapshotStats`, `clearPortfolioSnapshots`, `getPursePortfolioSnapshots(purseId, q)`, `listPurseSnapshotPurses`, `getDailyPortfolioSummaries`, `getDailyPriceCandles`, `getPriceHistory`, `getLastKnownPrices`, `get/setPriceStaleness` (default 300 s), `get/setMetadataStaleness` (default 3600 s), `get/setPriceHistoryMaxSize` (default 5000, at most 20,000), `getCapitalFlows`, `adjustCapitalDeployed`.
+
+**Paging and order (since 0.9.4, spec/paging_audit.md S8-S10).** Every list getter caps its page and stops at about 1 MB of rows, so no reply can outgrow the IC reply limits: `getTradeLog` 500 (newest first, page with `offset`), `getLogs` 500, `getPortfolioSnapshots` and `getPursePortfolioSnapshots` 200, `getPriceHistory`, `getDailyPortfolioSummaries` and `getDailyPriceCandles` 1000. The snapshot, purse-snapshot, price-history, daily-summary and candle queries take an additive `newestFirst: ?Bool` (with `offset` counted from the newest; `PortfolioSnapshotQuery` also gained `offset`). Without it they answer oldest first as before, which is why charts built from the first page went stale once a log outgrew one page; the Performance tab now asks for the newest rows (`src/app_sneeddao_frontend/src/utils/botPaging.js`, which falls back for older bots). Log sizes are clamped: `maxTradeLogEntries` at most 50,000, `maxPortfolioLogEntries` 20,000, `priceHistoryMaxSize` 20,000; lowering a size trims at once, keeping the newest.
+
+Daily price candles live in a ring (`dailyPriceCandleRing`, never trimmed in practice) with a transient index of each pair's latest candle, so a quote updates its candle in place instead of mapping over every candle; `getPriceHistory` with a `pairKey` builds the key once per distinct pair instead of once per entry; circuit-breaker percent-change conditions compare principals and only check entries near the cutoff.
+
+Each snapshot is applied to its day's summary exactly once, when it is taken. Until 0.9.4 a full snapshot log re-applied every snapshot it dropped to that snapshot's day, which counted it twice and overwrote an earlier day's close with a stale value.
 
 ---
 
@@ -806,20 +812,23 @@ var moveFundsNextActionId: [(Text, Nat)]
 // Distribution (shared pattern from staking bot)
 var distributionSettings: [(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })]
 
-// Bot Log
+// Bot Log (entries in botLogRing since 0.9.4; botLogEntries stays empty after the one-time move)
 var botLogEntries: [BotLogTypes.LogEntry]
+var botLogRing: BotRing.Ring<BotLogTypes.LogEntry>
 var botLogNextId: Nat
 var botLogLevel: Nat
 var botLogMaxEntries: Nat
 
 // Trade Log (size and on/off live in loggingSettings)
-var tradeLogEntries: [TradeLogEntry]
+var tradeLogEntries: [TradeLogEntry]                       // empty since 0.9.4: entries in tradeLogRing
+var tradeLogRing: BotRing.Ring<TradeLogEntry>
 var tradeLogNextId: Nat
 
 // Portfolio snapshots, logging settings
-var portfolioSnapshots: [PortfolioSnapshot]
+var portfolioSnapshots: [PortfolioSnapshot]               // empty since 0.9.4: entries in portfolioSnapshotRing
+var portfolioSnapshotRing: BotRing.Ring<PortfolioSnapshot>
 var portfolioSnapshotNextId: Nat
-var loggingSettings: LoggingSettings                      // tradeLogEnabled, portfolioLogEnabled, maxTradeLogEntries (10,000), maxPortfolioLogEntries (5,000)
+var loggingSettings: LoggingSettings                      // tradeLogEnabled, portfolioLogEnabled, maxTradeLogEntries (10,000, at most 50,000), maxPortfolioLogEntries (5,000, at most 20,000)
 var choreLoggingOverrides: [(Text, ChoreLoggingOverrides)]
 
 // Balance reconciliation & capital tracking
@@ -831,13 +840,15 @@ var tokenCapitalFlows: [(Text, (Nat, Nat))]
 
 // Prices & history
 var lastKnownPrices: [(Text, CachedPrice)]
-var priceHistory: [CachedPrice]
+var priceHistory: [CachedPrice]                           // empty since 0.9.4: entries in priceHistoryRing
 var priceHistoryNextIdx: Nat
-var priceHistoryMaxSize: Nat                               // Default: 5000
+var priceHistoryRing: BotRing.Ring<CachedPrice>
+var priceHistoryMaxSize: Nat                               // Default: 5000, at most 20,000
 var priceStalenessSeconds: Nat                             // Default: 300
 var metadataStalenessSeconds: Nat                          // Default: 3600
 var dailyPortfolioSummaries: [DailyPortfolioSummary]
-var dailyPriceCandles: [DailyPriceCandle]
+var dailyPriceCandles: [DailyPriceCandle]                 // empty since 0.9.4: candles in dailyPriceCandleRing
+var dailyPriceCandleRing: BotRing.Ring<DailyPriceCandle>
 
 // Circuit Breaker
 var circuitBreakerEnabled: Bool
@@ -854,7 +865,8 @@ var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(ba
 var choreTradingPurseId: [(Text, Text)]                   // instanceId → purseId (cross-chore override)
 
 // Per-purse portfolio snapshots
-var purseSnapshots: [(Text, PortfolioSnapshot)]           // (purseId, snapshot) pairs
+var purseSnapshots: [(Text, PortfolioSnapshot)]           // empty since 0.9.4: (purseId, snapshot) pairs in purseSnapshotRing
+var purseSnapshotRing: BotRing.Ring<(Text, PortfolioSnapshot)>
 var purseSnapshotNextId: Nat
 var purseSnapshotMaxEntries: Nat                           // Default: 10,000
 
@@ -1033,7 +1045,7 @@ clearOneOffTradeHistory() : async ()
 
 ### Trade Log
 ```motoko
-getTradeLog(query: TradeLogQuery) : async TradeLogResult   // Paginated
+getTradeLog(query: TradeLogQuery) : async TradeLogResult   // Newest first; at most 500 per page (offset)
 getTradeLogStats() : async { totalEntries: Nat; nextId: Nat }
 clearTradeLog() : async ()
 deleteTradeLogEntries(ids: [Nat]) : async { ... }
@@ -1041,14 +1053,14 @@ deleteTradeLogEntries(ids: [Nat]) : async { ... }
 
 ### Snapshots, prices, capital, logging settings
 ```motoko
-getPortfolioSnapshots(q: PortfolioSnapshotQuery) : async PortfolioSnapshotResult
+getPortfolioSnapshots(q: PortfolioSnapshotQuery) : async PortfolioSnapshotResult   // 200 per page; newestFirst, offset
 getPortfolioSnapshotStats() : async { totalEntries: Nat; nextId: Nat }
 clearPortfolioSnapshots() : async ()
 getPursePortfolioSnapshots(purseId: Text, q: PortfolioSnapshotQuery) : async PortfolioSnapshotResult
 listPurseSnapshotPurses() : async [Text]
-getDailyPortfolioSummaries(q: DailyPortfolioSummaryQuery) : async { ... }
-getDailyPriceCandles(q: DailyPriceCandleQuery) : async { ... }
-getPriceHistory(q: PriceHistoryQuery) : async PriceHistoryResult
+getDailyPortfolioSummaries(q: DailyPortfolioSummaryQuery) : async { ... }   // 1000 per page; newestFirst
+getDailyPriceCandles(q: DailyPriceCandleQuery) : async { ... }               // 1000 per page; newestFirst
+getPriceHistory(q: PriceHistoryQuery) : async PriceHistoryResult             // 1000 per page; newestFirst
 getLastKnownPrices() : async [(Text, CachedPrice)]
 getPriceStaleness / setPriceStaleness(seconds: Nat)
 getMetadataStaleness / setMetadataStaleness(seconds: Nat)
@@ -1071,7 +1083,7 @@ clearLogs() : async ()
 getLogAlertSummary(sinceId: Nat) : async LogAlertSummary
 ```
 
-(The trading bot has no `setMaxLogEntries`; the bot log keeps `botLogMaxEntries` = 10,000.)
+(The trading bot has no `setMaxLogEntries`; the bot log keeps `botLogMaxEntries` = 10,000. `getLogs` returns at most 500 per call and takes `beforeId` to page back from the newest; see spec/bot_chores.md.)
 
 ### Event System (shared pattern)
 ```motoko
@@ -1517,7 +1529,7 @@ Source Bot                                Listener Bot
 ### Design Principles
 
 - **Loose coupling**: The source bot has no knowledge of listener bot interfaces. It calls a generic `onBotEvent` endpoint.
-- **Demand-driven delivery**: Events go into a transient queue. A timer is set only when the first event is queued; it self-chains until the queue drains, then stops. Zero cost when idle.
+- **Demand-driven delivery**: Events go into a transient queue. A timer is set only when the first event is queued; it self-chains until the queue drains, then stops. Zero cost when idle. The queue is a FIFO with a moving head: O(1) per dequeue since staking bot 0.9.5 / trading bot 0.9.4 (before, each dequeue rebuilt the whole buffer, so every batch cost more the longer the backlog).
 - **Self-event optimization**: When a bot listens to its own events, reactions are processed immediately inline — no inter-canister call.
 - **Double permission check**: Botkey permissions are checked both at listener registration time and before each event delivery (handles revoked permissions).
 - **No enums in stable vars**: All event type IDs, action IDs, condition operators, etc. are stored as Nat.

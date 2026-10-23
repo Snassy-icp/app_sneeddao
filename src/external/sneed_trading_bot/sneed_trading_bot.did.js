@@ -261,6 +261,7 @@ export const idlFactory = ({ IDL }) => {
         toTime: IDL.Opt(IDL.Int),
         startId: IDL.Opt(IDL.Nat),
         limit: IDL.Opt(IDL.Nat),
+        beforeId: IDL.Opt(IDL.Nat), // since the paging fixes; earlier bots ignore it
     });
 
     const LogResult = IDL.Record({
@@ -470,6 +471,8 @@ export const idlFactory = ({ IDL }) => {
         phase: IDL.Opt(SnapshotPhase),
         fromTime: IDL.Opt(IDL.Int),
         toTime: IDL.Opt(IDL.Int),
+        offset: IDL.Opt(IDL.Nat), // since the paging fixes; earlier bots ignore it
+        newestFirst: IDL.Opt(IDL.Bool), // since the paging fixes; earlier bots ignore it
     });
 
     const PortfolioSnapshotResult = IDL.Record({
@@ -512,6 +515,7 @@ export const idlFactory = ({ IDL }) => {
         toDate: IDL.Opt(IDL.Int),
         limit: IDL.Opt(IDL.Nat),
         offset: IDL.Opt(IDL.Nat),
+        newestFirst: IDL.Opt(IDL.Bool), // since the paging fixes; earlier bots ignore it
     });
 
     const DailyPriceCandleQuery = IDL.Record({
@@ -520,6 +524,7 @@ export const idlFactory = ({ IDL }) => {
         toDate: IDL.Opt(IDL.Int),
         limit: IDL.Opt(IDL.Nat),
         offset: IDL.Opt(IDL.Nat),
+        newestFirst: IDL.Opt(IDL.Bool), // since the paging fixes; earlier bots ignore it
     });
 
     // ==========================================
@@ -551,6 +556,7 @@ export const idlFactory = ({ IDL }) => {
         pairKey: IDL.Opt(IDL.Text),
         limit: IDL.Opt(IDL.Nat),
         offset: IDL.Opt(IDL.Nat),
+        newestFirst: IDL.Opt(IDL.Bool), // since the paging fixes; earlier bots ignore it
     });
 
     const PriceHistoryResult = IDL.Record({

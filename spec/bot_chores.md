@@ -979,9 +979,11 @@ Examples for the staking bot:
 
 ### Engine Design
 
-Follows the BotChoreEngine callback pattern. The engine maintains an internal `Buffer<LogEntry>` for efficient operations, populated from persistent state on construction. Each `add()` appends to the buffer, trims if over `maxEntries`, and syncs back via callback.
+Follows the BotChoreEngine callback pattern. The entries live in a stable ring buffer (`src/sneed_bots/BotRing.mo`, stable var `botLogRing`) that the engine mutates in place: `add()` is O(1), the oldest entry is overwritten once `maxEntries` is reached. Until the paging fixes (spec/paging_audit.md S11; staking bot 0.9.5, trading bot 0.9.4) the engine kept a `Buffer` and copied the whole log back to the stable array on every line, which made a message with many log lines O(n²). The old array (`botLogEntries`) is still declared for upgrade compatibility; the engine moves its entries into the ring once and empties it.
 
-Configuration: `maxEntries` defaults to 10,000 and is stored in a stable var (`botLogMaxEntries`); it can be changed at runtime with `setMaxLogEntries`, which trims immediately if needed.
+Configuration: `maxEntries` defaults to 10,000 and is stored in a stable var (`botLogMaxEntries`); it can be changed at runtime with `setMaxLogEntries`, which trims immediately if needed. It is capped at 50,000 (`BotLogEngine.MAX_ENTRIES_CAP`; larger values are clamped, and so is a stored larger value at upgrade).
+
+`getLogs` returns at most 500 entries per call (`MAX_PAGE`) and stops at about 1 MB of entries. Without `startId` it returns the newest matching entries; `beforeId` (additive, since the paging fixes) restricts that to entries below an id, so a viewer pages back from the newest with `beforeId` = the oldest id shown. Older bots ignore `beforeId`.
 
 Changed from the original plan: `maxEntries` was a compile-time constant.
 
@@ -1011,10 +1013,10 @@ type LogResult = {
 
 | Method | Type | Permission | Description |
 |--------|------|-----------|-------------|
-| `getLogs(filter)` | query | ViewLogs | Query entries with filtering and pagination |
+| `getLogs(filter)` | query | ViewLogs | Query entries with filtering and pagination (at most 500 and about 1 MB per call; `startId` pages forward, `beforeId` pages back from the newest) |
 | `getLogConfig()` | query | ViewLogs | Current log level, entry count, etc. |
 | `setLogLevel(level)` | update | ManageLogs | Change the write-side log level |
-| `setMaxLogEntries(n)` | update | ManageLogs | Change the retention cap |
+| `setMaxLogEntries(n)` | update | ManageLogs | Change the retention cap (at most 50,000; larger values are clamped) |
 | `clearLogs()` | update | ManageLogs | Remove all entries (nextId continues) |
 | `getLogAlertSummary(sinceId)` | query | ViewLogs | Counts of errors/warnings with id > `sinceId`, highest error/warning ids, `nextId` — used for unseen-alert badges |
 

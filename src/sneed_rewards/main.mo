@@ -25,6 +25,8 @@ import IC "mo:base/ExperimentalInternetComputer";
 
 import T "Types";
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import Icrc3Sns "../icrc3/SnsRegister";
@@ -103,6 +105,13 @@ shared (deployer) persistent actor class SneedRLL() = this {
   // continuation does not survive an upgrade either.
   transient let in_flight_claims = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
 
+  // Per token, the part of a distribution that is credited in chunks (credit_chunk_size) and
+  // not credited yet: shared out of the ledger balance, so the next reconciliation must not
+  // count it as undistributed. Transient: crediting finishes before an upgrade can start (the
+  // chunks are separated by self-calls, which a stopping canister answers with a reject, and
+  // crediting then simply goes on without the pause).
+  transient let pending_credit = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+
   // ICRC-3 activity log: hash-chained, certified blocks for every distribution, credit,
   // claim, incident, reconciliation and admin change, spilled to archive canisters.
   // Library src/icrc3; design and block catalogue: spec/rll_icrc3.md. New stable fields
@@ -128,6 +137,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
   // transfer may not have landed). A distribution must not share these out again.
   private func reserved_balance(token_id : Principal) : Nat {
     var total : Nat = switch (in_flight_claims.get(token_id)) { case (?a) a; case null 0 };
+    // a distribution being credited in chunks: shared out, but not yet in the local balances
+    switch (pending_credit.get(token_id)) { case (?a) { total += a }; case null {} };
     for (inc in claim_incidents.vals()) {
       if (not inc.resolved and inc.token_id == token_id) { total += inc.total };
     };
@@ -293,15 +304,22 @@ shared (deployer) persistent actor class SneedRLL() = this {
     Iter.toArray(token_totals.entries());
   };
 
-  public shared func balance_reconciliation() : async [{
+  public shared ({ caller }) func balance_reconciliation() : async [{
     token_id : Principal;
     local_total : Nat;
     server_balance : Nat;
     remaining : Nat;
     underflow : Nat;
   }] {
+    // costs a ledger call per known token: signed callers only, rate-limited. Pages read the
+    // same figures with queries (get_known_tokens, the ledgers' icrc1_balance_of,
+    // balance_reconciliation_from_balances).
+    if (Principal.isAnonymous(caller)) Debug.trap(ANON_RECONCILIATION);
+    rate_limit_or_trap(caller, "balance_reconciliation");
     await get_balance_reconciliation();
   };
+
+  transient let ANON_RECONCILIATION = "balance_reconciliation is for signed callers. Read the same figures with queries: get_known_tokens(), each ledger's icrc1_balance_of of this canister's main account, then balance_reconciliation_from_balances(balances).";
 
   private func get_balance_reconciliation() : async [{
     token_id : Principal;
@@ -437,12 +455,71 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };
 
   public shared  ({ caller }) func balances_of_hotkey() : async [(Principal, Nat)] {
+    rate_limit_or_trap(caller, "balances_of_hotkey");
     await get_hotkey_balances(caller);
   };
 
   public shared ({ caller }) func claim_full_balance_of_hotkey(icrc1_ledger_canister_id : Principal, fee : Nat) : async T.TransferResult {
+    if (not rate_limit_take(caller, "claim_full_balance_of_hotkey")) {
+      return #Err(#GenericError { error_code = 429; message = rate_limit_message("claim_full_balance_of_hotkey") });
+    };
     await claim_hotkey_balance(caller, icrc1_ledger_canister_id, fee);
   };
+
+  ////////////////
+  // Rate limits (src/RateLimit.mo) on the update methods anyone can call and that cost the
+  // canister inter-canister calls: claims, hotkey balances and the ledger reconciliation. A
+  // token bucket per caller and method; the rules are stable and admin-settable
+  // (admin_set_rate_limit, logged as rll_config_update), the buckets transient. A rule with
+  // capacity 0 means no limit. inspect peeks (`allows`) for ingress calls; the method takes.
+  ////////////////
+
+  // admin overrides of RATE_DEFAULTS (src/RateRules.mo); stable
+  var rate_rules : [(Text, RateLimit.Rule)] = [];
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("claim_full_balance_of_hotkey", { capacity = 30; per_minute = 10 }),
+    ("balances_of_hotkey", { capacity = 30; per_minute = 10 }),
+    ("balance_reconciliation", { capacity = 30; per_minute = 10 }),
+  ];
+  transient let rate_limiter = RateLimit.Limiter();
+
+  private func rate_rule(action : Text) : RateLimit.Rule { RateRules.rule(rate_rules, RATE_DEFAULTS, action) };
+
+  private func rate_limit_take(caller : Principal, action : Text) : Bool {
+    rate_limiter.take(caller, action, rate_rule(action), Time.now());
+  };
+
+  private func rate_limit_allows(caller : Principal, action : Text) : Bool {
+    rate_limiter.allows(caller, action, rate_rule(action), Time.now());
+  };
+
+  private func rate_limit_message(action : Text) : Text {
+    let r = rate_rule(action);
+    "Rate limited: " # action # " allows " # Nat.toText(r.capacity) # " calls at once and " # Nat.toText(r.per_minute) # " more a minute per caller. Try again shortly.";
+  };
+
+  private func rate_limit_or_trap(caller : Principal, action : Text) {
+    if (not rate_limit_take(caller, action)) Debug.trap(rate_limit_message(action));
+  };
+
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Sets a method's per-caller rate limit (admin; null: back to the default). Methods: see get_rate_limits.
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) return #err("Caller is not admin");
+    let old = rate_rule(action);
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) { #err(e) };
+      case (#ok(r)) {
+        rate_rules := r;
+        let now = rate_rule(action);
+        let v = func(x : RateLimit.Rule) : T3.Value { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) };
+        icrc3_config(?caller, "rate_limit:" # action, v(now), ?v(old));
+        #ok("Rate limit for " # action # ": " # Nat.toText(now.capacity) # " at once, " # Nat.toText(now.per_minute) # " a minute" # (if (now.capacity == 0) " (no limit)" else ""));
+      };
+    };
+  };
+
 
   // GOV API
 
@@ -961,7 +1038,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         if (amount_to_distribute > 0) {
           Debug.print("Distributing amount: " # debug_show(amount_to_distribute));
           // 5. Distribute the calculated amount
-          distribute_to_local_balances(
+          await* distribute_to_local_balances(
             amount_to_distribute,
             token_id,
             { id = 1 },  // First proposal
@@ -1442,14 +1519,15 @@ shared (deployer) persistent actor class SneedRLL() = this {
     Iter.toArray(owners.keys());
   };
 
-  private func distribute_to_local_balances(amount_to_share : Nat, icrc1_ledger_canister_id : Principal, first_proposal_id : T.ProposalId, last_proposal_id : T.ProposalId, exclude_principal : ?Principal) : () {
+  private func distribute_to_local_balances(amount_to_share : Nat, icrc1_ledger_canister_id : Principal, first_proposal_id : T.ProposalId, last_proposal_id : T.ProposalId, exclude_principal : ?Principal) : async* () {
 
     // get the list of people to distribute to
     let dist = calc_distribution(first_proposal_id, last_proposal_id, amount_to_share, exclude_principal);
     let dist_list = dist.shares;
 
     // Only record if we actually distributed something
-    if (dist_list.size() > 0) {
+    if (dist_list.size() > 0 and dist_list.size() <= credit_chunk_size) {
+      // All owners in this message, as always.
       let timestamp = Time.now();
       let proposal_range = {
         first = first_proposal_id.id;
@@ -1506,7 +1584,90 @@ shared (deployer) persistent actor class SneedRLL() = this {
           ]);
         };
       };
+      note_credit_instructions();
+    } else if (dist_list.size() > 0) {
+      // More owners than credit_chunk_size: the same records, credited credit_chunk_size owners
+      // per message. The totals are known up front, so the distribution event and the summary
+      // block come first; the part not credited yet is reserved (pending_credit) until it is.
+      let timestamp = Time.now();
+      let proposal_range = { first = first_proposal_id.id; last = last_proposal_id.id };
+      var total_distributed : Nat = 0;
+      var credited_owners = 0;
+      for ((_, amount) in dist_list.vals()) {
+        total_distributed += amount;
+        if (amount > 0) { credited_owners += 1 };
+      };
+      assert (amount_to_share >= total_distributed);
+      add_pending_credit(icrc1_ledger_canister_id, total_distributed);
+      record_distribution(icrc1_ledger_canister_id, total_distributed);
+      append_distribution_event({ token_id = icrc1_ledger_canister_id; amount = total_distributed; timestamp; proposal_range });
+      let token_v = Icrc3Log.principal(icrc1_ledger_canister_id);
+      let summary = icrc3_add_i("rll_distribution", [
+        ("token", token_v), ("amount", #Nat(total_distributed)), ("requested", #Nat(amount_to_share)),
+        ("owners", #Nat(credited_owners)), ("neurons", #Nat(dist.neurons)), ("voting_power", Icrc3Log.nat64(dist.vp_total)),
+        ("first_proposal", Icrc3Log.nat64(first_proposal_id.id)), ("last_proposal", Icrc3Log.nat64(last_proposal_id.id)), ("via", #Text("cycle")),
+        ("chunks", #Nat((dist_list.size() + credit_chunk_size - 1) / credit_chunk_size)),
+      ]);
+      let chunk = credit_chunk_size; // fixed for this distribution
+      var i = 0;
+      for ((owner, amount) in dist_list.vals()) {
+        if (i > 0 and i % chunk == 0) {
+          note_credit_instructions();
+          // a new message for the next chunk; if the self-call is refused (a stopping
+          // canister), crediting goes on in the reject's callback, also a new message
+          try { await yield_message() } catch (_) {};
+        };
+        ignore increase_balance(owner, icrc1_ledger_canister_id, amount);
+        record_user_distribution(owner, icrc1_ledger_canister_id, amount);
+        append_user_distribution_event({ user = owner; token_id = icrc1_ledger_canister_id; amount; timestamp; proposal_range });
+        remove_pending_credit(icrc1_ledger_canister_id, amount);
+        if (amount > 0) {
+          let vp = switch (dist.owner_vp.get(owner)) { case (?v) v; case null 0 };
+          icrc3_add("rll_credit", [
+            ("owner", Icrc3Log.principal(owner)), ("token", token_v), ("amount", #Nat(amount)),
+            ("voting_power", #Nat(vp)), ("distribution", #Nat(summary)),
+          ]);
+        };
+        i += 1;
+      };
+      pending_credit.delete(icrc1_ledger_canister_id);
+      note_credit_instructions();
     };
+  };
+
+  private func yield_message() : async () {};
+
+  private func add_pending_credit(token_id : Principal, amount : Nat) {
+    let cur = switch (pending_credit.get(token_id)) { case (?a) a; case null 0 };
+    pending_credit.put(token_id, cur + amount);
+  };
+
+  private func remove_pending_credit(token_id : Principal, amount : Nat) {
+    let cur = switch (pending_credit.get(token_id)) { case (?a) a; case null 0 };
+    if (cur > amount) { pending_credit.put(token_id, cur - amount) } else { pending_credit.delete(token_id) };
+  };
+
+  // Owners credited per message in a distribution (admin_set_credit_chunk_size). Above it, a
+  // distribution is credited over several messages, so the daily cycle stays inside the
+  // instruction limit however many owners there are. Stable.
+  var credit_chunk_size : Nat = 1_000;
+
+  // the most instructions one crediting message used, since the last upgrade (get_vote_index_status)
+  transient var max_credit_instructions : Nat64 = 0;
+  transient var last_credit_instructions : Nat64 = 0;
+
+  private func note_credit_instructions() {
+    last_credit_instructions := IC.performanceCounter(0);
+    if (last_credit_instructions > max_credit_instructions) max_credit_instructions := last_credit_instructions;
+  };
+
+  public shared ({ caller }) func admin_set_credit_chunk_size(size : Nat) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) return #err("Caller is not admin");
+    if (size == 0 or size > 100_000) return #err("The chunk size must be between 1 and 100000");
+    let old = credit_chunk_size;
+    credit_chunk_size := size;
+    icrc3_config(?caller, "credit_chunk_size", #Nat(size), ?#Nat(old));
+    #ok("Owners credited per message: " # Nat.toText(size));
   };
 
 
@@ -1583,7 +1744,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
     vp_total : Nat64;
   } {
 
-    let votes = index_proposal_votes_between(first_proposal_id, last_proposal_id);
+    // from the cached vote index (the cycle always shares over proposals 1..highest closed)
+    let votes = if (first_proposal_id.id == 1) { votes_up_to(last_proposal_id.id) } else { index_proposal_votes_between(first_proposal_id, last_proposal_id) };
     let vp_total = sum_votes_total(votes, exclude_principal);
     let shares = Map.HashMap<Principal, Nat>(votes.size(), Principal.equal, Principal.hash);
     let owner_vp = Map.HashMap<Principal, Nat>(votes.size(), Principal.equal, Principal.hash);
@@ -1819,12 +1981,14 @@ shared (deployer) persistent actor class SneedRLL() = this {
                     // Only update if new version has same or more ballots
                     if (new_ballot_count >= existing_ballot_count) {
                         props.put(prop_int_id, prop_data);
+                        vote_index_on_put<system>(prop_int_id, ?existing_prop, prop_data);
                     };
                     // Otherwise keep existing version with more ballots
                 };
                 case (null) {
                     // New proposal, just add it
                     props.put(prop_int_id, prop_data);
+                    vote_index_on_put<system>(prop_int_id, null, prop_data);
                 };
             };
             
@@ -1886,6 +2050,251 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (?old_vp) {
         votes.put(neuron_id, old_vp + vp);
       };
+    };
+  };
+
+  ////////////////
+  // Vote indexes (spec/paging_audit.md U2, S1, S2). The rewards page (get_hotkey_voting_power)
+  // and every token of the daily distribution used to rebuild the cast voting power per neuron
+  // from every ballot of every proposal, and get_user_voting_history scanned them all as well.
+  // Both indexes are now kept up to date as proposals are imported (import_proposal).
+  // Transient: the imported proposals stay the only stored data. After an upgrade (and after
+  // clear_imported_props) they are rebuilt from the ballots by a timer, a slice of proposals
+  // per message (VOTE_INDEX_SLICE instructions), not in postupgrade: one pass costs about 10B
+  // instructions at the 2026-10 size. Until the rebuild is done (`ready` in
+  // get_vote_index_status, about a minute), the voting power is computed by the old full walk
+  // and get_user_voting_history asks to retry. An import during the rebuild restarts it.
+  // - vote_index: per neuron, the cast voting power (ballots with vote != 0) and the number of
+  //   cast ballots over proposals 1..vote_index_upto, the longest run of imported proposals
+  //   from 1 (index_proposal_votes_between stops at the first missing proposal too). A neuron
+  //   is in it while it has a cast ballot in that run, even of voting power 0, as it was a key
+  //   of the old per-call map. Sums are Nat; converting them to Nat64 traps where the old
+  //   Nat64 sums overflowed.
+  // - ballot_index: per neuron, every ballot it has in any imported proposal, as parallel
+  //   lists of proposal ids and positions in that proposal's ballots.
+  // Neuron ids are the ballots' hex texts decoded by hex_text_to_blob, exactly as before.
+  ////////////////
+
+  type VpCell = { var vp : Nat; var cast : Nat };
+  type NeuronBallots = { pids : Buffer.Buffer<Nat>; positions : Buffer.Buffer<Nat> };
+
+  transient var vote_index = Map.HashMap<Blob, VpCell>(100, Blob.equal, Blob.hash);
+  transient var vote_index_upto : Nat64 = 0;
+  transient var ballot_index = Map.HashMap<Blob, NeuronBallots>(100, Blob.equal, Blob.hash);
+  transient var ballot_index_entries : Nat = 0;
+  // ready: both indexes match the imported proposals. A fresh canister (nothing imported) is.
+  transient var vote_index_ready : Bool = props.size() == 0;
+  transient var vote_index_rebuild_timer : ?Nat = null;
+  transient var vote_index_rebuild_keys : [Int] = [];
+  transient var vote_index_rebuild_next : Nat = 0; // in vote_index_rebuild_keys
+  transient var vote_index_rebuild_started : Int = 0;
+  transient var vote_index_rebuilt_at : Int = 0;
+  transient var vote_index_rebuild_instructions : Nat64 = 0; // summed over the slices
+  transient var vote_index_rebuild_messages : Nat = 0;
+  transient let VOTE_INDEX_SLICE : Nat64 = 2_000_000_000;
+
+  // hex_text_to_blob of a ballot's neuron id, remembered: the same few thousand neurons have
+  // ballots on every proposal
+  transient var hex_id_cache = Map.HashMap<Text, Blob>(1000, Text.equal, Text.hash);
+
+  private func ballot_neuron_id(hex : Text) : Blob {
+    switch (hex_id_cache.get(hex)) {
+      case (?b) b;
+      case null {
+        let b = hex_text_to_blob(hex);
+        hex_id_cache.put(hex, b);
+        b;
+      };
+    };
+  };
+
+  // adds (or takes away) one proposal's cast ballots to (from) a per-neuron sum map
+  private func vp_apply(m : Map.HashMap<Blob, VpCell>, prop : T.ProposalData, add : Bool) {
+    for ((neuron_hex_text_id, ballot) in prop.ballots.vals()) {
+      if (ballot.vote != 0) {
+        let id = ballot_neuron_id(neuron_hex_text_id);
+        let vp = Nat64.toNat(ballot.voting_power);
+        switch (m.get(id)) {
+          case (?c) {
+            if (add) { c.vp += vp; c.cast += 1 } else {
+              c.vp -= vp;
+              c.cast -= 1;
+              if (c.cast == 0) { m.delete(id) };
+            };
+          };
+          case null { if (add) { m.put(id, { var vp = vp; var cast = 1 }) } };
+        };
+      };
+    };
+  };
+
+  private func ballot_index_add(pid : Int, prop : T.ProposalData) {
+    let p = Int.abs(pid);
+    var pos = 0;
+    for ((neuron_hex_text_id, _) in prop.ballots.vals()) {
+      let id = ballot_neuron_id(neuron_hex_text_id);
+      switch (ballot_index.get(id)) {
+        case (?b) { b.pids.add(p); b.positions.add(pos) };
+        case null {
+          let b = { pids = Buffer.Buffer<Nat>(8); positions = Buffer.Buffer<Nat>(8) };
+          b.pids.add(p);
+          b.positions.add(pos);
+          ballot_index.put(id, b);
+        };
+      };
+      ballot_index_entries += 1;
+      pos += 1;
+    };
+  };
+
+  private func ballot_index_remove(pid : Int, prop : T.ProposalData) {
+    let p = Int.abs(pid);
+    for ((neuron_hex_text_id, _) in prop.ballots.vals()) {
+      let id = ballot_neuron_id(neuron_hex_text_id);
+      switch (ballot_index.get(id)) {
+        case (?b) {
+          let pids = Buffer.Buffer<Nat>(b.pids.size());
+          let positions = Buffer.Buffer<Nat>(b.pids.size());
+          for (k in Iter.range(0, b.pids.size() - 1)) {
+            if (b.pids.get(k) != p) { pids.add(b.pids.get(k)); positions.add(b.positions.get(k)) };
+          };
+          ballot_index_entries -= (b.pids.size() - pids.size());
+          if (pids.size() == 0) { ballot_index.delete(id) } else { ballot_index.put(id, { pids; positions }) };
+        };
+        case null {};
+      };
+    };
+  };
+
+  // the run of imported proposals from 1 grows while the next proposal is there (within the
+  // instruction budget `until`, when given: the rebuild's slices)
+  private func vote_index_extend(until : ?Nat64) : Bool {
+    label run loop {
+      switch (until) { case (?u) { if (IC.performanceCounter(0) > u) return false }; case null {} };
+      switch (props.get(int_from_nat64(vote_index_upto + 1))) {
+        case (?p) { vp_apply(vote_index, p, true); vote_index_upto += 1 };
+        case null { break run };
+      };
+    };
+    true;
+  };
+
+  // after props.put(pid, prop), which replaced `old` if there was one
+  private func vote_index_on_put<system>(pid : Int, old : ?T.ProposalData, prop : T.ProposalData) {
+    if (not vote_index_ready) {
+      // a rebuild is under way: start it again over the proposals as they are now
+      start_vote_index_rebuild<system>();
+      return;
+    };
+    let in_run = pid >= 1 and pid <= int_from_nat64(vote_index_upto);
+    switch (old) {
+      case (?o) {
+        ballot_index_remove(pid, o);
+        if (in_run) { vp_apply(vote_index, o, false) };
+      };
+      case null {};
+    };
+    ballot_index_add(pid, prop);
+    if (in_run) { vp_apply(vote_index, prop, true) };
+    ignore vote_index_extend(null);
+  };
+
+  private func start_vote_index_rebuild<system>() {
+    switch (vote_index_rebuild_timer) { case (?t) { Timer.cancelTimer(t) }; case null {} };
+    vote_index := Map.HashMap<Blob, VpCell>(neurons.size() + 100, Blob.equal, Blob.hash);
+    vote_index_upto := 0;
+    ballot_index := Map.HashMap<Blob, NeuronBallots>(neurons.size() + 100, Blob.equal, Blob.hash);
+    ballot_index_entries := 0;
+    vote_index_rebuild_keys := Iter.toArray(props.keys());
+    vote_index_rebuild_next := 0;
+    vote_index_rebuild_started := Time.now();
+    vote_index_rebuild_instructions := 0;
+    vote_index_rebuild_messages := 0;
+    vote_index_ready := false;
+    vote_index_rebuild_timer := ?Timer.setTimer<system>(#seconds 0, vote_index_rebuild_tick);
+  };
+
+  // one slice: the ballot index over the next proposals, then the voting-power run
+  private func vote_index_rebuild_tick() : async () {
+    vote_index_rebuild_timer := null;
+    if (vote_index_ready) return;
+    let start = IC.performanceCounter(0);
+    let until = start + VOTE_INDEX_SLICE;
+    var done = false;
+    label slice loop {
+      if (vote_index_rebuild_next < vote_index_rebuild_keys.size()) {
+        if (IC.performanceCounter(0) > until) break slice;
+        let pid = vote_index_rebuild_keys[vote_index_rebuild_next];
+        switch (props.get(pid)) { case (?p) { ballot_index_add(pid, p) }; case null {} };
+        vote_index_rebuild_next += 1;
+      } else {
+        done := vote_index_extend(?until);
+        break slice;
+      };
+    };
+    vote_index_rebuild_instructions += IC.performanceCounter(0) - start;
+    vote_index_rebuild_messages += 1;
+    if (done) {
+      vote_index_ready := true;
+      vote_index_rebuild_keys := [];
+      vote_index_rebuilt_at := Time.now();
+    } else {
+      vote_index_rebuild_timer := ?Timer.setTimer<system>(#seconds 0, vote_index_rebuild_tick);
+    };
+  };
+
+  // The cast voting power per neuron over proposals 1..last: what
+  // index_proposal_votes_between({ id = 1 }, { id = last }) computes from every ballot, from the
+  // index. Proposals of the run above `last` (still open ones: a few) are taken away again.
+  private func votes_up_to(last : Nat64) : Map.HashMap<Blob, Nat64> {
+    // last 0: the old range was 0..1, which starts at proposal 0 (never imported); kept as it was.
+    // During a rebuild: the old full walk.
+    if (last == 0 or not vote_index_ready) { return index_proposal_votes_between({ id = 1 }, { id = last }) };
+    let tail = Map.HashMap<Blob, VpCell>(16, Blob.equal, Blob.hash);
+    var p = last + 1;
+    while (p <= vote_index_upto) {
+      switch (props.get(int_from_nat64(p))) { case (?prop) { vp_apply(tail, prop, true) }; case null {} };
+      p += 1;
+    };
+    let votes = Map.HashMap<Blob, Nat64>(vote_index.size() + 1, Blob.equal, Blob.hash);
+    for ((id, c) in vote_index.entries()) {
+      switch (tail.get(id)) {
+        case (?t) { if (c.cast > t.cast) { votes.put(id, Nat64.fromNat(c.vp - t.vp)) } };
+        case null { votes.put(id, Nat64.fromNat(c.vp)) };
+      };
+    };
+    votes;
+  };
+
+  public query func get_vote_index_status() : async {
+    ready : Bool;
+    proposals : Nat;
+    indexed_through : Nat64;
+    neurons_with_votes : Nat;
+    neurons_with_ballots : Nat;
+    ballots : Nat;
+    rebuild_started : Int;
+    rebuilt_at : Int;
+    rebuild_instructions : Nat64;
+    rebuild_messages : Nat;
+    credit_chunk_size : Nat;
+    last_credit_instructions : Nat64;
+    max_credit_instructions : Nat64;
+  } {
+    {
+      ready = vote_index_ready;
+      proposals = props.size();
+      indexed_through = vote_index_upto;
+      neurons_with_votes = vote_index.size();
+      neurons_with_ballots = ballot_index.size();
+      ballots = ballot_index_entries;
+      rebuild_started = vote_index_rebuild_started;
+      rebuilt_at = vote_index_rebuilt_at;
+      rebuild_instructions = vote_index_rebuild_instructions;
+      rebuild_messages = vote_index_rebuild_messages;
+      credit_chunk_size;
+      last_credit_instructions;
+      max_credit_instructions;
     };
   };
 
@@ -2035,6 +2444,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     // the event statistics' counters and the per-owner index (transient): one pass over the lists
     rebuild_event_stats();
+    // the vote indexes (transient): rebuilt from the imported ballots by a timer, in slices
+    start_vote_index_rebuild<system>();
 
     recover_timers_after_upgrade<system>();
 
@@ -2195,6 +2606,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert is_admin(caller);
     let count = props.size();
     for (key in props.keys()) { props.delete(key); }; 
+    start_vote_index_rebuild<system>(); // nothing left: done at the first slice
     icrc3_admin(caller, "clear_imported_props", [("count", #Nat(count))]);
   };
 
@@ -2474,8 +2886,14 @@ shared (deployer) persistent actor class SneedRLL() = this {
     Buffer.toArray(events);
   };
 
-  // Query function to get all user distribution events
+  // All user distribution events, while they fit one page (EVENT_PAGE_MAX). The list has long
+  // outgrown one reply on production (hundreds of thousands of credits, IC0504), so beyond a
+  // page this refuses with a pointer to the paged method instead of failing on the reply size.
   public query func get_user_distribution_events() : async [T.UserDistributionEvent] {
+    let n = user_distribution_events.size();
+    if (n > EVENT_PAGE_MAX) {
+      Debug.trap("get_user_distribution_events: the list is too large for one reply (" # Nat.toText(n) # " events). Use get_user_distribution_events_page(start, length), at most " # Nat.toText(EVENT_PAGE_MAX) # " events a page, or get_user_specific_distribution_events(user) for one owner.");
+    };
     Buffer.toArray(user_distribution_events);
   };
 
@@ -2813,10 +3231,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     // Calculate total voting power from proposal 1 to highest closed proposal
     let highest_closed = getHighestClosedProposalId();
-    let votes = index_proposal_votes_between(
-      { id = 1 },  // First proposal
-      { id = highest_closed }  // Last closed proposal
-    );
+    let votes = votes_up_to(highest_closed); // the cached vote index
 
     // Calculate total voting power for the input neurons
     var total_vp : Nat64 = 0;
@@ -3572,7 +3987,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     };
   };
 
-  public query func get_user_voting_history(user : Principal) : async [{
+  type VotingHistoryEntry = {
     proposal_id : Nat64;
     vote : Int32;
     voting_power : Nat64;
@@ -3585,93 +4000,112 @@ shared (deployer) persistent actor class SneedRLL() = this {
       voting_power : Nat64;
       timestamp : Nat64;
     }];
-  }] {
-    let voting_history = Buffer.Buffer<{
-      proposal_id : Nat64;
-      vote : Int32;
-      voting_power : Nat64;
-      timestamp : Nat64;
-      proposal_title : ?Text;
-      proposal_action : Nat64;
-      neuron_votes : [{
-        neuron_id : Text;
-        vote : Int32;
-        voting_power : Nat64;
-        timestamp : Nat64;
-      }];
-    }>(10);
+  };
 
-    // First get all neurons controlled by this user
-    let user_neurons = Map.HashMap<Blob, Bool>(100, Blob.equal, Blob.hash);
+  // Per proposal, the positions of the ballots of every imported neuron `user` has any
+  // permission on (from the ballot index), and how many ballots that is.
+  private func user_ballot_positions(user : Principal) : (Map.HashMap<Int, Buffer.Buffer<Nat>>, Nat) {
+    if (not vote_index_ready) {
+      Debug.trap("The vote index is being rebuilt after an upgrade (about a minute; get_vote_index_status().ready). Retry shortly.");
+    };
+    let by_prop = Map.HashMap<Int, Buffer.Buffer<Nat>>(64, Int.equal, Int.hash);
+    var count = 0;
     for ((neuron_id, neuron) in neurons.entries()) {
+      var mine = false;
       for (permission in neuron.permissions.vals()) {
-        switch (permission.principal) {
-          case (?principal) {
-            if (Principal.equal(principal, user)) {
-              user_neurons.put(neuron_id, true);
+        if (permission.principal == ?user) { mine := true };
+      };
+      if (mine) {
+        switch (ballot_index.get(neuron_id)) {
+          case (?b) {
+            for (k in Iter.range(0, b.pids.size() - 1)) {
+              let pid : Int = b.pids.get(k);
+              let pos = b.positions.get(k);
+              switch (by_prop.get(pid)) {
+                case (?ps) { ps.add(pos) };
+                case null { let ps = Buffer.Buffer<Nat>(2); ps.add(pos); by_prop.put(pid, ps) };
+              };
+              count += 1;
             };
           };
-          case (null) { };
+          case null {};
         };
       };
     };
+    (by_prop, count);
+  };
 
-    // Now scan all proposals for votes from these neurons
+  // One proposal's entry: the user's ballots in ballot order, as the old scan collected them
+  private func voting_history_entry(prop_id : Int, prop_data : T.ProposalData, positions : Buffer.Buffer<Nat>) : VotingHistoryEntry {
+    let sorted = Array.sort<Nat>(Buffer.toArray(positions), Nat.compare);
+    var total_voting_power : Nat64 = 0;
+    var latest_timestamp : Nat64 = 0;
+    var combined_vote : Int32 = 0;
+    let neuron_votes = Array.map<Nat, { neuron_id : Text; vote : Int32; voting_power : Nat64; timestamp : Nat64 }>(sorted, func(pos) {
+      let (neuron_hex_id, ballot) = prop_data.ballots[pos];
+      total_voting_power += ballot.voting_power;
+      if (ballot.cast_timestamp_seconds > latest_timestamp) {
+        latest_timestamp := ballot.cast_timestamp_seconds;
+      };
+      combined_vote := ballot.vote; // the last ballot's vote, as before
+      { neuron_id = neuron_hex_id; vote = ballot.vote; voting_power = ballot.voting_power; timestamp = ballot.cast_timestamp_seconds };
+    });
+    {
+      proposal_id = Nat64.fromIntWrap(prop_id);
+      vote = combined_vote;
+      voting_power = total_voting_power;
+      timestamp = latest_timestamp;
+      proposal_title = switch (prop_data.proposal) {
+        case (null) { null };
+        case (?proposal) { ?proposal.title };
+      };
+      proposal_action = prop_data.action;
+      neuron_votes;
+    };
+  };
+
+  // Ballots in one get_user_voting_history reply at most (about 100 bytes each, so far below
+  // the 3 MiB reply limit); more is refused with a pointer to the paged method.
+  transient let VOTING_HISTORY_MAX_BALLOTS = 15_000;
+  transient let VOTING_HISTORY_PAGE_MAX = 100;
+
+  // Per proposal, the votes of every imported neuron the principal has any permission on, with
+  // summed voting power and title. Served from the ballot index (the old version scanned every
+  // ballot of every proposal and exceeded the query instruction limit on production); same
+  // entries in the same order as before.
+  public query func get_user_voting_history(user : Principal) : async [VotingHistoryEntry] {
+    let (by_prop, count) = user_ballot_positions(user);
+    if (count > VOTING_HISTORY_MAX_BALLOTS) {
+      Debug.trap("get_user_voting_history: too large for one reply (" # Nat.toText(count) # " ballots). Use get_user_voting_history_page(user, start, length).");
+    };
+    let out = Buffer.Buffer<VotingHistoryEntry>(by_prop.size());
     for ((prop_id, prop_data) in props.entries()) {
-      let proposal_id = Nat64.fromIntWrap(prop_id);
-      let neuron_votes = Buffer.Buffer<{
-        neuron_id : Text;
-        vote : Int32;
-        voting_power : Nat64;
-        timestamp : Nat64;
-      }>(5);
-
-      var total_voting_power : Nat64 = 0;
-      var latest_timestamp : Nat64 = 0;
-      var combined_vote : Int32 = 0;
-
-      // Collect all votes from user's neurons for this proposal
-      for ((neuron_hex_id, ballot) in prop_data.ballots.vals()) {
-        let neuron_id = hex_text_to_blob(neuron_hex_id);
-        switch (user_neurons.get(neuron_id)) {
-          case (?_) {
-            // This ballot belongs to one of the user's neurons
-            neuron_votes.add({
-              neuron_id = neuron_hex_id;
-              vote = ballot.vote;
-              voting_power = ballot.voting_power;
-              timestamp = ballot.cast_timestamp_seconds;
-            });
-
-            total_voting_power += ballot.voting_power;
-            if (ballot.cast_timestamp_seconds > latest_timestamp) {
-              latest_timestamp := ballot.cast_timestamp_seconds;
-            };
-            // For combined vote, we'll use the most common vote direction
-            combined_vote := ballot.vote;
-          };
-          case (null) { };
-        };
-      };
-
-      // Only add to history if we found votes from user's neurons
-      if (neuron_votes.size() > 0) {
-        voting_history.add({
-          proposal_id = proposal_id;
-          vote = combined_vote;
-          voting_power = total_voting_power;
-          timestamp = latest_timestamp;
-          proposal_title = switch (prop_data.proposal) {
-            case (null) { null };
-            case (?proposal) { ?proposal.title };
-          };
-          proposal_action = prop_data.action;
-          neuron_votes = Buffer.toArray(neuron_votes);
-        });
+      switch (by_prop.get(prop_id)) {
+        case (?positions) { out.add(voting_history_entry(prop_id, prop_data, positions)) };
+        case null {};
       };
     };
+    Buffer.toArray(out);
+  };
 
-    Buffer.toArray(voting_history);
+  // The same entries newest proposal first, `length` (at most VOTING_HISTORY_PAGE_MAX) from
+  // position `start`; `total` is the number of proposals with a ballot of the user's neurons.
+  public query func get_user_voting_history_page(user : Principal, start : Nat, length : Nat) : async { total : Nat; history : [VotingHistoryEntry] } {
+    let (by_prop, _) = user_ballot_positions(user);
+    let ids = Array.sort<Int>(Iter.toArray(by_prop.keys()), func(a, b) { Int.compare(b, a) });
+    let from = Nat.min(start, ids.size());
+    let to = Nat.min(ids.size(), from + Nat.min(length, VOTING_HISTORY_PAGE_MAX));
+    let out = Buffer.Buffer<VotingHistoryEntry>(to - from);
+    var k = from;
+    while (k < to) {
+      let pid = ids[k];
+      switch (props.get(pid), by_prop.get(pid)) {
+        case (?prop_data, ?positions) { out.add(voting_history_entry(pid, prop_data, positions)) };
+        case _ {};
+      };
+      k += 1;
+    };
+    { total = ids.size(); history = Buffer.toArray(out) };
   };
 
   public query func get_neuron_voting_history(neuron_id : Blob) : async [{
@@ -4141,8 +4575,13 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
-  system func inspect({ arg : Blob; msg : {
+  system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #admin_set_credit_chunk_size : Any;
+    #admin_set_rate_limit : Any;
+    #get_rate_limits : Any;
+    #get_user_voting_history_page : Any;
+    #get_vote_index_status : Any;
     #acceptsVote : Any;
     #add_admin : Any;
     #add_known_token : Any;
@@ -4257,6 +4696,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
     switch (msg) {
       case (
         #get_api_doc _
+        or #get_rate_limits _
+        or #get_user_voting_history_page _
+        or #get_vote_index_status _
         or #acceptsVote _
         or #all_token_balances _
         or #balance_of _
@@ -4322,6 +4764,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
         or #principal_is_admin _
         or #total_balance _
       ) false;
+      // the rate-limited methods: refused early while the caller's bucket is empty
+      case (#claim_full_balance_of_hotkey _) arg.size() <= IngressGuard.SMALL_ARG and rate_limit_allows(caller, "claim_full_balance_of_hotkey");
+      case (#balances_of_hotkey _) arg.size() <= IngressGuard.SMALL_ARG and rate_limit_allows(caller, "balances_of_hotkey");
+      case (#balance_reconciliation _) arg.size() <= IngressGuard.SMALL_ARG and not Principal.isAnonymous(caller) and rate_limit_allows(caller, "balance_reconciliation");
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

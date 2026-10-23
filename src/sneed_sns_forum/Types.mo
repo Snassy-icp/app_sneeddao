@@ -148,6 +148,16 @@ module {
     };
     public type MentionsPage = { items: [MentionResponse]; next: ?Nat };
 
+    /// A page of a user's list, newest first (get_*_page): `next` is the `before` of the next page
+    /// (a position in the user's list, not an id), null at the end.
+    public type PostsPage = { items: [PostResponse]; next: ?Nat };
+    public type ThreadsPage = { items: [ThreadResponse]; next: ?Nat };
+    public type TipsPage = { items: [TipResponse]; next: ?Nat };
+
+    /// A rate limit (src/RateLimit.mo): `capacity` calls at once, refilled at `per_minute` calls a
+    /// minute; capacity 0 means no limit.
+    public type RateRule = { capacity: Nat; per_minute: Nat };
+
     public type Post = {
         id: Nat;
         thread_id: Nat;
@@ -268,6 +278,14 @@ module {
         
         // Read tracking
         user_thread_reads: Map.Map<Text, UserThreadReadData>; // "{user_principal}:{thread_id}" -> read_data
+
+        // Per-user indexes (spec/paging_audit.md), in creation order: every post and thread a user
+        // created, and every post that may count as a reply to them (a reply to one of their posts,
+        // or a top-level post by someone else in one of their threads). Whether an entry counts now
+        // (nothing deleted) is checked when read.
+        user_posts: Map.Map<Nat32, Vector.Vector<Nat>>; // author index -> [post_ids]
+        user_threads: Map.Map<Nat32, Vector.Vector<Nat>>; // author index -> [thread_ids]
+        user_reply_inbox: Map.Map<Nat32, Vector.Vector<Nat>>; // user index -> [post_ids replying to them]
 
         // Appends a block to the ICRC-3 activity log (main.mo; spec/forum_icrc3.md): btype without
         // its prefix, the calling principal, tx fields. Used for the structure lib.mo creates itself.

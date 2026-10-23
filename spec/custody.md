@@ -108,7 +108,10 @@ stage ──► pending ──approvals ≥ threshold──► approved(at) ─�
 Changed from the original plan: only pending and approved ops expire, since vetoed, failed and cancelled are already final. Expiry is applied lazily, when the op is next read.
 
 - `stage_op(child, kind, memo, payer)`: any signed-in caller, free; refused while paused;
-  memo at most 500 characters; an empty `#set_config` is refused. Validates the op against the
+  memo at most 500 characters; an empty `#set_config` is refused; an `#install` upgrade argument
+  at most 256 KiB; a non-admin may have at most `max_open_ops_per_caller` (10, `admin_set_max_open_ops`)
+  open ops at once, and `stage_op`, `register` and `refund_op` are rate limited per caller
+  (`get_rate_limits`, `admin_set_rate_limit`; src/RateLimit.mo). Validates the op against the
   child's kind and the blessed lists, records the payer (the caller unless named; never
   anonymous) and the fee due (the premium rate when the **payer** is a Sneed Premium
   member; 0 for ops on the guardian itself). The fee is then paid by a plain transfer to the op's **payment subaccount**
@@ -138,7 +141,10 @@ Changed from the original plan: only pending and approved ops expire, since veto
   attributes deposits to senders.
 - `cancel_op(id)`: the stager or an approver, while pending or approved (admins only as approvers).
 - Ops not executed within `op_ttl_ns` (30 days by default; a `#set_config` below one day is ignored) expire.
-- Reads: `get_op`, `list_ops(open, limit)` (newest first), `list_ops_for(canister)`.
+- Reads: `get_op`, `list_ops(open, limit)` (newest first; at most 100, `limit` 0 = 50, and fewer once
+  install arguments pass about 1.5 MB), `list_ops_for(canister)` (the newest 100, same byte cap), and
+  `list_op_summaries({ open; child; before; limit })`, which pages every op newest first with an install's
+  argument as `arg_size` + `arg_sha256` only (the bytes come with `get_op`). `get_op_limits` lists the caps.
 
 Policy changes are ops like any other and pass the rules in force at the time, so a
 veto council cannot be dissolved around its back. Ops on the guardian itself

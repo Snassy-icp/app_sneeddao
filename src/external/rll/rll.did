@@ -316,7 +316,6 @@ type SneedRLL =
                                          nat;
                                        }) query;
    get_unmatched_pending_claims: () -> (Result_1) query;
-   get_user_distribution_events: () -> (vec UserDistributionEvent) query;
    get_user_distributions: (principal) -> (vec record {
                                                  principal;
                                                  nat;

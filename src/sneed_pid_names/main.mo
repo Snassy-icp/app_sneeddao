@@ -15,6 +15,8 @@ import Time "mo:base/Time";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
@@ -142,7 +144,6 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public type ImportResult = { principal : Principal; result : T.Result };
   public type Stats = { accounts : Nat; named : Nat; canisters : Nat; last_seq : Nat; log_length : Nat; import_closed : Bool };
   public type Result = T.Result;
-
   type NameRef = { #account : AccountId; #canister : Principal };
 
   // ---------------------------------------------------------------------------------------------
@@ -197,6 +198,17 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   var icrc3 : Icrc3Log.State = Icrc3Log.init();
   transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
 
+  // per-caller rate limits of writes (src/RateLimit.mo); admins are not limited
+  var rate_rules : [(Text, RateLimit.Rule)] = []; // admin overrides of RATE_DEFAULTS
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("name", { capacity = 30; per_minute = 10 }), // set_my_name, set_account_name, set_canister_name
+    ("avatar", { capacity = 30; per_minute = 10 }), // set_*avatar, set_my_*nft_avatar, refresh_nft_avatar
+    ("hotkey", { capacity = 20; per_minute = 5 }), // add_hotkey, remove_hotkey, leave_hotkey_accounts
+    ("account", { capacity = 30; per_minute = 10 }), // merge_account, link_by_neuron, remove_member, set_member, set_canister_run_by
+  ];
+  transient let RATE_LIMITED = "Rate limited: too many changes in a short time, please try again in a minute";
+
 
   // ---------------------------------------------------------------------------------------------
   // Helpers
@@ -206,6 +218,10 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   func self() : Principal = Principal.fromActor(this);
 
   func isAdmin(p : Principal) : Bool = Principal.isController(p) or Array.find<Principal>(admins, func(a) = a == p) != null;
+
+  func rateRule(action : Text) : RateLimit.Rule = RateRules.rule(rate_rules, RATE_DEFAULTS, action);
+  /// Takes one call of `action` from the caller's bucket; true when the caller is over the limit.
+  func limited(caller : Principal, action : Text) : Bool = not isAdmin(caller) and not limiter.take(caller, action, rateRule(action), Time.now());
 
   func logInfo(cid : Nat, caller : Principal, m : Text) = TextLog.add(textlog, #info, cid, caller, m);
   func logError(cid : Nat, caller : Principal, m : Text) = TextLog.add(textlog, #error, cid, caller, m);
@@ -552,7 +568,6 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (Map.get(canisters, Map.phash, p)) { case (?c) ?canisterView(c); case null null };
   };
 
-  /// Pending invites for the caller.
   /// What changed after sequence number `after`, oldest first: each entity once, with its current
   /// state (null when deleted). Page through with the last item's seq; empty when caught up.
   public query func changes_since(args : { after : Nat; limit : Nat }) : async { items : [Change]; last_seq : Nat } {
@@ -597,6 +612,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func set_my_name(name : Text) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters are named by their controllers (set_canister_name)");
+    if (limited(caller, "name")) return #err(RATE_LIMITED);
     if (name != "") {
       switch (NameRules.problem(name, 1)) { case (?p) return #err(p); case null {} };
       switch (accountOf(caller)) {
@@ -631,6 +647,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func set_my_avatar(avatar : ?AvatarRef) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters use set_canister_avatar");
+    if (limited(caller, "avatar")) return #err(RATE_LIMITED);
     switch avatar { case (?x) switch (T.avatarProblem(x)) { case (?p) return #err(p); case null {} }; case null {} };
     let a = switch (accountOf(caller)) {
       case (?a) {
@@ -653,10 +670,12 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// Give a principal a hotkey on your account: it may then manage the account (rename it, change
   /// its avatar, its principals' labels) and merge it into its own account, which makes your
   /// principal show that account's name. The hotkey needs to do nothing to accept. It is not shown
-  /// as one of the account's principals.
+  /// as one of the account's principals. A hotkey that does not want it removes itself
+  /// (remove_hotkey, or leave_hotkey_accounts for all).
   public shared ({ caller }) func add_hotkey(hotkey : Principal) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters cannot own accounts");
+    if (limited(caller, "hotkey")) return #err(RATE_LIMITED);
     if (Principal.isAnonymous(hotkey)) return #err("Not a principal");
     if (hotkey == caller) return #err("That is you");
     let a = switch (accountOf(caller)) {
@@ -675,31 +694,74 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     #ok("Hotkey added");
   };
 
-  /// Owners remove a hotkey from their account; a hotkey may remove itself.
-  public shared ({ caller }) func remove_hotkey(account : AccountId, hotkey : Principal) : async Result {
-    let a = switch (Map.get(accounts, Map.nhash, account)) { case (?a) a; case null return #err("No such account") };
-    if (not isOwner(a, caller) and caller != hotkey) return #err("Only the account's owners can remove hotkeys");
-    if (not isHotkey(a, hotkey)) return #err("Not a hotkey of this account");
+  func dropHotkey(a : Account, hotkey : Principal, caller : Principal) {
     a.hotkeys := Array.filter<Principal>(a.hotkeys, func(h) = h != hotkey);
     dropHotkeyIndex(hotkey, a.id);
     a.updated_at := now64();
     block("hotkey_remove", caller, [("account", #Nat(a.id)), ("hotkey", pv(hotkey))]);
     touch(#account(a.id));
     collect(a, caller);
+  };
+
+  /// Owners remove a hotkey from their account; a hotkey may remove itself.
+  public shared ({ caller }) func remove_hotkey(account : AccountId, hotkey : Principal) : async Result {
+    switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "hotkey")) return #err(RATE_LIMITED);
+    let a = switch (Map.get(accounts, Map.nhash, account)) { case (?a) a; case null return #err("No such account") };
+    if (not isOwner(a, caller) and caller != hotkey) return #err("Only the account's owners can remove hotkeys");
+    if (not isHotkey(a, hotkey)) return #err("Not a hotkey of this account");
+    dropHotkey(a, hotkey, caller);
     #ok("Hotkey removed");
   };
 
-  /// The accounts the caller may manage as a hotkey.
+  transient let MAX_LEAVE : Nat = 500;
+
+  /// Remove yourself as a hotkey from every account that gave you one (at most 500 a call: call
+  /// again while the answer says some are left). For hotkeys you did not ask for.
+  public shared ({ caller }) func leave_hotkey_accounts() : async Result {
+    switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "hotkey")) return #err(RATE_LIMITED);
+    let ids = switch (Map.get(hotkey_accounts, Map.phash, caller)) { case (?x) x; case null [] };
+    let n = Nat.min(ids.size(), MAX_LEAVE);
+    for (id in Array.subArray<AccountId>(ids, 0, n).vals()) {
+      switch (Map.get(accounts, Map.nhash, id)) {
+        case (?a) if (isHotkey(a, caller)) dropHotkey(a, caller, caller) else dropHotkeyIndex(caller, id);
+        case null dropHotkeyIndex(caller, id);
+      };
+    };
+    let left = ids.size() - n;
+    if (n > 0) logInfo(0, caller, "left " # Nat.toText(n) # " hotkey accounts");
+    #ok("Left " # Nat.toText(n) # " accounts" # (if (left > 0) "; " # Nat.toText(left) # " left, call again" else ""));
+  };
+
+  transient let MAX_HOTKEY_PAGE : Nat = 50;
+  transient let MAX_HOTKEY_LIST : Nat = 100;
+
+  func viewsOf(ids : [AccountId], caller : Principal) : [AccountView] = Array.mapFilter<AccountId, AccountView>(ids, func(id) = switch (Map.get(accounts, Map.nhash, id)) { case (?a) ?accountView(a, ?caller); case null null });
+
+  /// The accounts the caller may manage as a hotkey (the first 100; page with
+  /// my_hotkey_accounts_page).
   public query ({ caller }) func my_hotkey_accounts() : async [AccountView] {
     switch (Map.get(hotkey_accounts, Map.phash, caller)) {
-      case (?ids) Array.mapFilter<AccountId, AccountView>(ids, func(id) = switch (Map.get(accounts, Map.nhash, id)) { case (?a) ?accountView(a, ?caller); case null null });
+      case (?ids) viewsOf(Array.subArray<AccountId>(ids, 0, Nat.min(ids.size(), MAX_HOTKEY_LIST)), caller);
       case null [];
     };
   };
 
+  /// The accounts the caller may manage as a hotkey, by account id, a page (at most 50) at a time.
+  public query ({ caller }) func my_hotkey_accounts_page(page : T.Page<AccountId>) : async { items : [AccountView]; next : ?AccountId; total : Nat } {
+    let ids = Array.sort<AccountId>(switch (Map.get(hotkey_accounts, Map.phash, caller)) { case (?x) x; case null [] }, Nat.compare);
+    let after = Array.filter<AccountId>(ids, func(id) = switch (page.start_after) { case (?s) id > s; case null true });
+    let n = Nat.min(after.size(), Nat.min(Nat.max(page.limit, 1), MAX_HOTKEY_PAGE));
+    let slice = Array.subArray<AccountId>(after, 0, n);
+    { items = viewsOf(slice, caller); next = if (n < after.size() and n > 0) ?slice[n - 1] else null; total = ids.size() };
+  };
+
+
   /// Rename an account you own or have a hotkey on ("" clears the name).
   public shared ({ caller }) func set_account_name(account : AccountId, name : Text) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "name")) return #err(RATE_LIMITED);
     let check = func() : ?Text {
       switch (Map.get(accounts, Map.nhash, account)) {
         case (?a) {
@@ -727,6 +789,8 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   /// Set or clear the avatar of an account you own or have a hotkey on.
   public shared ({ caller }) func set_account_avatar(account : AccountId, avatar : ?AvatarRef) : async Result {
+    switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "avatar")) return #err(RATE_LIMITED);
     switch avatar { case (?x) switch (T.avatarProblem(x)) { case (?p) return #err(p); case null {} }; case null {} };
     let a = switch (Map.get(accounts, Map.nhash, account)) { case (?a) a; case null return #err("No such account") };
     if (not canManage(a, caller)) return #err("You do not manage this account");
@@ -792,6 +856,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// must own it (in any subaccount). Your other avatar stays, and shows again if the NFT changes
   /// hands.
   public shared ({ caller }) func set_my_nft_avatar(nft : ?NftRef) : async Result {
+    if (not Principal.isAnonymous(caller) and limited(caller, "avatar")) return #err(RATE_LIMITED);
     await* setNftAvatar(caller, nft, #icrc7);
   };
 
@@ -799,6 +864,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// the standard). The default account of one of your account's principals must hold it
   /// (`bearer`). Otherwise as set_my_nft_avatar.
   public shared ({ caller }) func set_my_ext_nft_avatar(nft : ?NftRef) : async Result {
+    if (not Principal.isAnonymous(caller) and limited(caller, "avatar")) return #err(RATE_LIMITED);
     await* setNftAvatar(caller, nft, #ext);
   };
 
@@ -857,6 +923,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// Anyone signed in may ask: if an account's NFT avatar changed hands (or is gone), it is cleared.
   public shared ({ caller }) func refresh_nft_avatar(account : AccountId) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "avatar")) return #err(RATE_LIMITED);
     let v = switch (nftAvatarOf(account)) { case (?v) v; case null return #ok("No NFT avatar") };
     let standard = nftStandardOf(account);
     let still = switch (await* nftHolder({ collection = v.collection; token_id = v.token_id }, standard)) {
@@ -880,6 +947,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters cannot own accounts");
     let src = switch (Map.get(accounts, Map.nhash, from)) { case (?a) a; case null return #err("No such account") };
+    if (limited(caller, "account")) return #err(RATE_LIMITED);
     if (not canManage(src, caller)) return #err("You need a hotkey on that account");
     if (memberIn(src, caller) != null) return #err("You are in that account already");
     switch (accountOf(caller)) { case (?a) if (not isOwner(a, caller)) return #err("Only owners can merge into their account"); case null {} };
@@ -938,6 +1006,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func link_by_neuron(sns_root : Principal, neuron_id : Blob, memo : Nat64, principal : Principal, dapp : ?DappId) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters cannot own accounts");
+    if (limited(caller, "account")) return #err(RATE_LIMITED);
     if (Principal.isAnonymous(principal) or T.isCanisterId(principal)) return #err("Only people's principals can join an account");
     if (principal == caller) return #err("You are already in your account");
     if (SnsDirectory.stakingNeuronId(principal, memo) != neuron_id) return #err("That neuron was not staked by that principal with that memo");
@@ -971,6 +1040,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// (the principal itself). The last owner cannot go while others remain; when the last principal
   /// goes, the account is deleted.
   public shared ({ caller }) func remove_member(principal : Principal) : async Result {
+    if (not Principal.isAnonymous(caller) and limited(caller, "account")) return #err(RATE_LIMITED);
     let a = switch (accountOf(principal)) { case (?a) a; case null return #err("That principal is not in an account") };
     let m = switch (memberIn(a, principal)) { case (?m) m; case null return #err("That principal is not in the account") };
     if (principal != caller and not canManage(a, caller)) return #err("You do not manage this account");
@@ -987,6 +1057,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   /// Owners set a member's role and dapp label; hotkeys and the member itself may set its dapp label.
   public shared ({ caller }) func set_member(principal : Principal, role : Role, dapp : ?DappId) : async Result {
+    if (not Principal.isAnonymous(caller) and limited(caller, "account")) return #err(RATE_LIMITED);
     let a = switch (accountOf(principal)) { case (?a) a; case null return #err("That principal is not in an account") };
     let m = switch (memberIn(a, principal)) { case (?m) m; case null return #err("That principal is not in the account") };
     if (role != m.role and not isOwner(a, caller)) return #err("Only the account's owners can change roles");
@@ -1006,6 +1077,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// Name a canister you control ("" clears). An SNS's governance canister may name the canisters its root controls.
   public shared ({ caller }) func set_canister_name(canister : Principal, name : Text) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "name")) return #err(RATE_LIMITED);
     if (not T.isCanisterId(canister)) return #err("Not a canister id");
     if (name != "") {
       switch (NameRules.problem(name, 2)) { case (?p) return #err(p); case null {} };
@@ -1022,6 +1094,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   public shared ({ caller }) func set_canister_avatar(canister : Principal, avatar : ?AvatarRef) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "avatar")) return #err(RATE_LIMITED);
     switch avatar { case (?x) switch (T.avatarProblem(x)) { case (?p) return #err(p); case null {} }; case null {} };
     switch (await* controls(caller, canister)) { case (#err(e)) return #err(e); case (#ok) {} };
     switch (Map.get(canisters, Map.phash, canister)) {
@@ -1040,6 +1113,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// canister and owns that account; null clears it.
   public shared ({ caller }) func set_canister_run_by(canister : Principal, account : ?AccountId) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    if (limited(caller, "account")) return #err(RATE_LIMITED);
     switch account {
       case (?id) switch (Map.get(accounts, Map.nhash, id)) {
         case (?a) if (not isOwner(a, caller)) return #err("You can only name accounts you own");
@@ -1239,6 +1313,23 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     #ok("Config updated");
   };
 
+  /// The per-caller rate limits of writes: action -> { capacity (calls at once); per_minute (refill) }.
+  /// Actions: name, avatar, hotkey, account. Admins are not limited.
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Set an action's rate limit (null: back to the default; capacity 0: no limit).
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) #err(e);
+      case (#ok(r)) {
+        rate_rules := r;
+        block("config_update", caller, [("rate_limit", #Text(action # " " # debug_show (rule)))]);
+        #ok("Rate limit updated");
+      };
+    };
+  };
+
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
@@ -1357,6 +1448,10 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
     #add_hotkey : Any;
+    #leave_hotkey_accounts : Any;
+    #my_hotkey_accounts_page : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
     #admin_add_admin : Any;
     #admin_clear_avatar : Any;
     #admin_finish_import : Any;
@@ -1408,15 +1503,27 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     #verify : Any;
     #verify_by_dao : Any;
   } }) : Bool {
+    // rate limits: peek at the caller's bucket (the method takes from it)
+    let rateAction : ?Text = switch msg {
+      case (#set_my_name _ or #set_account_name _ or #set_canister_name _) ?"name";
+      case (#set_my_avatar _ or #set_account_avatar _ or #set_canister_avatar _ or #set_my_nft_avatar _ or #set_my_ext_nft_avatar _ or #refresh_nft_avatar _) ?"avatar";
+      case (#add_hotkey _ or #remove_hotkey _ or #leave_hotkey_accounts _) ?"hotkey";
+      case (#merge_account _ or #link_by_neuron _ or #remove_member _ or #set_member _ or #set_canister_run_by _) ?"account";
+      case _ null;
+    };
+    switch rateAction {
+      case (?a) if (not isAdmin(caller) and not limiter.allows(caller, a, rateRule(a), Time.now())) return false;
+      case null {};
+    };
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_api_doc _ or #changes_since _ or #get_account _ or #get_account_of _ or #get_admins _ or #get_canister_name _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_names _ or #my_hotkey_accounts _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
+      case (#get_api_doc _ or #get_rate_limits _ or #my_hotkey_accounts_page _ or #changes_since _ or #get_account _ or #get_account_of _ or #get_admins _ or #get_canister_name _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_names _ or #my_hotkey_accounts _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
       // only governance canisters call these, never by ingress
       case (#verify_by_dao _ or #unverify_by_dao _) false;
       case (#admin_import_names _) isAdmin(caller) and arg.size() <= 2_000_000;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case (#admin_set_icrc3_settings _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#admin_add_admin _ or #admin_clear_avatar _ or #admin_finish_import _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _ or #admin_set_name _ or #unverify _ or #verify _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_set_rate_limit _ or #admin_clear_avatar _ or #admin_finish_import _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _ or #admin_set_name _ or #unverify _ or #verify _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#set_my_avatar _ or #set_account_avatar _ or #set_canister_avatar _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(T.MAX_URL_LENGTH);
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };

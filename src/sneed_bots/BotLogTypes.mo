@@ -1,4 +1,5 @@
 import Principal "mo:base/Principal";
+import BotRing "BotRing";
 
 /// Reusable types for the Botlog system.
 ///
@@ -100,8 +101,11 @@ module {
         toTime: ?Int;
         /// Start from this entry ID (for forward pagination, inclusive).
         startId: ?Nat;
-        /// Max entries to return (default: 100).
+        /// Max entries to return (default: 100, at most 500; a reply also stops at about 1 MB).
         limit: ?Nat;
+        /// Only entries with an ID below this one (for paging back from the newest; additive,
+        /// bots before the paging fixes ignore it).
+        beforeId: ?Nat;
     };
 
     /// Result of a log query.
@@ -156,9 +160,12 @@ module {
     /// Callbacks for the engine to access persistent state.
     /// Follows the same callback pattern as BotChoreEngine's StateAccessor.
     public type EngineConfig = {
-        /// Get current log entries from persistent storage.
+        /// The stable ring buffer that holds the entries (the bot's stable var; the engine
+        /// mutates it in place, so appending no longer copies the whole log).
+        ring: BotRing.Ring<LogEntry>;
+        /// The entries of the old array-based log (before the ring buffer). The engine moves
+        /// them into `ring` once and then empties the old array with `setEntries([])`.
         getEntries: () -> [LogEntry];
-        /// Write log entries back to persistent storage.
         setEntries: ([LogEntry]) -> ();
         /// Get the next entry ID counter.
         getNextId: () -> Nat;
@@ -168,7 +175,7 @@ module {
         getLogLevel: () -> Nat;
         /// Set the current log level (as Nat for stable compatibility).
         setLogLevel: (Nat) -> ();
-        /// Maximum number of entries to retain.
+        /// Maximum number of entries to retain (clamped to MAX_ENTRIES_CAP).
         maxEntries: Nat;
     };
 

@@ -8,6 +8,7 @@ import Error "mo:base/Error";
 import Random "mo:base/Random";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
+import Buffer "mo:base/Buffer";
 
 import Icrc3Log "../icrc3/Log";
 import Icrc3Sns "../icrc3/SnsRegister";
@@ -46,6 +47,14 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     
     // Membership registry: principal -> membership info
     var memberships : [(Principal, T.Membership)] = [];
+    // The same memberships by principal, for checkMembership (called by other canisters on every
+    // premium check) and checkMemberships. Transient: rebuilt from `memberships` at install and
+    // upgrade, and kept in step by setMembership and revokeMembership, the only writers.
+    transient let memberIndex : Map.Map<Principal, T.Membership> = do {
+        let m = Map.new<Principal, T.Membership>();
+        for ((p, x) in memberships.vals()) Map.set(m, phash, p, x);
+        m;
+    };
     
     // Last VP claim time per principal (to prevent spam)
     var lastVpClaimTime : [(Principal, Time.Time)] = [];
@@ -60,6 +69,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     var promoCodes : [T.PromoCode] = [];
     var promoCodeClaims : [T.PromoCodeClaim] = [];
     
+    transient let MAX_CHECK_BATCH : Nat = 500;
+    transient let MAX_MEMBER_PAGE : Nat = 500;
+
     // Payment and claim logs
     var claimLog : [T.ClaimLogEntry] = [];
     var nextClaimLogId : Nat = 0;
@@ -107,10 +119,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     };
     
     func getMembership(principal : Principal) : ?T.Membership {
-        for ((p, m) in memberships.vals()) {
-            if (Principal.equal(p, principal)) return ?m;
-        };
-        null;
+        Map.get(memberIndex, phash, principal);
     };
     
     func setMembership(membership : T.Membership) : () {
@@ -121,6 +130,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             }
         );
         memberships := Array.append(newMemberships, [(membership.principal, membership)]);
+        Map.set(memberIndex, phash, membership.principal, membership);
     };
     
     func getLastVpClaimTime(principal : Principal) : ?Time.Time {
@@ -462,6 +472,44 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         )
     };
     
+    /// Membership status of several principals at once (at most 500), in the same order: what a
+    /// client asks for the principals it is showing, instead of downloading every member.
+    public query func checkMemberships(principals : [Principal]) : async [T.MembershipStatus] {
+        if (principals.size() > MAX_CHECK_BATCH) Debug.trap("At most 500 principals");
+        let now = Time.now();
+        Array.map<Principal, T.MembershipStatus>(principals, func(p) = switch (getMembership(p)) {
+            case (?m) if (m.expiration > now) #Active({ expiration = m.expiration }) else #Expired({ expiredAt = m.expiration });
+            case null #NotFound;
+        });
+    };
+
+    /// The active members a page at a time: from position `start` (0 first, then `next`) at most
+    /// `limit` (capped at 500; 0 means 100) members with their expiry. `next` is null on the last
+    /// page; `total_active` counts every active member now.
+    public query func getActivePremiumMembersPage(args : { start : Nat; limit : Nat }) : async {
+        items : [{ principal : Principal; expiration : Int }];
+        next : ?Nat;
+        total_active : Nat;
+    } {
+        let now = Time.now();
+        let limit = if (args.limit == 0) 100 else Nat.min(args.limit, MAX_MEMBER_PAGE);
+        let items = Buffer.Buffer<{ principal : Principal; expiration : Int }>(limit);
+        var total = 0;
+        var next : ?Nat = null;
+        var i = 0;
+        for ((p, m) in memberships.vals()) {
+            if (m.expiration > now) {
+                total += 1;
+                if (i >= args.start) {
+                    if (items.size() < limit) items.add({ principal = p; expiration = m.expiration })
+                    else if (next == null) next := ?i;
+                };
+            };
+            i += 1;
+        };
+        { items = Buffer.toArray(items); next; total_active = total };
+    };
+
     /// Get canister's own principal
     public query func getCanisterId() : async Principal {
         Principal.fromActor(this);
@@ -1150,6 +1198,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 not Principal.equal(p, principal);
             }
         );
+        Map.delete(memberIndex, phash, principal);
         // revoking a non-member changes nothing and logs nothing
         if (previous != null) {
             icrc3_add("premium_admin_revoke", Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("principal", pv(principal))], prevExp(previous)));
@@ -1823,6 +1872,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         #deletePromoCode : Any;
         #extendMembershipAdmin : Any;
         #getActivePremiumMembers : Any;
+        #getActivePremiumMembersPage : Any;
+        #checkMemberships : Any;
         #getAllIcpTiers : Any;
         #getAllMemberships : Any;
         #getAllVotingPowerTiers : Any;
@@ -1865,6 +1916,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 or #get_icp_payment_price_tier _
                 or #checkMembership _
                 or #getActivePremiumMembers _
+                or #getActivePremiumMembersPage _
+                or #checkMemberships _
                 or #getAllIcpTiers _
                 or #getAllMemberships _
                 or #getAllVotingPowerTiers _

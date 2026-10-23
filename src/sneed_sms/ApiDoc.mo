@@ -4,7 +4,7 @@ module {
 
 Direct messages (\"SMS\") from one principal to one or more others: a subject, a body and optional replies to earlier messages. Sneed Hub's inbox, forum mention alerts and Sneed Notifications deliver through it. Calls are authorised by the calling principal only.
 
-**Privacy: messages are not public, but they are NOT encrypted.** Subject and body are stored as plain text. The canister's admins (the Sneed DAO governance canister, the controllers and the principals in `get_admins()`) can read every message through `get_all_messages_admin`, and the state lives on the subnet's node machines. Never put secrets in a message, and never describe Sneed SMS as secure messaging.
+**Privacy: messages are not public, but they are NOT encrypted.** Subject and body are stored as plain text. The canister's admins (the Sneed DAO governance canister, the controllers and the principals in `get_admins()`) can read every message through `get_all_messages_admin` / `admin_get_messages_page`, and the state lives on the subnet's node machines. Never put secrets in a message, and never describe Sneed SMS as secure messaging.
 
 - Production: `zelpl-7yaaa-aaaad-abtcq-cai` (controlled by the Sneed SNS; upgrades by DAO proposal)
 - Staging: `v33jy-4qaaa-aaaad-absna-cai` (separate state; use it to test)
@@ -25,7 +25,7 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 ## Fees, transfers and irreversible actions
 - No fees and no token transfers.
 - **Sending is irreversible**: messages cannot be edited or recalled. `remove_self_from_message(id)` only takes the caller off; the message is deleted only when nobody is left on it.
-- Limits (read at run time from `get_config()` and, for Sneed Premium members, `get_premium_config()`): minutes between messages, subject and body length, recipients per message. Admins are exempt from the rate limit.
+- Limits (read at run time from `get_config()` and, for Sneed Premium members, `get_premium_config()`): minutes between messages, subject and body length, recipients per message. On top, a burst limit per sender (`get_send_rate_limit()`, default 10 messages in a row, then 2 a minute): over it, `send_message` is refused at ingress or answers `RateLimited`. Admins and the principals on `get_rate_limit_exempt()` (integrators' canisters and bots, set by Sneed DAO with `admin_set_rate_limit_exempt`) are exempt from both.
 
 ## Notifications for new messages
 - When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject plus the start of the text, at most 100 characters, cut at a space and never inside a link, `…` when cut (only the subject for a recipient who called `set_notification_preview(false)`; `get_notification_preview()` reads it, default on), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
@@ -39,7 +39,7 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 
 ## Errors, retries and Busy
 - `send_message` is NOT idempotent: two successful calls send two messages. Its only await (the premium lookup) comes before any state change, so a rejected call stored nothing. After a timeout, look in `get_sent_messages()` before sending again.
-- `RateLimited(\"Must wait N more minutes ...\")`: show the wait, don't retry in a loop.
+- `RateLimited(\"Must wait N more minutes ...\")` or `RateLimited(\"Too many messages in a row ...\")`: show the wait, don't retry in a loop.
 - `reply_to` ids must exist and be readable by the sender (`NotFound` / `Unauthorized`).
 
 ## Common pitfalls

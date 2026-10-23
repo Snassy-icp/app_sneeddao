@@ -42,11 +42,13 @@ RLL is where Sneed DAO's Recursive Liquidity Loop pays out. Tokens that reach it
 - Retrying a claim is safe: balances are debited before the transfer and restored only when it certainly did not happen, so nothing is paid twice.
 - Unknown ledger outcome: `Err(GenericError { error_code = 1 })` saying balances were NOT re-credited and an incident was recorded; the DAO resolves it against the ledger memo. Check `get_claim_events_for_hotkey` and the wallet before retrying.
 - Two concurrent claims covering the same owners: the loser traps and changes nothing; retry.
+- Rate limits per caller (`get_rate_limits()`): `claim_full_balance_of_hotkey`, `balances_of_hotkey` and `balance_reconciliation` allow a burst (30 by default) and then a steady rate (10 a minute). Beyond it the ingress guard refuses the call (a canister caller gets `Err(GenericError { error_code = 429 })` for a claim, a reject for the others); wait a few seconds and retry. Claim each token once; there is no need to poll. `balance_reconciliation()` refuses anonymous callers: for display, read `get_known_tokens()`, each ledger's `icrc1_balance_of` of rll's main account, and pass them to the query `balance_reconciliation_from_balances`.
 
 ## Common pitfalls
 
 - `balances_of_hotkey_neurons(neurons)` is a query that trusts the neurons you pass: fine for display; the claim always asks governance itself. `balances_of_hotkey()` is the certified update version.
-- Unfiltered event lists (`get_claim_events`, `get_user_distribution_events`, `get_distribution_events`) return everything ever logged (`get_user_distribution_events` no longer fits one response on production); use `get_claim_events_page`, `get_user_distribution_events_page`, `get_distribution_events_page` (start, length; at most 2000, oldest first, with `total`) or the per-principal and per-token versions.
+- Unfiltered event lists (`get_claim_events`, `get_distribution_events`) return everything ever logged; `get_user_distribution_events` answers only while the list fits one page (2000) and otherwise refuses, pointing to the paged method (production has hundreds of thousands of credits). Use `get_claim_events_page`, `get_user_distribution_events_page`, `get_distribution_events_page` (start, length; at most 2000, oldest first, with `total`) or the per-principal and per-token versions.
+- `get_user_voting_history(principal)` returns every proposal the principal's neurons have a ballot on, in no particular order; `get_user_voting_history_page(principal, start, length)` pages it newest first (at most 100).
 - Query methods sent as update calls are refused by the ingress guard; update arguments from outside the IC are capped at 4 KiB.
 
 ## Start with these methods

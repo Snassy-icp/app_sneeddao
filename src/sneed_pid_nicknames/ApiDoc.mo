@@ -38,6 +38,7 @@ The Sneed DAO naming service is six canisters (production ids):
 - No Busy state. Retrying a write is safe.
 - `The name check is unavailable right now, please try again (...)`: nothing stored; retry later.
 - `You have reached the maximum number of nicknames (10). Get Sneed Premium for more!`, `Set a nickname first` (for `set_nickname_avatar`).
+- `Rate limited: too many changes in a short time, please try again in a minute`: per-caller limits on writes (actions `nickname` (set_nickname, set_nickname_avatar, set_account_nickname) and `pocket` (set_pocket, set_pockets: one call counts once); `get_rate_limits` lists them, admins set them with `admin_set_rate_limit`). Once a caller is over the limit its next calls are also refused at ingress until it refills. Nothing was stored; wait and retry.
 
 ## Common pitfalls
 - Query methods answer only query calls; sent as update calls they are refused by the ingress guard (inspect_message). Calls from other canisters are not affected.

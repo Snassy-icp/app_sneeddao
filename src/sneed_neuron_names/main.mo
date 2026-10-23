@@ -14,6 +14,8 @@ import Dedup "mo:dedup";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import RateLimit "../RateLimit";
+import RateRules "../RateRules";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
@@ -78,6 +80,15 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     archive_controllers = [];
   };
   var admins : [Principal] = [];
+
+  // per-caller rate limits of writes (src/RateLimit.mo); admins are not limited
+  var rate_rules : [(Text, RateLimit.Rule)] = []; // admin overrides of RATE_DEFAULTS
+  transient let limiter = RateLimit.Limiter();
+  transient let RATE_DEFAULTS : RateRules.Rules = [
+    ("name", { capacity = 30; per_minute = 10 }), // set_name,
+    ("avatar", { capacity = 30; per_minute = 10 }), // set_avatar
+  ];
+  transient let RATE_LIMITED = "Rate limited: too many changes in a short time, please try again in a minute";
   var import_closed : Bool = false;
 
   // SNS roots are deduplicated to a Nat32 index (a few hundred roots, repeated on every key);
@@ -104,6 +115,10 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
   func now64() : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
   func self() : Principal = Principal.fromActor(this);
   func isAdmin(p : Principal) : Bool = Principal.isController(p) or Array.find<Principal>(admins, func(a) = a == p) != null;
+
+  func rateRule(action : Text) : RateLimit.Rule = RateRules.rule(rate_rules, RATE_DEFAULTS, action);
+  /// Takes one call of `action` from the caller's bucket; true when the caller is over the limit.
+  func limited(caller : Principal, action : Text) : Bool = not isAdmin(caller) and not limiter.take(caller, action, rateRule(action), Time.now());
 
   func scopeBytes(s : Nat32) : [Nat8] = [
     Nat8.fromNat(Nat32.toNat((s >> 24) & 0xff)),
@@ -308,6 +323,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
 
   /// Name a neuron you have a permission on ("" removes the name). Unique per SNS, any capitals.
   public shared ({ caller }) func set_name(k : NeuronKey, name : Text) : async Result {
+    if (limited(caller, "name")) return #err(RATE_LIMITED);
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (k.neuron_id.size() == 0 or k.neuron_id.size() > MAX_NEURON_ID) return #err("Not a neuron id");
     let taken = func() : Bool = switch (findKey(k)) {
@@ -335,6 +351,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
 
   /// Set or clear a named neuron's avatar.
   public shared ({ caller }) func set_avatar(k : NeuronKey, avatar : ?AvatarRef) : async Result {
+    if (limited(caller, "avatar")) return #err(RATE_LIMITED);
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     switch avatar { case (?x) switch (T.avatarProblem(x)) { case (?p) return #err(p); case null {} }; case null {} };
     switch (await* mayName(caller, k)) { case (#err(e)) return #err(e); case (#ok) {} };
@@ -491,6 +508,22 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     #ok("Config updated");
   };
 
+  /// The per-caller rate limits of writes: action -> { capacity (calls at once); per_minute (refill) }.
+  /// Actions: name, avatar. Admins are not limited.
+  public query func get_rate_limits() : async [(Text, RateLimit.Rule)] { RateRules.all(rate_rules, RATE_DEFAULTS) };
+
+  /// Set an action's rate limit (null: back to the default; capacity 0: no limit).
+  public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
+      case (#err(e)) #err(e);
+      case (#ok(r)) {
+        rate_rules := r;
+        #ok("Rate limit updated");
+      };
+    };
+  };
+
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
@@ -597,6 +630,8 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #get_rate_limits : Any;
+    #admin_set_rate_limit : Any;
     #admin_add_admin : Any;
     #admin_clear_avatar : Any;
     #admin_finish_import : Any;
@@ -633,15 +668,25 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     #verify_by_dao : Any;
     #verify_by_sns : Any;
   } }) : Bool {
+    // rate limits: peek at the caller's bucket (the method takes from it)
+    let rateAction : ?Text = switch msg {
+      case (#set_name _) ?"name";
+      case (#set_avatar _) ?"avatar";
+      case _ null;
+    };
+    switch rateAction {
+      case (?a) if (not isAdmin(caller) and not limiter.allows(caller, a, rateRule(a), Time.now())) return false;
+      case null {};
+    };
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_api_doc _ or #changes_since _ or #get_admins _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_by_sns _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
+      case (#get_api_doc _ or #get_rate_limits _ or #changes_since _ or #get_admins _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_by_sns _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
       // only governance canisters call these, never by ingress
       case (#verify_by_dao _ or #unverify_by_dao _ or #verify_by_sns _ or #unverify_by_sns _) false;
       case (#admin_import_names _) isAdmin(caller) and arg.size() <= 2_000_000;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case (#admin_set_icrc3_settings _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#admin_add_admin _ or #admin_clear_avatar _ or #admin_finish_import _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _ or #admin_set_name _ or #unverify _ or #verify _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_set_rate_limit _ or #admin_clear_avatar _ or #admin_finish_import _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _ or #admin_set_name _ or #unverify _ or #verify _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#set_avatar _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(T.MAX_URL_LENGTH);
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };

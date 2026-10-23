@@ -349,7 +349,8 @@ search : (record { prefix : text; limit : nat; kind : opt variant { account; can
 list_names : (record { start_after : opt text; limit : nat }) -> (record { items : vec SearchHit; next : opt text }) query;
 get_account : (nat) -> (opt AccountView) query;      // hotkeys shown to owners and hotkeys only
 get_account_of : (principal) -> (opt AccountView) query;
-my_hotkey_accounts : () -> (vec AccountView) query;
+my_hotkey_accounts : () -> (vec AccountView) query;  // the first 100 (2026-10-23, paging_audit S14)
+my_hotkey_accounts_page : (record { start_after : opt nat; limit : nat }) -> (record { items : vec AccountView; next : opt nat; total : nat }) query;
 get_canister_name : (principal) -> (opt CanisterView) query;
 changes_since : (record { after : nat; limit : nat }) -> (record { items : vec Change; last_seq : nat }) query;
 stats, get_config, get_admins, get_log (admins)
@@ -369,6 +370,7 @@ set_account_name : (nat, text) -> (Result);          // owners and hotkeys
 set_account_avatar : (nat, opt AvatarRef) -> (Result);
 add_hotkey : (principal) -> (Result);                // owners, on their own account
 remove_hotkey : (nat, principal) -> (Result);        // owners, or the hotkey itself
+leave_hotkey_accounts : () -> (Result);              // the caller leaves every account that gave it a hotkey (500 a call)
 merge_account : (nat) -> (Result);                   // a hotkey (or owner) of it, into the caller's account
 link_by_neuron : (principal sns_root, blob neuron_id, nat64 memo, principal, opt nat dapp) -> (Result);
 remove_member : (principal) -> (Result);             // managers remove (hotkeys not owners), or leave

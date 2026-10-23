@@ -84,7 +84,7 @@ const ok = (r) => { if (!('Ok' in r)) throw new Error(`expected Ok, got ${JSON.s
 const err = (r) => { if (!('Err' in r)) throw new Error(`expected Err, got ${JSON.stringify(r, (_, v) => (typeof v === 'bigint' ? v.toString() : v))}`); return r.Err; };
 const govErr = (r) => err(r).GovernanceError;
 const icpOf = (p, sub) => icp.icrc1_balance_of(account(p, sub));
-const noFilter = { minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [] };
+const noFilter = { minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [], beforeId: [] };
 const eventTypesLogged = async (b = bot) => (await b.getEventLog({ eventTypeId: [], fromTime: [], toTime: [], startId: [], limit: [500n] })).entries.map((e) => Number(e.eventTypeId));
 const lastEvent = async (b = bot) => { const es = (await b.getEventLog({ eventTypeId: [], fromTime: [], toTime: [], startId: [], limit: [500n] })).entries; return es[es.length - 1]; };
 const status = async (id) => (await bot.getChoreStatus(id))[0];

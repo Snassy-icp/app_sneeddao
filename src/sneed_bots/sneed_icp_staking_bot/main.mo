@@ -21,6 +21,7 @@ import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
 import BotLogTypes "../BotLogTypes";
 import BotLogEngine "../BotLogEngine";
+import BotRing "../BotRing";
 import DistributionTypes "../DistributionTypes";
 import BotEventTypes "../BotEventTypes";
 import BotEventEngine "../BotEventEngine";
@@ -70,6 +71,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var botLogNextId: Nat = 0;
     var botLogLevel: Nat = 3; // Info (default)
     var botLogMaxEntries: Nat = 10_000;
+    // The log's entries since the paging fixes: a ring buffer, so a log line no longer copies the
+    // whole log. botLogEntries above is moved into it once by the log engine and stays empty.
+    var botLogRing: BotRing.Ring<BotLogTypes.LogEntry> = BotRing.empty();
 
     // Event System — Source side
     var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration] = [];
@@ -256,6 +260,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Instantiate the log engine (transient — re-created on each canister start)
     transient let logEngine = BotLogEngine.Engine({
+        ring = botLogRing;
         getEntries = func(): [BotLogTypes.LogEntry] { botLogEntries };
         setEntries = func(e: [BotLogTypes.LogEntry]): () { botLogEntries := e };
         getNextId = func(): Nat { botLogNextId };
@@ -1709,8 +1714,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func setMaxLogEntries(maxEntries: Nat): async () {
         assertPermission(caller, T.NeuronPermission.ManageLogs);
         logEngine.logInfo("log", "setMaxLogEntries", ?caller, [("maxEntries", Nat.toText(maxEntries))]);
-        botLogMaxEntries := maxEntries;
-        logEngine.setMaxEntries(maxEntries);
+        // clamped to BotLogEngine.MAX_ENTRIES_CAP (50 000): an uncapped log made every query and
+        // trim scale without bound
+        botLogMaxEntries := logEngine.setMaxEntries(maxEntries);
     };
 
     // Clear all log entries
@@ -3175,6 +3181,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Resume timers after upgrade (transient engine is fresh, stable state is loaded)
     system func postupgrade() {
+        botLogMaxEntries := BotLogEngine.clampMaxEntries(botLogMaxEntries);
         choreEngine.resumeTimers<system>();
     };
 

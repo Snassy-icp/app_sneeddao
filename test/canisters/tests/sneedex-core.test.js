@@ -997,7 +997,10 @@ describe('upgrade', () => {
     const id = await listTokens(70_000n, { note_to_buyer: ['kept'] });
     const b = await placeBid(dexBob, bob, id, E8);
     const before = { offers: await dexAny.getOfferFeed({ start_id: [], length: 1000n, filter: [] }), bid: await bid(b), types: await dexAny.getAssetTypes(), config: await dexAny.getConfig(), interval: await dexAny.getExpirationCheckInterval() };
+    // SNS root stops a canister before upgrading it; do the same so in-flight timer calls drain first
+    await pic.stopCanister({ canisterId: dexId, sender: admin });
     await pic.upgradeCanister({ sender: admin, canisterId: dexId, wasm: wasm('sneedex'), arg: IDL.encode(sneedexInit({ IDL }), [[]]) });
+    await pic.startCanister({ canisterId: dexId, sender: admin });
     await pic.tick(2);
     expect(await dexAny.getOfferFeed({ start_id: [], length: 1000n, filter: [] })).toEqual(before.offers);
     expect(await bid(b)).toEqual(before.bid);

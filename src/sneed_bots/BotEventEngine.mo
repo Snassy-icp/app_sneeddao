@@ -55,7 +55,29 @@ module {
         // TRANSIENT STATE
         // ============================================
 
+        // FIFO of pending deliveries: entries before `deliveryHead` are done. Dequeuing moves the
+        // head (O(1)); the buffer is reset when it drains and compacted when the done prefix is
+        // over half of it. (Until the paging fixes every dequeue rebuilt the whole buffer, so a
+        // backlog of n deliveries cost O(n^2).)
         var deliveryQueue = Buffer.Buffer<BotEventTypes.PendingEventDelivery>(16);
+        var deliveryHead: Nat = 0;
+        func queuedCount(): Nat { deliveryQueue.size() - deliveryHead : Nat };
+        func dequeueDelivery(): ?BotEventTypes.PendingEventDelivery {
+            if (deliveryHead >= deliveryQueue.size()) return null;
+            let item = deliveryQueue.get(deliveryHead);
+            deliveryHead += 1;
+            if (deliveryHead == deliveryQueue.size()) {
+                deliveryQueue.clear();
+                deliveryHead := 0;
+            } else if (deliveryHead >= 1024 and deliveryHead * 2 >= deliveryQueue.size()) {
+                let rest = Buffer.Buffer<BotEventTypes.PendingEventDelivery>(queuedCount());
+                var k = deliveryHead;
+                while (k < deliveryQueue.size()) { rest.add(deliveryQueue.get(k)); k += 1 };
+                deliveryQueue := rest;
+                deliveryHead := 0;
+            };
+            ?item
+        };
         var deliveryTimerActive: Bool = false;
         var deliveryTimerId: ?Nat = null;
 
@@ -150,7 +172,7 @@ module {
                     matchedCount += 1;
                 };
             };
-            emitLog("Trace", "Event queued: typeId=" # Nat.toText(eventTypeId) # " id=" # Nat.toText(eventId) # " listeners=" # Nat.toText(listeners.size()) # " matched=" # Nat.toText(matchedCount) # " queueLen=" # Nat.toText(deliveryQueue.size()), []);
+            emitLog("Trace", "Event queued: typeId=" # Nat.toText(eventTypeId) # " id=" # Nat.toText(eventId) # " listeners=" # Nat.toText(listeners.size()) # " matched=" # Nat.toText(matchedCount) # " queueLen=" # Nat.toText(queuedCount()), []);
         };
 
         func addToEventLog(event: BotEventTypes.BotEvent) {
@@ -342,7 +364,7 @@ module {
 
         func kickDeliveryTimer<system>() {
             if (deliveryTimerActive) return;
-            if (deliveryQueue.size() == 0) return;
+            if (queuedCount() == 0) return;
 
             deliveryTimerActive := true;
             let tid = Timer.setTimer<system>(#seconds 2, func(): async () {
@@ -353,7 +375,7 @@ module {
                 };
                 deliveryTimerActive := false;
                 deliveryTimerId := null;
-                if (deliveryQueue.size() > 0) {
+                if (queuedCount() > 0) {
                     kickDeliveryTimer<system>();
                 };
             });
@@ -361,16 +383,17 @@ module {
         };
 
         func processDeliveryBatch(): async () {
-            let batchSize = Nat.min(deliveryQueue.size(), 10);
+            let batchSize = Nat.min(queuedCount(), 10);
             if (batchSize == 0) return;
-            emitLog("Trace", "Delivery batch: processing " # Nat.toText(batchSize) # " of " # Nat.toText(deliveryQueue.size()) # " queued", []);
+            emitLog("Trace", "Delivery batch: processing " # Nat.toText(batchSize) # " of " # Nat.toText(queuedCount()) # " queued", []);
 
             let batch = Buffer.Buffer<BotEventTypes.PendingEventDelivery>(batchSize);
             var i: Nat = 0;
-            while (i < batchSize and deliveryQueue.size() > 0) {
-                let item = deliveryQueue.get(0);
-                deliveryQueue.filterEntries(func(idx: Nat, _: BotEventTypes.PendingEventDelivery): Bool { idx != 0 });
-                batch.add(item);
+            label take while (i < batchSize) {
+                switch (dequeueDelivery()) {
+                    case (?item) batch.add(item);
+                    case null break take;
+                };
                 i += 1;
             };
 

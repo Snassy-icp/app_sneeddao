@@ -264,13 +264,14 @@ if ('err' in r) throw new Error(r.err);
 - The members of `from` join as `member` (`via = hotkey`), keeping their dapp labels. Together the accounts may have at most `max_members` principals.
 - If the caller's account has no name it takes the merged account's name (with its checkmark); otherwise the merged name is freed. If it has no avatar it takes the merged account's avatar. The merged account, its hotkeys and its NFT avatar are deleted. The log records a carried-over checkmark and avatar as `verify` and `avatar_set` blocks for the caller's account (with `merged_from`).
 
-Instead of merging, a hotkey can also just manage the other account: `set_account_name`, `set_account_avatar`, `set_member` (dapp labels), `remove_member` (non-owners). `my_hotkey_accounts()` lists the accounts the caller holds a hotkey on.
+Instead of merging, a hotkey can also just manage the other account: `set_account_name`, `set_account_avatar`, `set_member` (dapp labels), `remove_member` (non-owners). `my_hotkey_accounts_page({ start_after; limit })` pages the accounts the caller holds a hotkey on (by account id, at most 50 a page, with `total`); `my_hotkey_accounts()` returns the first 100. Since anyone may give any principal a hotkey, a principal that did not ask for one removes itself: `remove_hotkey(account, self)`, or `leave_hotkey_accounts()` for all of them.
 
 ### 3.2 Leaving, removing and roles
 
 - `remove_member(p)`: a principal may always leave its account; owners and hotkeys may remove others, but only owners remove owners. The last owner cannot go while other members remain (`Make another principal an owner first`). The account is deleted when its last principal leaves.
 - `set_member(p, role, dapp)`: owners change roles and dapp labels; hotkeys and the member itself may change only the dapp label. An account always keeps one owner (`An account needs an owner`).
 - `remove_hotkey(account, hotkey)`: owners remove a hotkey; a hotkey may remove itself.
+- `leave_hotkey_accounts()`: the caller stops being a hotkey of every account (500 a call; the answer says `call again` while some are left).
 
 ### 3.3 Linking a principal you cannot sign in with (neuron stake proof)
 
@@ -383,6 +384,7 @@ An entity appears once, at its latest change; it moves to the end of the feed ea
 - **Traps.** Batched queries trap above their limit (`At most 500 principals per call`, …). Admin-only queries (`get_log`) trap for others. A trap means nothing changed.
 - **Signed in.** Every write refuses the anonymous principal (`Please sign in`). Canister callers cannot own accounts (`Canisters cannot own accounts`, `Canisters are named by their controllers (set_canister_name)`, `Canisters use set_canister_avatar`).
 - **Awaits.** Name writes call the moderator, and some call the management canister, SNS-W, an SNS governance canister or an ICRC-7 collection. The canisters re-check their state after each such call (a name taken meanwhile gives `That name is taken`), so a client needs no compensation logic: re-read and retry.
+- **Rate limits.** Writes are rate limited per caller in all six canisters, by action: `sneed_pid_names` `name`, `avatar`, `hotkey`, `account`; `sneed_neuron_names` `name`, `avatar`; `sneed_pid_nicknames` `nickname`, `pocket`; `sneed_neuron_nicknames` `nickname`; `sneed_avatars` `upload`, `release`; `sneed_profiles` `dapp`. `get_rate_limits()` lists `(action, { capacity; per_minute })`: `capacity` calls at once, refilled at `per_minute`. Over the limit a write answers `Rate limited: too many changes in a short time, please try again in a minute` (nothing stored), and the caller's next calls of that action are refused at ingress until it refills. Normal use never reaches the limits; admins are not limited and set them with `admin_set_rate_limit(action, opt rule)` (`[]` restores the default, capacity 0 turns it off).
 - **Idempotency.** Setting the current value again answers `Unchanged` or `Already a hotkey`. Retrying a timed-out write is safe; check the state first if the answer matters.
 - **Moderator unavailable.** `The name check is unavailable right now, please try again (…)`: retry later.
 
@@ -402,7 +404,9 @@ An entity appears once, at its latest change; it moves to the end of the feed ea
 | `list_names(Page)` | `{ items : vec SearchHit; next : opt text }` | All names, alphabetical by lowercase name, `start_after` is a lowercase name. |
 | `get_account(id)` | `opt AccountView` | Hotkeys are filled in only when the caller is an owner, a hotkey or an admin of the account. |
 | `get_account_of(p)` | `opt AccountView` | The account `p` is a member of. Same hotkey rule. |
-| `my_hotkey_accounts()` | `vec AccountView` | The accounts the caller holds a hotkey on. |
+| `my_hotkey_accounts()` | `vec AccountView` | The accounts the caller holds a hotkey on (the first 100). |
+| `my_hotkey_accounts_page(Page)` | `{ items : vec AccountView; next : opt nat; total : nat }` | The same by account id, at most 50 a page. |
+| `get_rate_limits()` | `vec record { text; Rule }` | The write rate limits (section 4). Every naming canister has it. |
 | `get_canister_name(p)` | `opt CanisterView` | |
 | `changes_since({ after; limit })` | `{ items : vec Change; last_seq : nat }` | See 3.10. |
 | `stats()` | `Stats` | `accounts`, `named`, `canisters`, `last_seq`, `log_length`, `import_closed`. |
@@ -432,6 +436,9 @@ Owners only; creates the caller's account if needed. Errors: `Not a principal`, 
 
 **`remove_hotkey(account : AccountId, hotkey : principal) → Result`**
 Owners, or the hotkey itself. Errors: `No such account`, `Only the account's owners can remove hotkeys`, `Not a hotkey of this account`.
+
+**`leave_hotkey_accounts() → Result`**
+The caller stops being a hotkey of every account that gave it one, at most 500 a call. `ok`: `Left N accounts`, or `Left 500 accounts; M left, call again`.
 
 **`set_account_name(account : AccountId, name : text) → Result`**, **`set_account_avatar(account : AccountId, avatar : opt AvatarRef) → Result`**
 Rename or change the avatar of an account the caller owns or holds a hotkey on (`You do not manage this account`, `No such account`).
@@ -554,6 +561,7 @@ Admins are the canister's controllers (the Sneed SNS root on production) plus th
 |---|---|---|
 | `admin_add_admin`, `admin_remove_admin` | all six | Manage the admin list. |
 | `admin_set_config` | all six | Limits, moderator, premium canister, DAO governance, SNS-W, archive controllers. |
+| `admin_set_rate_limit` | all six | Set an action's per-caller write rate limit (`[]` restores the default, capacity 0 turns it off). |
 | `admin_set_account_limits` | pid_nicknames | Limits of account names and pockets (`account_max_free <= account_max_premium <= 10,000`). |
 | `admin_set_name` | pid_names, neuron_names | Set or clear a name without moderation (account created if needed). |
 | `admin_clear_avatar` | pid_names, neuron_names | Remove an abusive avatar (and an NFT avatar). |

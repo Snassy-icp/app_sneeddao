@@ -86,7 +86,7 @@ const tradeLogQuery = (over = {}) => ({
   startId: [], limit: [500n], offset: [], choreId: [], choreTypeId: [], actionType: [], inputToken: [], outputToken: [],
   status: [], fromTime: [], toTime: [], ...over,
 });
-const logFilter = (over = {}) => ({ minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [1000n], ...over });
+const logFilter = (over = {}) => ({ minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [1000n], beforeId: [], ...over });
 const cond = (over) => ({
   conditionType: 2n, priceToken1: [], priceToken2: [], balanceToken: [], balanceChoreInstanceId: [], valueSources: [],
   operator: 0n, threshold: [], rangeMin: [], rangeMax: [], changePercentBps: [], changeDirection: [], changePeriodSeconds: [],
@@ -563,7 +563,7 @@ describe('one-off trades', () => {
     expect(e.tradeLogId).toEqual([entry.id]);
     const after = await bot.getTradeLog(tradeLogQuery({ startId: [entry.id], actionType: [5n] }));
     expect(after.totalCount).toBe(0n);
-    const snaps = await bot.getPortfolioSnapshots({ startId: [], limit: [50n], tradeLogId: [entry.id], phase: [], fromTime: [], toTime: [] });
+    const snaps = await bot.getPortfolioSnapshots({ startId: [], limit: [50n], tradeLogId: [entry.id], phase: [], fromTime: [], toTime: [], offset: [], newestFirst: [] });
     expect(snaps.entries.map((s) => Object.keys(s.phase)[0])).toEqual(['After']);
     expect(snaps.entries[0].tokens.map((t) => t.balance)).toEqual([a0 - amount, b0 + gross - FEE_B]);
   });
@@ -947,7 +947,7 @@ describe('distribution lists on timers', () => {
     const [failed] = await events(11n);
     expect(failed.data).toContainEqual(['failed', '1']);
     expect(failed.data).toContainEqual(['externalAmount', `${share}`]);
-    const logs = (await b3.getLogs({ minLevel: [], source: ['chore:df'], caller: [], fromTime: [], toTime: [], startId: [], limit: [1000n] })).entries.map((e) => e.message);
+    const logs = (await b3.getLogs({ minLevel: [], source: ['chore:df'], caller: [], fromTime: [], toTime: [], startId: [], limit: [1000n], beforeId: [] })).entries.map((e) => e.message);
     expect(logs.some((m) => /transfer of \d+ FFF to .* failed/.test(m))).toBe(true);
     await clearLists();
   });
