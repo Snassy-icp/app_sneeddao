@@ -1,6 +1,7 @@
 # Sneed Wallet: native Bitcoin and "Sign in with Sneed Wallet"
 
-Status: spec draft, 2026-10-23. No code yet. Builds on `spec/oisy_comparison.md` (§3.1 signer,
+Status: spec draft, 2026-10-23. A1 (receive) built; A0 and A2 (signing credit, fee source,
+`btc.html`, pending store, send) built for staging/testnet4 only, behind the A1 triple flag. Builds on `spec/oisy_comparison.md` (§3.1 signer,
 §3.2 Chain Fusion Signer, §5 order) and `spec/programmable_accounts.md` (pockets). Paths are
 relative to `src/app_sneeddao_frontend/src`.
 
@@ -148,7 +149,12 @@ The signer canister:
   pages and are kept off every page that can sign BTC. Because gtag.js, once loaded, stays in
   the SPA for every later route, "kept off" means a separate entry: `sign.html` and a
   `btc.html` send view (own strict headers, no Google scripts, no framing, no `'unsafe-eval'`
-  if the build allows it); the SPA hands over to them with a normal navigation.
+  if the build allows it); the SPA hands over to them with a normal navigation. Built for
+  `btc.html` (A2): a second Vite entry; its built HTML and chunks contain no gtag, no `eval`, no
+  `new Function` and no WebAssembly (agent-js 2.4 verifies BLS in plain JS), so its CSP has
+  `script-src 'self'` only, `frame-ancestors 'none'`, `X-Frame-Options: DENY` and
+  `camera=(self)` for the QR scanner. Same origin, so `AuthProvider` reads the same `AuthClient`
+  storage and the session carries over.
 - The CSP's `frame-ancestors` allows tacodao.com and others to iframe the app, which invites
   clickjacking. BTC send and the signer page must refuse to run inside a frame (§9.1).
 
@@ -172,8 +178,15 @@ The signer canister:
 | UTXOs and balance, fast | Bitcoin canister mainnet `ghsi2-tqaaa-aaaan-aaaca-cai` (testnet `g4xu7-jiaaa-aaaan-aaaaq-cai`; check with `get_config`) | `bitcoin_get_utxos_query`, `bitcoin_get_balance_query` (query, paged with `next_page`, `filter = min_confirmations or page`), `get_blockchain_info` | free (query) |
 | Send | signer | `btc_caller_send : (SendBtcRequest { fee_satoshis : opt nat64; network; utxos_to_spend : vec Utxo; address_type; outputs : vec BtcTxOutput { destination_address; sent_satoshis } }, opt PaymentType) -> (variant { Ok : record { txid : text }; Err : SendBtcError })` | 95B + 37B per input + 1B per output (change included) |
 | Sign only | signer | `btc_caller_sign : (SendBtcRequest, opt PaymentType) -> (variant { Ok : record { txid; signed_transaction_hex }; Err })` | 74B + 37B per input |
-| Payment | cycles ledger `um5iw-rqaaa-aaaaq-qaaba-cai` | `icrc2_approve { spender = { owner = grghe-… } }`; the signer charges with `withdraw_from` when the call carries `opt variant { CallerPaysIcrc2Cycles }` | ledger fee 0.1B per approve, plus the charge |
-| Fee rates | Bitcoin canister | `bitcoin_get_current_fee_percentiles` (update; the canister charges cycles, so a free ingress call is expected to fail; verify) | see §5.4 |
+| Payment | cycles ledger `um5iw-rqaaa-aaaaq-qaaba-cai` | `icrc2_approve { spender = { owner = grghe-… } }`; the signer charges with `withdraw_from` when the call carries `opt variant { CallerPaysIcrc2Cycles }` | ledger fee 0.1B per approve; each `withdraw_from` uses **charge + 0.1B** of the allowance and the balance (cycles-ledger `storage.rs`, `amount_with_fee`) |
+| Fee rates | mempool.space (decided, Q4) | `GET /api/v1/fees/recommended` (testnet4: `/testnet4/api/…`) | free; see §5.4 |
+
+Checked 2026-10-23: the deployed signer (module hash `0x6596fbb4…`, candid with `btc_sign_prehash`, i.e.
+v0.5.1 or later) has the same Bitcoin candid, builder and fee constants as `main`. `Network::testnet`
+is Bitcoin testnet4 (the signer validates addresses with `bitcoin::Network::Testnet`, so `tb1…`, `m…`,
+`n…`, `2…` addresses). `btc_caller_send` prices `outputs.len() + 1` outputs whether or not change is
+made (`lib.rs`), and takes its fee **before** building: a typed `BuildP2wpkhError` or
+`InternalError` has already cost the signing cycles; a `PaymentError` has not.
 
 Sources:
 - Signer fee constants: [methods.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/api/src/methods.rs).
@@ -224,6 +237,10 @@ and [bitcoin_api.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/sr
      no pending send has locked.
    - Pick largest-first until `amount + fee(n_in, n_out) ≤ Σ`, then try to drop the smallest
      inputs while it still fits. Fewer inputs means fewer signatures, and each costs 37B cycles.
+   - The plan decides the change itself and passes `fee_satoshis` to match: change ≥ 1,000 sats →
+     fee = the estimate with the change output; otherwise fee = the **whole remainder** (estimate
+     without change + the "dust added to fee"), so the signer's own dust rule never fires
+     silently. A property test checks every plan against a model of the signer's builder.
    - vsize = 11 + 68·inputs + Σ output sizes by type (P2WPKH 31, P2PKH 34, P2SH 32,
      P2WSH/P2TR 43), with change counted when it is ≥ 1,000 sats. This matches Oisy's
      constants ([btc-utxos.utils.ts](https://github.com/dfinity/oisy-wallet/blob/main/src/frontend/src/btc/utils/btc-utxos.utils.ts)).
@@ -232,15 +249,18 @@ and [bitcoin_api.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/sr
      sats added to fee".
 3. Cost summary:
    - Network fee: sats, plus `formatValue` of their value.
-   - Signing: `95B + 37B·inputs + 1B·(outputs + change)` cycles, plus 0.1B for the ledger
-     charge.
+   - Signing: `95B + 37B·inputs + 1B·(outputs + 1)` cycles (the signer always prices one extra
+     output for change, even when none is made), plus 0.1B for each ledger charge
+     (`withdraw_from`) and 0.1B for the approve when a new one is needed.
    - The amount the recipient gets.
    - Fat-finger guard: a fee above 10% of the amount, or above 3× the "Fast" rate, needs an
      extra confirm in the same dialog. No JS popup.
 4. Payment:
-   - If the allowance to the signer on the cycles ledger is below the signing cost, one
-     `icrc2_approve` for exactly the cost plus margin, with `expires_at` = now + 1 h (as
-     `APPROVAL_TTL_NS` in `ckMinters.js`).
+   - If the allowance to the signer on the cycles ledger is below Σ (charge + 0.1B) for the calls
+     about to be made, or expires within 10 minutes, one `icrc2_approve` for exactly that amount,
+     with `expires_at` = now + 1 h (as `APPROVAL_TTL_NS` in `ckMinters.js`) and
+     `expected_allowance` = the allowance just read. The first send on a device also pays the
+     0.079B address check (§5.2 step 1) under the same approve.
    - Advanced can set a standing allowance with a cap.
    - If the cycles balance is short: "Top up signing credit" (§7).
 5. Persist, then send:
@@ -266,23 +286,31 @@ and [bitcoin_api.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/sr
 
 ### 5.4 Fee choice
 
-Fee tiers: **Slow / Normal / Fast** come from the fee percentiles (millisatoshi per vbyte; the
-canister keeps 101 percentiles over recent transactions), taken at p25 / p50 / p75. Advanced
-also offers a custom sat/vB field. Each tier is shown as "≈ N sats, about X blocks".
+Decided (Q4 and the user's fee decisions, 2026-10-23): fee suggestions come from
+**mempool.space**, `GET /api/v1/fees/recommended` (staging: `/testnet4/api/v1/fees/recommended`),
+fetched by the browser. Tiers: **Slow** = `hourFee` (≈ 6 blocks), **Normal** = `halfHourFee` (≈ 3),
+**Fast** = `fastestFee` (≈ 1), plus a visible **Custom** sat/vB option. Each tier shows "≈ N sats".
 
-Getting the percentiles from a browser is the gap. The update call charges cycles, and Oisy
-fetches them through its own backend (`getCurrentBtcFeePercentiles`,
-[btc-utxos.service.ts](https://github.com/dfinity/oisy-wallet/blob/main/src/frontend/src/btc/services/btc-utxos.service.ts)).
-Options:
+- **Named source.** A short note with a link next to the fee choice says the suggestions come from
+  mempool.space, a third party.
+- **Custom is always there.** The user can type their own rate after consulting sources they
+  trust. Only nonsense is refused (not a number, ≤ 0, more than 3 decimals, above 10,000 sat/vB);
+  unusual but valid rates (below 1 sat/vB, below "Slow", above 3× "Fast", above 500) pass with a
+  clear warning, and the §5.3 fat-finger tick still applies.
+- **Bounds on the answer.** Every value must be a finite number in (0, 2000]; otherwise the whole
+  answer is refused and the form falls back to Custom. Rates are raised to ≥ 1 sat/vB and made
+  monotone. Cached in memory for 60 s. Never `fee_satoshis = null` (the signer's median
+  underestimates and gives no preview).
+- **Privacy.** Fees are fetched only while the send form is open, never on wallet or card load;
+  only the generic recommended-fees endpoint is called from the send flow (no address, no txid);
+  `credentials: 'omit'`, `referrerPolicy: 'no-referrer'`. Advanced has "Don't look up fees (enter
+  my own)", remembered per browser (localStorage in try/catch). Explorer links and the Activity
+  view's "Ask mempool.space" (which sends one txid) are opt-in clicks.
+- **CSP.** `https://mempool.space` is in `btc.html`'s `connect-src` only; the app's pages never
+  fetch fees.
 
-| | Source | Trust | Cost |
-|---|---|---|---|
-| a | A cached `btc_fee_percentiles` query on the existing Sneed backend canister, refreshed by a timer (every 10 min; timers, not heartbeats) | IC data, single-replica query | A few B cycles a day for the DAO. Needs a backend upgrade by proposal. |
-| b | `https://mempool.space/api/v1/fees/recommended` | third party; needs a CSP `connect-src` entry | free |
-| c | `fee_satoshis = null` (the signer's median) | IC | free, but no preview and it underestimates (§5.1) |
-
-Recommendation: (a) as the primary source, with (b) as fallback and cross-check (warn when they
-differ by more than 2×). Never (c). This is open question Q4.
+A cached `btc_fee_percentiles` query on the Sneed backend (timer-refreshed) can come later as a
+cross-check.
 
 ### 5.5 Pending store and UTXO locks
 
@@ -294,10 +322,18 @@ pending sends in its backend for the same reason (`addPendingBtcTransaction`,
 - Records: `{ id, expectedTxid, txid, utxos[outpoint], outputs, fee, feeRate, state:
   submitting|broadcast|unknown|confirmed|failed|replaced|dropped, createdAt, kind:
   send|toCkbtc|sweep, ckbtc? }`.
-- Storage: the user's backend layout store keyed by principal, so it syncs across devices, with
-  a localStorage mirror. If the backend store is unreadable, **block sends** ("can't check
+- Storage (target): the user's backend layout store keyed by principal, so it syncs across
+  devices, with a localStorage mirror. If the store is unreadable, **block sends** ("can't check
   pending sends") instead of risking a conflict, as Oisy does with
   `PendingTransactionsNotAvailable`.
+- Storage (built, A2): **localStorage only**, key `sneed_btc_pending_v1:<network>:<principal>`,
+  every access in try/catch, write-then-read-back before the signer is called, and a load-modify-
+  save on every update so two tabs don't undo each other. The backend layout store
+  (`get/set_wallet_layout`) holds only lists of principals, so syncing needs a backend change by
+  proposal. Until then a send from another device is not locked here; a conflicting second send
+  fails at the network (no BTC lost, the signing cycles are).
+- A record still `submitting` when the page loads again means the page closed during the call:
+  it becomes `unknown`, never `failed`.
 - **Locked UTXOs** are inputs of records in `submitting`, `broadcast` or `unknown`. They are
   excluded from selection.
 - **Confirmed** when the record's inputs have left the UTXO set, or `txid` is seen at a height.
@@ -381,9 +417,12 @@ with the XDR rate from the CMC.
 | ETH signature (later) | 37B | gas |
 
 **Signing credit.** Users pay from their own cycles-ledger balance.
-- "Top up from ICP" does an ICP transfer to the CMC with memo `MINT`, then
-  `notify_mint_cycles`, which mints straight to the user's cycles-ledger account. That is the
-  same move as Oisy's TCYCLES. It is new code; the repo has no cycles-ledger mint today.
+- "Top up from ICP" does an ICP transfer to the CMC's subaccount for the user's principal with
+  memo `MINT` (`0x544e494d`), then `notify_mint_cycles { block_index; to_subaccount = null;
+  deposit_memo = null }`, which mints straight to the user's cycles-ledger account. That is the
+  same move as Oisy's TCYCLES. Built as `mintCyclesWithIcp` in `utils/cyclesTopUp.js`, which reuses
+  the canister top-up's pending-record machinery (dedup by `created_at_time`, never pays twice);
+  its record is keyed `cycles-ledger:<principal>` and only that principal may notify it.
 - The DAO could sponsor sends through `PatronPaysIcrc2Cycles(Account)`, a patron account that
   pays for callers. Its allowance semantics must be verified against the papi library before any
   design. This is open question Q5.
@@ -392,7 +431,7 @@ with the XDR rate from the CMC.
 
 | Case | Detection | Recovery |
 |---|---|---|
-| Call timed out or trapped after signing (`unknown`) | No `Ok`/`Err` came back | Look for `expectedTxid` via the Bitcoin canister (inputs spent once mined) and, opt-in, mempool.space. If it is still unseen after 30 min: **re-issue the identical `btc_caller_send`**, same UTXOs, outputs and fee. The txid is the same, so a duplicate broadcast is harmless. This costs the signing cycles again, and the UI says so. |
+| Call timed out or trapped after signing (`unknown`) | No `Ok`/`Err` came back | Look for `expectedTxid` via the Bitcoin canister (inputs spent once mined) and, opt-in, mempool.space (`GET /api/tx/<txid>`: 404 = unknown; `/tx/<txid>/status` answers `confirmed: false` even for unknown txids, so it can't tell "never seen"). If it is still unseen after 30 min: **re-issue the identical `btc_caller_send`**, same UTXOs, outputs and fee. The txid is the same, so a duplicate broadcast is harmless. This costs the signing cycles again, and the UI says so. |
 | Signed with `btc_caller_sign` but not broadcast | The record holds `signed_transaction_hex` | "Broadcast": paste-ready hex, plus a one-click POST to mempool.space (opt-in, third party). |
 | Broadcast but stuck (low fee) | 0 confirmations after N blocks; the rate is below the current "Slow" | **Speed up** (full RBF): a new `btc_caller_send` with the **same inputs** and a higher fee that also pays the old fee plus the incremental relay fee. The signer does not signal BIP-125, so this relies on full-RBF relay, which Bitcoin Core enables by default since 28.0 ([release notes](https://bitcoincore.org/en/releases/28.0/)). That must be confirmed on testnet through the IC adapter (Q6). **CPFP** alternative: spend our own unconfirmed change outpoint, which we pass by hand, with a high fee. |
 | Dropped from mempools | Inputs still unspent after ~14 days and not in the mempool | Mark the record `dropped`, which unlocks the UTXOs. The user can resend. |
@@ -511,7 +550,9 @@ support can explain and fix any case.
 - **New files** (all pure logic tested with node tests):
   - `utils/btc/address.js`, `select.js`, `fees.js`, `txid.js` (non-witness serialisation for
     `expectedTxid`), `pending.js`, `history.js`, `errors.js`, `signerIdl.js`,
-    `bitcoinCanisterIdl.js`
+    `bitcoinCanisterIdl.js`, `credit.js` (signing credit), `send.js` (the send call, re-issue,
+    address check)
+  - `btc.html` + `btc/` (the entry without analytics)
   - `components/btc/*`
   - `sign/` (the separate entry)
 
@@ -519,7 +560,9 @@ support can explain and fix any case.
 
 - **Unit (node, in the frontend):**
   - UTXO selection and vsize/fee math, including dust-to-fee and max/sweep.
-  - `expectedTxid` against transactions the signer returns on testnet (golden vectors).
+  - `expectedTxid` against transactions the signer returns on testnet (golden vectors). Until
+    staging has signer-made transactions, real mainnet transactions of the signer's shape
+    (P2WPKH inputs, v2, locktime 0, nSequence 0xFFFFFFFF, every output type) are the vectors.
   - Offline address = `btc_caller_address` for fixed principals (mainnet and testnet).
   - Error mapping.
   - Signer rules: block list, pocket binding, warning tiers. Each rule gets a test that fails
@@ -573,7 +616,10 @@ post (topic 899).
   property or a small on-chain page counter), and whether `'unsafe-eval'` can go app-wide.
 - **Q3. Decided (2026-10-23):** one "Bitcoin" card, with native BTC and ckBTC as pockets.
 - **Q4. Decided (2026-10-23):** mempool.space first (browser fetch, CSP `connect-src`), with sane
-  bounds on the answer; a cached backend query can come later.
+  bounds on the answer; a cached backend query can come later. Follow-up decisions the same day:
+  name the source next to the fee choice, always offer a visible Custom rate (warnings, not
+  blocks, for unusual valid values), fetch only while the send form is open with no address or
+  txid, and a remembered "Don't look up fees" switch (§5.4).
 - **Q5. Decided (2026-10-23):** users always pay signing cycles; no DAO sponsorship.
 - **Q6. Speed-up.** Is full-RBF replacement through the IC's Bitcoin adapter acceptable as the
   only speed-up, or do we also ship CPFP in A4? Both depend on testnet results.

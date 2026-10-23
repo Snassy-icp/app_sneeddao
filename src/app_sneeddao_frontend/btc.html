@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <!-- Sneed Wallet · Bitcoin: the page that signs native Bitcoin. No analytics or third-party
+       scripts here, ever (spec/sneed_wallet.md §4, Q2). Strict headers in public/.ic-assets.json5. -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Sneed Wallet · Bitcoin</title>
+  <link rel="icon" href="/favicon.ico" />
+  <meta name="theme-color" content="#000000" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #1a1a1a; color: #fff; }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/btc/main.jsx"></script>
+</body>
+
+</html>

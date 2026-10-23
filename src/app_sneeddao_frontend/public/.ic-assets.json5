@@ -120,4 +120,25 @@
         "match": "**/*.js",
         "encodings": ["gzip"]
     },
+    {
+        // btc.html: the page that signs native Bitcoin (spec/sneed_wallet.md §4, §9.1). Stricter
+        // than the app: it must come AFTER the "**/*" rule, whose headers it overrides key by key.
+        // - script-src 'self' only: no Google tag (analytics stay on normal pages, Q2), no inline
+        //   scripts, no 'unsafe-eval' (agent-js 2.x verifies BLS in plain JS; the built page
+        //   contains no eval / new Function / WebAssembly).
+        // - connect-src: the IC boundary nodes and mempool.space (fee suggestions only, fetched
+        //   while the send form is open; opt-in transaction lookups). Nothing else.
+        // - frame-ancestors 'none' + X-Frame-Options DENY: never framed (clickjacking); the page
+        //   also refuses to run in a frame in JS.
+        // - camera=(self): the QR scanner for the recipient address (the app's pages keep camera=()).
+        // - style-src 'unsafe-inline': React style attributes and the page's small <style>.
+        "match": "btc.html",
+        "headers": {
+            "Content-Security-Policy": "default-src 'none';script-src 'self';connect-src 'self' https://icp0.io https://*.icp0.io https://icp-api.io https://ic0.app https://*.ic0.app https://mempool.space http://localhost:* http://127.0.0.1:*;img-src 'self' data: blob:;media-src 'self' blob:;style-src 'self' 'unsafe-inline';font-src 'self' data:;manifest-src 'self';object-src 'none';base-uri 'none';form-action 'none';frame-src 'none';frame-ancestors 'none';upgrade-insecure-requests;",
+            "Permissions-Policy": "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(self), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(self), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "no-referrer",
+            "Cache-Control": "no-cache"
+        }
+    },
 ]

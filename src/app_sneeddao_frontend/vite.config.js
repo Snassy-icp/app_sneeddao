@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'url';
 import { writeFileSync, readdirSync, readFileSync } from 'fs';
-import { join, relative } from 'path';
+import { join, relative, resolve } from 'path';
 import { createHash } from 'crypto';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -26,10 +26,14 @@ for (const [key, value] of Object.entries(process.env)) {
 // The ID is a hash of everything else in dist/, so it changes exactly when the content does and
 // the same commit always builds to the same bytes.
 function versionJsonPlugin() {
+  let outDir = join(__dirname, 'dist');
   return {
     name: 'version-json',
+    // write into the build's own outDir (dist/ by default; a scratch --outDir stays scratch)
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
     writeBundle() {
-      const outDir = join(__dirname, 'dist');
       const files = [];
       const walk = (dir) => {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -56,6 +60,14 @@ export default defineConfig({
   build: {
     minify: false,
     emptyOutDir: true,
+    rollupOptions: {
+      // btc.html: the native-Bitcoin send page, a separate entry without analytics
+      // (spec/sneed_wallet.md §4); it shares chunks with the app but never loads index.html's gtag.
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        btc: fileURLToPath(new URL('./btc.html', import.meta.url)),
+      },
+    },
   },
   optimizeDeps: {
     esbuildOptions: {

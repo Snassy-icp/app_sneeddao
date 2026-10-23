@@ -1,12 +1,14 @@
-// Native Bitcoin on the Bitcoin card (spec/sneed_wallet.md §2, §5.2, §10; phase A1, receive only).
+// Native Bitcoin on the Bitcoin card (spec/sneed_wallet.md §2, §5.2, §10; phases A1/A2).
 // One row: "Bitcoin address" with its balance (confirmed, plus pending when anything is
-// unconfirmed) and a Receive button that opens the address with copy and, on request, a QR code.
+// unconfirmed), a Receive button that opens the address with copy and, on request, a QR code,
+// and a Send button that leaves the SPA for btc.html with a normal navigation (sending lives on
+// its own page without analytics; same origin, so the login carries over).
 // Advanced: network, derivation, the canisters involved, and every UTXO with its confirmations.
 //
 // Rendered only behind the feature flag (utils/btc/network.js): staging with Bitcoin testnet4.
 // Amounts go through formatAmount / formatValue, so privacy mode masks them. Theme colours only.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle } from 'react-icons/fa';
+import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle, FaPaperPlane } from 'react-icons/fa';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useDenomination } from '../../contexts/DenominationContext';
 import { usePockets } from '../../hooks/usePockets';
@@ -17,6 +19,7 @@ import { SIGNER_CANISTER } from '../../utils/btc/network';
 import { PocketLine } from '../PocketRows';
 import { PocketButton } from '../PocketVisuals';
 import { CopyValue, QrCode, Notice, Advanced } from '../convert/ConvertUi';
+import TestnetBadge from './TestnetBadge';
 
 const REFRESH_MS = 60_000; // §5.2 step 5: every 60 s while visible, timers in the page only
 const QR_KEY = 'sneed_btc_native_show_qr_v1';
@@ -24,17 +27,7 @@ const readQr = () => { try { return localStorage.getItem(QR_KEY) === '1'; } catc
 const writeQr = (v) => { try { localStorage.setItem(QR_KEY, v ? '1' : '0'); } catch { /* storage blocked */ } };
 const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflowWrap: 'anywhere' };
 
-/// "TESTNET" in the warning colour: on every surface that shows a testnet address or amount.
-export function TestnetBadge({ big = false }) {
-    const { theme } = useTheme();
-    const c = theme.colors;
-    return (
-        <span title="Bitcoin testnet4: test coins with no value. Not real BTC."
-            style={{ fontSize: big ? '0.75rem' : '0.62rem', fontWeight: 800, letterSpacing: 0.6, color: c.warning, border: `1px solid ${c.warning}`, background: `${c.warning}1f`, borderRadius: 999, padding: big ? '2px 9px' : '1px 6px', whiteSpace: 'nowrap' }}>
-            TESTNET
-        </span>
-    );
-}
+export { TestnetBadge };
 
 /// The user's native Bitcoin read (cached 20 s in the adapter), refreshed every 60 s while visible.
 function useNativeBtc(ctx) {
@@ -88,7 +81,7 @@ function ReceiveBtc({ address, cfg }) {
                 </div>
             </div>
             <Notice>
-                <b>Receive only for now.</b> Sending from this address and moving it to ckBTC come in a later release; until then, coins sent here stay here.
+                <b>Sending</b> opens Sneed Wallet's Bitcoin page (no analytics there); it needs a little signing credit in cycles. Moving to ckBTC comes in a later release.
             </Notice>
             <div style={{ fontSize: '0.72rem', color: c.mutedText, lineHeight: 1.5 }}>
                 The address belongs to your principal: the IC's threshold key behind DFINITY's Chain Fusion Signer holds it, there is no seed phrase. Anyone who knows your principal can compute it. It differs from your Oisy address, because Sneed Hub and Oisy sign you in as different principals.
@@ -167,6 +160,8 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
         );
     const actions = hideButtons ? [] : [
         { key: 'receive', icon: FaQrcode, label: 'Receive', onClick: () => setReceiving((r) => !r), disabled: !address },
+        // a full page load, not a router push: btc.html must start without the SPA's gtag.js
+        { key: 'send', icon: FaPaperPlane, label: 'Send', onClick: () => { window.location.assign('/btc.html#send'); }, disabled: !address },
     ];
     return (
         <PocketLine first={first}

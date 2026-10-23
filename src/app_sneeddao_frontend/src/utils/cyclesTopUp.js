@@ -15,6 +15,13 @@
 // notify_top_up is idempotent at the CMC and only mints for the right block + subaccount, so
 // re-notifying is always safe; anyone may call it (see /tools/recover-topup).
 //
+// The same flow mints cycles to the user's own cycles-ledger account (Sneed Wallet signing
+// credit, spec/sneed_wallet.md §7): `mintCyclesWithIcp` sends ICP to the CMC's subaccount for the
+// user's principal with memo MINT and calls `notify_mint_cycles`. Its pending record is keyed
+// `cycles-ledger:<principal>` (kind 'mint'); only that principal may notify it (the CMC checks
+// the caller against the subaccount, and another caller's InvalidTransaction must not delete
+// the record).
+//
 // This module has no 'external/*' imports so node can test it (scripts/cyclesTopUp.test.mjs).
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -22,6 +29,11 @@ import { principalToSubAccount } from '@dfinity/utils';
 export const CMC_CANISTER_ID_TEXT = 'rkp4c-7iaaa-aaaaa-aaaca-cai';
 // "TPUP" = 0x50555054 as a little-endian u64
 export const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
+// "MINT" = 0x544e494d as a little-endian u64 (CMC MEMO_MINT_CYCLES)
+export const MINT_MEMO = new Uint8Array([0x4d, 0x49, 0x4e, 0x54, 0x00, 0x00, 0x00, 0x00]);
+/// The pending-record key of a mint to `owner`'s cycles-ledger account.
+export const mintKey = (owner) => `cycles-ledger:${Principal.fromText(String(owner)).toText()}`;
+const isMint = (rec) => rec?.kind === 'mint';
 export const ICP_FEE_E8S = 10_000n;
 export const STORAGE_KEY = 'sneed_pending_cmc_topups_v1';
 export const PENDING_TOPUPS_EVENT = 'sneed:pending-topups-changed';
@@ -88,6 +100,11 @@ export async function notifyTopUpOnce({ cmc, canisterId, blockIndex }) {
         return { status: 'error', final: false, reason: e?.message || String(e) };
     }
     if (res && 'Ok' in res) return { status: 'ok', final: true, cycles: BigInt(res.Ok) };
+    return notifyErr(res);
+}
+
+/** A CMC NotifyError (notify_top_up and notify_mint_cycles share it), normalised. */
+function notifyErr(res) {
     const err = res?.Err || {};
     if ('Processing' in err) return { status: 'processing', final: false };
     if ('Refunded' in err) {
@@ -110,14 +127,39 @@ export async function notifyTopUp({ cmc, canisterId, blockIndex, processingRetri
     return out;
 }
 
+/**
+ * notify_mint_cycles once (deposit to the caller's main cycles-ledger account), normalised like
+ * notifyTopUpOnce; on Ok also { balance, depositBlock }. Never throws.
+ */
+export async function notifyMintOnce({ cmc, blockIndex }) {
+    let res;
+    try {
+        res = await cmc.notify_mint_cycles({ block_index: BigInt(blockIndex), to_subaccount: [], deposit_memo: [] });
+    } catch (e) {
+        return { status: 'error', final: false, reason: e?.message || String(e) };
+    }
+    if (res && 'Ok' in res) return { status: 'ok', final: true, cycles: BigInt(res.Ok.minted), balance: BigInt(res.Ok.balance), depositBlock: BigInt(res.Ok.block_index) };
+    return notifyErr(res);
+}
+
+export async function notifyMint({ cmc, blockIndex, processingRetries = 2, sleep = defaultSleep }) {
+    let out = await notifyMintOnce({ cmc, blockIndex });
+    for (let i = 0; i < processingRetries && out.status === 'processing'; i++) {
+        await sleep(2000);
+        out = await notifyMintOnce({ cmc, blockIndex });
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------- transfer
 
 function transferArgs(rec) {
+    const beneficiary = isMint(rec) ? rec.owner : rec.canisterId;
     return {
-        to: { owner: Principal.fromText(CMC_CANISTER_ID_TEXT), subaccount: [principalToSubAccount(Principal.fromText(rec.canisterId))] },
+        to: { owner: Principal.fromText(CMC_CANISTER_ID_TEXT), subaccount: [principalToSubAccount(Principal.fromText(beneficiary))] },
         amount: BigInt(rec.amountE8s),
         fee: [BigInt(rec.feeE8s ?? ICP_FEE_E8S)],
-        memo: [TOP_UP_MEMO],
+        memo: [isMint(rec) ? MINT_MEMO : TOP_UP_MEMO],
         from_subaccount: [],
         created_at_time: [BigInt(rec.createdAtTime)],
     };
@@ -159,7 +201,10 @@ function describeTransferErr(err) {
 export async function finishPendingTopUp({ ledger, cmc, canisterId, owner, storage = defaultStorage(), processingRetries, sleep }) {
     const rec = getPendingTopUp(canisterId, storage);
     if (!rec) return { status: 'none', final: true, canisterId: String(canisterId) };
-    const base = { canisterId: rec.canisterId, amountE8s: BigInt(rec.amountE8s), resumed: true };
+    const base = { canisterId: rec.canisterId, amountE8s: BigInt(rec.amountE8s), resumed: true, kind: rec.kind || 'canister' };
+    if (isMint(rec) && rec.owner !== owner) {
+        return { ...base, status: 'needs_owner', final: false, reason: 'This signing-credit top-up belongs to another login; sign in as that principal to finish it.' };
+    }
 
     if (rec.blockIndex == null) {
         if (!ledger || (rec.owner && owner && rec.owner !== owner)) {
@@ -186,7 +231,9 @@ export async function finishPendingTopUp({ ledger, cmc, canisterId, owner, stora
 }
 
 async function notifyAndSettle({ cmc, rec, base, storage, processingRetries, sleep }) {
-    const out = await notifyTopUp({ cmc, canisterId: rec.canisterId, blockIndex: rec.blockIndex, processingRetries, sleep });
+    const out = isMint(rec)
+        ? await notifyMint({ cmc, blockIndex: rec.blockIndex, processingRetries, sleep })
+        : await notifyTopUp({ cmc, canisterId: rec.canisterId, blockIndex: rec.blockIndex, processingRetries, sleep });
     if (out.final) removePendingTopUp(rec.canisterId, storage);
     else { rec.lastError = out.reason || out.status; savePendingTopUp(rec, storage); }
     return { ...base, ...out, blockIndex: BigInt(rec.blockIndex) };
@@ -207,11 +254,30 @@ export async function topUpCanisterWithIcp({
     storage = defaultStorage(), now = () => Date.now(), processingRetries, sleep,
 }) {
     const cid = Principal.fromText(String(canisterId)).toText();
+    return startTopUp({ ledger, cmc, key: cid, kind: 'canister', amountE8s, owner, feeE8s, storage, now, processingRetries, sleep });
+}
+
+/**
+ * Mint `amountE8s` ICP worth of cycles (fee on top) to `owner`'s own cycles-ledger account. Same
+ * guarantees as topUpCanisterWithIcp: a pending mint for this owner is finished first and no new
+ * ICP is sent. On 'ok', result.cycles = minted and result.balance = the new cycles balance.
+ */
+export async function mintCyclesWithIcp({
+    ledger, cmc, owner, amountE8s, feeE8s = ICP_FEE_E8S,
+    storage = defaultStorage(), now = () => Date.now(), processingRetries, sleep,
+}) {
+    const who = Principal.fromText(String(owner)).toText();
+    return startTopUp({ ledger, cmc, key: mintKey(who), kind: 'mint', amountE8s, owner: who, feeE8s, storage, now, processingRetries, sleep, label: 'Signing credit (cycles ledger)' });
+}
+
+async function startTopUp({ ledger, cmc, key, kind, amountE8s, owner, feeE8s, storage, now, processingRetries, sleep, label = null }) {
+    const cid = key;
     if (getPendingTopUp(cid, storage)) {
         return finishPendingTopUp({ ledger, cmc, canisterId: cid, owner, storage, processingRetries, sleep });
     }
     const ms = now();
     const rec = {
+        ...(kind === 'mint' ? { kind, label } : {}),
         canisterId: cid,
         amountE8s: String(amountE8s),
         feeE8s: String(feeE8s),
@@ -221,7 +287,7 @@ export async function topUpCanisterWithIcp({
         blockIndex: null,
         lastError: null,
     };
-    const base = { canisterId: cid, amountE8s: BigInt(amountE8s), resumed: false };
+    const base = { canisterId: cid, amountE8s: BigInt(amountE8s), resumed: false, kind };
     savePendingTopUp(rec, storage);
 
     let sent;
