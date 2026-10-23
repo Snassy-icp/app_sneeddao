@@ -67,11 +67,15 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const coins = useMemo(() => spendable(utxos, { locked }), [utxos, locked]);
     const chosenList = chosen ? coins.filter((u) => chosen.has(outpointKey(u))) : null;
 
-    const plan = useMemo(() => {
+    const livePlan = useMemo(() => {
         if (!btc.data || !parsedTo?.ok || feeRate == null) return null;
         if (!max && !amount?.ok) return null;
         return planSend({ utxos, locked, amount: max ? null : amount.sats, max, feeRate, destType: parsedTo.type, inputs: chosenList });
     }, [btc.data, parsedTo?.ok, parsedTo?.type, feeRate, max, amount?.ok, amount?.sats, utxos, locked, chosenList]); // eslint-disable-line react-hooks/exhaustive-deps
+    // While a send is in flight the coins it spends become reserved, so the live plan turns invalid;
+    // the review screen keeps showing the plan being sent until the outcome is known.
+    const [sendingPlan, setSendingPlan] = useState(null);
+    const plan = step === 'sending' && sendingPlan ? sendingPlan : livePlan;
 
     const verified = isAddressVerified(w.storage, cfg.network, w.meText, address);
     const signCycles = plan?.ok ? sendCycles(plan.nInputs, 1) : null;
@@ -92,6 +96,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         if (!plan?.ok) return;
         if (cfg.devMode && !mainnetOk) return; // real BTC: the mainnet tick is required
         setError(null);
+        setSendingPlan(plan);
         setStep('sending');
         try {
             // 1. pending store must be readable, and the plan's coins must still be free and unspent
