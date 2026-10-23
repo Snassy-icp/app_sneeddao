@@ -504,6 +504,14 @@ Each step is its own proposal, staging first (memory: Sneed DAO release process)
   stop being rate limited.
 - Tell them in forum News topic 899, and in TACO HQ once Mr Sneed is in, before step 2 ships.
 
+## 15a. Decisions (2026-10-23)
+
+- **Prices are pegged to cycles plus a DAO margin.** price = measured cycles cost of the call × (1 + margin), converted to ICP at the cached CMC rate. The margin (a DaoSettings row, default 100% = the "about 2× cost" above) is the DAO's ICP profit and goes to the splitter with the rest of the revenue; the cycles part keeps the canister funded.
+- **No separate opt-in for paid use.** Once a service has a price, a call beyond the free tier is charged automatically if the payer has balance (or a working refill), and rejected (at inspect, and again in the update) if it doesn't. Free-tier calls stay free and never touch the balance.
+- **SMS retention follows the scaling plan:** once SMS moves to inbox canisters (memory scaling-sms-and-forums-plan), retention, and so storage pricing, is each inbox canister's policy. Until then the central canister prices storage as specced and the question stays open.
+- **Notifications triggered by a paid SMS:** as today, the recipient pays by default; the sender can choose to pay instead (the `sponsored` flag that sneed_notifications already has: the app or sender balance pays all or nothing, `#no_funds` otherwise).
+- **A common withdraw API across all services:** every service that holds user money exposes the same withdraw (and balance/statement) methods; where none exists yet (sneed_notifications today has no user withdraw), add it. Later, write this up as an ICRC-style standard draft (possibly together with the pockets balance spec, spec/programmable_accounts.md), so wallets can list and withdraw any service balance generically.
+
 ## 16. Open questions
 
 1. **Pricing mode:** cycles-pegged prices with a daily CMC rate (recommended), or e8s prices set
