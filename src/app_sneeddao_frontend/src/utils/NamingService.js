@@ -441,7 +441,7 @@ export function loadAccountNicknamesMirror(identity) {
     if (!m || !Array.isArray(m.entries)) return [];
     try { return m.entries.map(deserializeEntry); } catch { return []; }
 }
-function saveAccountNicknamesMirror(identity, entries) {
+export function saveAccountNicknamesMirror(identity, entries) {
     save(mirrorKeyFor(identity), { entries: entries.map(serializeEntry) });
 }
 /// Change the mirror in place: `fn(map)` gets a Map<accountMirrorKey, entry> to edit.

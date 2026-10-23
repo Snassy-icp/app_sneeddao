@@ -302,6 +302,8 @@ export function isListed(p, ledger = null) {
     if (p.id === MAIN_ID || p.kind === KIND.service || p.status === 'error') return true;
     if ((p.nickname || '').trim()) return true;
     if (ledger != null) return totalIn(p, ledger) > 0n;
+    // remembered wallet pockets show even when empty (a new pocket is visible right away)
+    if (p.kind === KIND.wallet && p.registered) return true;
     for (const b of p.balances.values()) if (b.total > 0n) return true;
     return false;
 }

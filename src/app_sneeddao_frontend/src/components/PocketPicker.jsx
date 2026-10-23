@@ -22,7 +22,8 @@ export function pocketOptionLabel(p, ledger, { decimals, symbol } = {}) {
     const shield = p.grants ? ` · 🛡${p.grants}` : '';
     const name = displayName(p);
     const b2 = p.kind === KIND.wallet || badge(p) === name || name.endsWith(` · ${badge(p)}`) ? '' : ` (${badge(p)})`;
-    return `${name}${b2}${bal}${shield}`;
+    const empty = p.kind === KIND.wallet && p.id !== 'w:0' && ![...p.balances.values()].some((x) => x.total > 0n) ? ' · empty' : '';
+    return `${name}${b2}${empty || bal}${shield}`;
 }
 
 export default function PocketPicker({ ledger, value, onChange, filter = 'from', allowNew = false, decimals, symbol, allLabel = null, exclude = [], pockets: given, style, disabled }) {

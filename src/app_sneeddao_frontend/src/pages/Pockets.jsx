@@ -301,6 +301,7 @@ export default function Pockets() {
                             </div>
                         )}>
                             {pk.error && <div style={{ color: c.error, fontSize: '0.85rem', marginBottom: 8 }}>{pk.error}</div>}
+                            {pk.registryError && <div style={{ color: c.warning, fontSize: '0.85rem', marginBottom: 8 }}>{pk.registryError}. Pockets saved on other devices may be missing here; try Refresh.</div>}
                             {shown.map((p) => <PocketCard key={p.id} pocket={p} tokens={tokens} />)}
                             <div style={{ fontSize: '0.72rem', color: c.mutedText }}>Empty, unnamed pockets stay out of the wallet's lists; names and pockets sync across your devices through the Sneed naming service.</div>
                         </Section>

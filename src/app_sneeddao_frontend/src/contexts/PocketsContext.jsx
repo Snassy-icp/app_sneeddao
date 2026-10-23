@@ -37,6 +37,7 @@ export function PocketsProvider({ children }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [discoveryNotes, setDiscoveryNotes] = useState([]);
+    const [registryError, setRegistryError] = useState(null);
     const [selected, setSelectedState] = useState(M.ALL);
     const [hideEmpty, setHideEmptyState] = useState(() => readLocal(HIDE_EMPTY_KEY, true));
     const [showQuiet, setShowQuietState] = useState(false);
@@ -81,7 +82,8 @@ export function PocketsProvider({ children }) {
         setError(null);
         try {
             const registry = registryRef.current;
-            try { await registry.refresh(); } catch (e) { /* the mirror stays */ }
+            // the mirror stays when the naming service can't be read, but say so (never drop pockets silently)
+            try { await registry.refresh(); setRegistryError(null); } catch (e) { setRegistryError(`Couldn't read your saved pockets from the naming service: ${e?.message || e}`); }
             const [hosted, disc] = await Promise.all([listHosted(ctx, { adapters: enabledAdapters(ctx) }), discoverWallet(ctx, ledgers, { registry, probe: false })]);
             let merged = M.withWalletTokens(M.mergePockets({ me: ctx.me, registry: registry.entries(), discovered: disc.discovered, hosted }), seedRef.current);
             if (id !== run.current) return;
@@ -198,6 +200,7 @@ export function PocketsProvider({ children }) {
         setHideEmpty,
         showQuiet,
         setShowQuiet,
+        registryError,
         pocketsFor: (ledger) => M.sortPockets(M.listed(pockets, ledger)),
         total: (ledger) => M.total(pockets, ledger, M.ALL),
         balanceFor: (ledger) => M.total(pockets, ledger, validSelected),
@@ -215,7 +218,7 @@ export function PocketsProvider({ children }) {
         transfer,
         pocketById: (id) => pockets.find((p) => p.id === id) || null,
         registryEntries: () => registryRef.current?.entries() || [],
-    }), [active, pockets, loading, error, discoveryNotes, ctx, validSelected, setSelected, hideEmpty, setHideEmpty, showQuiet, setShowQuiet, create, rename, hide, forget, refresh, checkNumber, deepScan, rules, transfer]);
+    }), [active, pockets, loading, error, discoveryNotes, registryError, ctx, validSelected, setSelected, hideEmpty, setHideEmpty, showQuiet, setShowQuiet, create, rename, hide, forget, refresh, checkNumber, deepScan, rules, transfer]);
 
     return <PocketsContext.Provider value={value}>{children}</PocketsContext.Provider>;
 }

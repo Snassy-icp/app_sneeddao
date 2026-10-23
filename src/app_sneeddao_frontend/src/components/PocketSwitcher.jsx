@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { FaLayerGroup } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePockets } from '../hooks/usePockets';
-import { hasExtraPockets, listed, sortPockets, displayName, badge, ALL, KIND } from '../utils/pockets/model';
+import { hasExtraPockets, listed, sortPockets, displayName, badge, ALL, KIND, isEmpty } from '../utils/pockets/model';
 
 export default function PocketSwitcher({ style }) {
     const { theme } = useTheme();
@@ -21,7 +21,7 @@ export default function PocketSwitcher({ style }) {
             <FaLayerGroup size={13} style={{ color: c.mutedText }} />
             <select value={pk.selected} onChange={(e) => pk.setSelected(e.target.value)} style={sel} aria-label="Show pocket">
                 <option value={ALL} style={opt}>All pockets</option>
-                {options.map((p) => <option key={p.id} value={p.id} style={opt}>{displayName(p)}{p.kind === KIND.wallet || displayName(p).includes(badge(p)) ? '' : ` (${badge(p)})`}</option>)}
+                {options.map((p) => <option key={p.id} value={p.id} style={opt}>{displayName(p)}{p.kind === KIND.wallet || displayName(p).includes(badge(p)) ? '' : ` (${badge(p)})`}{p.id !== 'w:0' && isEmpty(p) ? ' · empty' : ''}</option>)}
             </select>
             {pk.selected !== ALL && (
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: c.mutedText, cursor: 'pointer' }}>
@@ -30,6 +30,7 @@ export default function PocketSwitcher({ style }) {
                 </label>
             )}
             {pk.loading && <span style={{ fontSize: '0.75rem', color: c.mutedText }}>reading pockets…</span>}
+            {pk.registryError && <span style={{ fontSize: '0.75rem', color: c.warning }} title={pk.registryError}>couldn't read your saved pockets</span>}
             <Link to="/wallet/pockets" style={{ fontSize: '0.8rem', color: c.accent, marginLeft: 'auto' }}>Manage pockets</Link>
         </div>
     );

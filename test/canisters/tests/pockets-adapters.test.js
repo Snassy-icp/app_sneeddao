@@ -469,3 +469,42 @@ describe('Move and send between pockets (utils/pockets/move.js) against the cani
     await expect(MV.executeTransfer(ctx, one, one, icpId.toText(), 1n)).rejects.toThrow(/same pocket/);
   });
 });
+
+describe('a created pocket is remembered at once, named or not', () => {
+  const erin = user('pockets-erin-fe');
+  const ident = { getPrincipal: () => erin };
+
+  it('an unnamed new pocket is in the canister and listed after a reload (empty)', async () => {
+    store.clear();
+    const reg = R.createRegistry(ident);
+    const account = { owner: erin, subaccount: numbered(1) };
+    const [res] = await reg.remember([{ account, ledgers: [] }]); // what "+ New pocket" does, before any name
+    expect('ok' in res).toBe(true);
+    store.clear(); // a reload on another device: no mirror
+    const again = R.createRegistry(ident);
+    await again.refresh();
+    const ps = M.mergePockets({ me: erin, registry: again.entries() });
+    const p = ps.find((x) => x.number === 1);
+    expect(p.registered).toBe(true);
+    expect(M.isEmpty(p)).toBe(true);
+    expect(M.listed(ps).map((x) => x.id)).toContain(p.id); // the switcher and the Pockets page show it
+    expect(M.hasExtraPockets(ps)).toBe(true);
+    expect(M.holders(ps, icpId.toText())).toEqual([]); // token cards don't: it holds nothing
+    expect(M.pickable(ps, icpId.toText(), 'to').map((x) => x.id)).toContain(p.id); // a Move target
+  });
+
+  it('a pocket created while the registry is being read survives that read', async () => {
+    store.clear();
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const slowNs = { ...NS, getMyAccountNicknames: async (id) => { const stale = await NS.getMyAccountNicknames(id); await gate; NS.saveAccountNicknamesMirror(id, stale); return stale; } };
+    const reg = R.createRegistry(ident, slowNs);
+    const reading = reg.refresh(); // the wallet's first read starts (and reads before the write)
+    await new Promise((r) => setTimeout(r, 300));
+    await reg.remember([{ account: { owner: erin, subaccount: numbered(2) }, ledgers: [] }]);
+    release(); // the read comes back without #2
+    await reading;
+    expect(reg.entries().map((e) => S.pocketNumber(e.account.subaccount))).toEqual(expect.arrayContaining([1, 2]));
+    expect(NS.loadAccountNicknamesMirror(ident).map((e) => S.pocketNumber(e.account.subaccount))).toEqual(expect.arrayContaining([1, 2]));
+  });
+});
