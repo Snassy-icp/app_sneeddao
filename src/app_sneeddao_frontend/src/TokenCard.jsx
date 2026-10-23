@@ -37,7 +37,10 @@ import { icrc1Transfer } from './utils/icrcTx';
 import { appAlert, appConfirm } from './utils/appDialog';
 import { usePockets } from './hooks/usePockets';
 import { TokenPocketBreakdown } from './components/PocketRows';
-import { otherPocketsTotal, holders as pocketHolders } from './utils/pockets/model';
+import { otherPocketsTotal, holders as pocketHolders, nativeBtcForCard } from './utils/pockets/model';
+import BtcNativeSection, { TestnetBadge } from './components/btc/BtcNativeSection';
+import { btcNative } from './utils/btc/network';
+import { CKBTC } from './utils/ckMinters';
 import { wrapAction } from './utils/wrapActions';
 import { journalStake, updateStake, removeStake } from './utils/stakeJournal';
 
@@ -126,7 +129,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // own, and "in N pockets" shows only when more than one pocket holds the token.
     const pockets = usePockets({ enabled: showPockets });
     const pocketLedger = normalizeId(token.ledger_canister_id);
-    const pocketsExtra = showPockets ? otherPocketsTotal(pockets.pockets, pocketLedger) : 0n;
+    // The Bitcoin card (spec/sneed_wallet.md §10, Q3): ckBTC and, behind the native-BTC flag, the
+    // user's own Bitcoin address as one more pocket. Mainnet sats count towards the total; testnet
+    // coins (staging) never do.
+    const isBtcCard = showPockets && pocketLedger === CKBTC.ledger && btcNative().enabled;
+    const pocketsExtra = showPockets ? otherPocketsTotal(pockets.pockets, pocketLedger) + (isBtcCard ? nativeBtcForCard(pockets.pockets) : 0n) : 0n;
     const pocketCount = showPockets ? pocketHolders(pockets.pockets, pocketLedger).length : 0;
     // Support both new refreshPhase prop and legacy isRefreshing boolean
     const isRefreshing = refreshPhase !== null || isRefreshingLegacy;
@@ -1488,7 +1495,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}
                     <div className="header-row-1" style={{ minWidth: 0 }}>
-                        <span className="token-name">{token.name || token.symbol}</span>
+                        <span className="token-name">{isBtcCard ? <>Bitcoin <span style={{ fontSize: '0.7rem', fontWeight: 500, color: theme.colors.mutedText }}>ckBTC + BTC</span>{btcNative().config?.testnet && <> <TestnetBadge /></>}</> : (token.name || token.symbol)}</span>
                         <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
                                 denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
@@ -2109,6 +2116,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {showBalanceBreakdown && showPockets && (
                                         <TokenPocketBreakdown token={token} hideButtons={hideButtons} onAction={onPocketAction}
                                             onDeposit={() => handleDepositToBackend(token)} onWithdrawLock={() => handleWithdrawFromBackend(token)} />
+                                    )}
+                                    {isBtcCard && (
+                                        <div style={{ padding: '2px 12px 6px', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}`, margin: '8px 0', minWidth: 0 }}>
+                                            <BtcNativeSection token={token} hideButtons={hideButtons} first />
+                                        </div>
                                     )}
                                     {showBalanceBreakdown && !showPockets && (
                                         <div className="balance-breakdown" style={{ 

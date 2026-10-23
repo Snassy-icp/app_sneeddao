@@ -19,6 +19,8 @@
     "@dfinity/ledger-icrc": "^2.0.0",
     "@dfinity/principal": "^2.0.0",
     "@dfinity/utils": "^2.0.0",
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
     "jsqr": "1.4.0",
     "react": "^18.2.0",
     "react-dnd": "^16.0.1",

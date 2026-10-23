@@ -96,6 +96,8 @@ import { appAlert } from './utils/appDialog';
 import { usePockets } from './hooks/usePockets';
 import PocketSwitcher from './components/PocketSwitcher';
 import { PocketTokenList } from './components/PocketRows';
+import { BitcoinCard } from './components/btc/BtcNativeSection';
+import { btcNativeEnabled } from './utils/btc/network';
 import { ALL as ALL_POCKETS, MAIN_ID, otherPocketsTotal } from './utils/pockets/model';
 
 // Custom CSS for Wallet page animations
@@ -6579,6 +6581,8 @@ function Wallet() {
                         <PocketTokenList tokens={tokens} onAction={handlePocketAction} />
                     )}
                     <div className="card-grid" style={walletPockets.selected !== ALL_POCKETS ? { display: 'none' } : undefined}>
+                    {/* native Bitcoin (feature flag, staging testnet4): on the ckBTC card, or its own card without ckBTC */}
+                    {btcNativeEnabled() && !tokens.some(t => normalizeId(t.ledger_canister_id) === 'mxzaz-hqaaa-aaaar-qaada-cai') && <BitcoinCard />}
                     {(walletLayoutCtx?.sortByLayout
                         ? walletLayoutCtx.sortByLayout('tokens', tokens, t => normalizeId(t.ledger_canister_id))
                         : tokens

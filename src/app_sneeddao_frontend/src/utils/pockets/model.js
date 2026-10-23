@@ -3,6 +3,10 @@
 //   - wallet pocket:  { owner = me; subaccount }            (Main, #1, #2, ..., exact subaccounts)
 //   - hosted pocket:  an account a canister holds for me     (Sneed Lock wallet, Sneedex escrows, ICPSwap)
 //   - service balance: a balance in a service's own books   (Sneed Monitor, Sneed Notifications)
+//   - chain pocket:    an address on another chain, held by the user's threshold key (native
+//                      Bitcoin, spec/sneed_wallet.md §10): account null, meta.address, balances
+//                      keyed by a pseudo-ledger ("btc:testnet", "btc:mainnet"). Shown only on its
+//                      asset's card (the Bitcoin card), never in ICRC lists, pickers or the switcher.
 //
 //   Pocket = { id, kind, adapterId, account, number, label, nickname, defaultLabel, host,
 //              balances: Map<ledger, { total, available, locked?, note? }>, ledgers: string[],
@@ -13,7 +17,7 @@
 import { Principal } from '@dfinity/principal';
 import { bytesToHex, canonical, pocketNumber, shortSubaccount, isDefault, subaccountToNumber, MAX_POCKET_NUMBER } from './subaccount.js';
 
-export const KIND = { wallet: 'wallet', hosted: 'hosted', service: 'service' };
+export const KIND = { wallet: 'wallet', hosted: 'hosted', service: 'service', chain: 'chain' };
 export const WALLET_ADAPTER = 'wallet';
 export const ALL = 'all';
 
@@ -33,6 +37,7 @@ export function accountKey(account) {
 export const walletPocketId = (subaccount) => { const s = canonical(subaccount ?? null); return `w:${s ? bytesToHex(s) : '0'}`; };
 export const hostedPocketId = (adapterId, hostKey) => `h:${adapterId}:${hostKey}`;
 export const servicePocketId = (adapterId, hostKey) => `s:${adapterId}:${hostKey}`;
+export const chainPocketId = (adapterId, hostKey) => `c:${adapterId}:${hostKey}`;
 export const MAIN_ID = 'w:0';
 
 /// What a pocket's buttons may do (§4.2): wallet pockets do everything with the user's key.
@@ -66,10 +71,10 @@ export function walletPocket(me, subaccount = null, extra = {}) {
 
 /// A hosted pocket or service balance listed by an adapter: `item` = { hostKey, account?, label?, ledgers? }.
 export function adapterPocket(adapter, item, extra = {}) {
-    const kind = adapter.kind === KIND.service ? KIND.service : KIND.hosted;
+    const kind = adapter.kind === KIND.service ? KIND.service : adapter.kind === KIND.chain ? KIND.chain : KIND.hosted;
     const account = item.account ? { owner: toPrincipal(item.account.owner), subaccount: canonical(item.account.subaccount ?? null) } : null;
     return {
-        id: kind === KIND.service ? servicePocketId(adapter.id, item.hostKey) : hostedPocketId(adapter.id, item.hostKey),
+        id: kind === KIND.service ? servicePocketId(adapter.id, item.hostKey) : kind === KIND.chain ? chainPocketId(adapter.id, item.hostKey) : hostedPocketId(adapter.id, item.hostKey),
         kind,
         adapterId: adapter.id,
         hostKey: String(item.hostKey),
@@ -298,7 +303,7 @@ export const showDisclosure = (pockets, ledger) => holders(pockets, ledger).leng
 /// even when empty; unnamed ones only with a balance (in `ledger`, or in any ledger); service
 /// balances and pockets that couldn't be read always.
 export function isListed(p, ledger = null) {
-    if (p.hidden) return false;
+    if (p.hidden || p.kind === KIND.chain) return false;
     if (p.id === MAIN_ID || p.kind === KIND.service || p.status === 'error') return true;
     if ((p.nickname || '').trim()) return true;
     if (ledger != null) return totalIn(p, ledger) > 0n;
@@ -314,7 +319,7 @@ export const listed = (pockets, ledger = null) => pockets.filter((p) => isListed
 /// 'to' / 'receive' = can receive it, 'approve' = can approve.
 export function pickable(pockets, ledger, filter = 'from') {
     return pockets.filter((p) => {
-        if (p.hidden || p.status === 'error') return false;
+        if (p.hidden || p.status === 'error' || p.kind === KIND.chain) return false;
         if (filter === 'from') return (p.caps.send || p.caps.withdraw) && totalIn(p, ledger) > 0n;
         if (filter === 'to') return p.kind === KIND.wallet || p.caps.deposit;
         if (filter === 'receive') return p.caps.receive;
@@ -369,7 +374,7 @@ export function isPrincipalShaped(sub) {
 
 /// Sort for lists: Main first, then numbered wallet pockets by number, exact ones, hosted, services.
 export function sortPockets(pockets) {
-    const rank = (p) => (p.id === MAIN_ID ? 0 : p.kind === KIND.wallet ? (p.number != null ? 1 : 2) : p.kind === KIND.hosted ? 3 : 4);
+    const rank = (p) => (p.id === MAIN_ID ? 0 : p.kind === KIND.wallet ? (p.number != null ? 1 : 2) : p.kind === KIND.hosted ? 3 : p.kind === KIND.chain ? 5 : 4);
     return [...pockets].sort((a, b) => {
         const r = rank(a) - rank(b);
         if (r) return r;
@@ -438,3 +443,12 @@ export const isEmpty = (p) => ![...p.balances.values()].some((b) => b.total > 0n
 /// "Remove pocket" (forget it in the registry): the user's own remembered or named wallet pockets
 /// other than Main. The subaccount stays on-chain; tokens arriving later bring it back via discovery.
 export const canRemove = (p) => p.kind === KIND.wallet && p.id !== MAIN_ID && Boolean(p.registered || (p.nickname || '').trim());
+
+// ---- chain pockets (native Bitcoin, spec/sneed_wallet.md §10) ----
+
+/// The chain pockets of an adapter (native Bitcoin: 'btc_native'), errors included.
+export const chainPockets = (pockets, adapterId = null) => pockets.filter((p) => p.kind === KIND.chain && (adapterId == null || p.adapterId === adapterId));
+
+/// What native Bitcoin adds to the Bitcoin (ckBTC) card's total, in sats: confirmed mainnet BTC
+/// only. Testnet coins have no value and never count towards a real token's total.
+export const nativeBtcForCard = (pockets) => chainPockets(pockets, 'btc_native').reduce((t, p) => t + (p.meta?.testnet ? 0n : totalIn(p, 'btc:mainnet')), 0n);

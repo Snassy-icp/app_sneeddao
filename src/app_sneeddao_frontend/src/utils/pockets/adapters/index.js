@@ -8,16 +8,20 @@ import { icpswapAdapter } from './icpswap.js';
 import { sneedMonAdapter } from './sneed_mon.js';
 import { sneedNotificationsAdapter } from './sneed_notifications.js';
 import { tacoAdapter } from './taco.js';
+import { btcNativeAdapter } from './btc_native.js';
+import { btcNativeEnabled } from '../../btc/network.js';
 import { KIND } from '../model.js';
 
-export { walletAdapter, sneedLockAdapter, sneedexAdapter, icpswapAdapter, sneedMonAdapter, sneedNotificationsAdapter, tacoAdapter };
+export { walletAdapter, sneedLockAdapter, sneedexAdapter, icpswapAdapter, sneedMonAdapter, sneedNotificationsAdapter, tacoAdapter, btcNativeAdapter };
 
-/// Hosted and service adapters, in the order their pockets list.
-export const ADAPTERS = [sneedLockAdapter, sneedexAdapter, icpswapAdapter, sneedMonAdapter, sneedNotificationsAdapter, tacoAdapter];
+/// Hosted and service adapters, in the order their pockets list. Native Bitcoin (spec/sneed_wallet.md
+/// §10) joins only where its feature flag is on (staging, testnet4), so prod lists no trace of it;
+/// its enabled(ctx) checks the flag again.
+export const ADAPTERS = [sneedLockAdapter, sneedexAdapter, icpswapAdapter, sneedMonAdapter, sneedNotificationsAdapter, tacoAdapter, ...(btcNativeEnabled() ? [btcNativeAdapter] : [])];
 
 export const DEFAULT_TIMEOUT_MS = 15_000;
 
-const byId = new Map([walletAdapter, ...ADAPTERS].map((a) => [a.id, a]));
+const byId = new Map([walletAdapter, ...ADAPTERS, btcNativeAdapter].map((a) => [a.id, a]));
 export const adapterById = (id) => byId.get(id) || null;
 /// The adapter that handles a pocket (wallet pockets: the built-in wallet adapter).
 export const adapterFor = (pocket) => (pocket.kind === KIND.wallet ? walletAdapter : adapterById(pocket.adapterId));

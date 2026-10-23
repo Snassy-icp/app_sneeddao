@@ -11,6 +11,7 @@
   "devDependencies": {
     "@dfinity/agent": "^2.4.1",
     "@dfinity/candid": "^2.4.1",
+    "@dfinity/ic-pub-key": "1.0.2",
     "@dfinity/identity": "^2.4.1",
     "@dfinity/pic": "^0.25.0",
     "@dfinity/principal": "^2.4.1",

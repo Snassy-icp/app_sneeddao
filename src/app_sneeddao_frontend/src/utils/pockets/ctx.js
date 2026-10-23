@@ -1,5 +1,6 @@
 // The context pocket adapters run in (spec/programmable_accounts.md §4.2):
 //   ctx = { identity, me, actor(kind, canisterId), canisterIds, ledgerMeta(ledger), swapCanisters(), flags }
+// (flags.btcNative overrides the native-Bitcoin feature flag; tests only)
 // `actor` hands out actors made with the user's identity (cached per kind and canister), so
 // adapters never touch keys. Tests build their own ctx with PocketIC actors.
 import { Actor, HttpAgent } from '@dfinity/agent';
@@ -12,6 +13,7 @@ import { createActor as createSneedex, canisterId as sneedexEnv } from 'declarat
 import { createActor as createMon, canisterId as monEnv } from 'declarations/sneed_mon';
 import { createActor as createNotifications, canisterId as notificationsEnv } from 'declarations/sneed_notifications';
 import { createActor as createBackend, canisterId as backendEnv } from 'declarations/app_sneeddao_backend';
+import { bitcoinCanisterIdl } from '../btc/bitcoinCanisterIdl.js';
 
 export const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
@@ -33,11 +35,14 @@ export const defaultCanisterIds = () => ({
 /// ICRC-106: where a ledger's index is (probed, as pages/studio/IndexPanel.jsx does).
 const icrc106Idl = ({ IDL }) => IDL.Service({ icrc106_get_index_principal: IDL.Func([], [IDL.Variant({ Ok: IDL.Principal, Err: IDL.Reserved })], ['query']) });
 const createIcrc106 = (id, { agentOptions }) => Actor.createActor(icrc106Idl, { agent: HttpAgent.createSync(agentOptions), canisterId: id });
+/// The IC Bitcoin canister's free queries (native Bitcoin pocket, utils/btc/).
+const createBitcoin = (id, { agentOptions }) => Actor.createActor(bitcoinCanisterIdl, { agent: HttpAgent.createSync(agentOptions), canisterId: id });
 
 const FACTORIES = {
     ledger: createLedger,
     index: createIndex,
     icrc106: createIcrc106,
+    bitcoin: createBitcoin,
     icpswap_pool: createIcpSwap,
     sneed_lock: createSneedLock,
     sneedex: createSneedex,

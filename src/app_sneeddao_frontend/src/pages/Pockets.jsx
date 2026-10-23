@@ -209,7 +209,7 @@ function Hosts() {
                 const state = !enabled.has(a.id) ? { t: 'off', color: c.mutedText } : failed ? { t: `couldn't read: ${failed.error}`, color: c.warning } : { t: `${mine.length} pocket${mine.length === 1 ? '' : 's'}`, color: c.success };
                 return (
                     <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '0.85rem', borderTop: `1px solid ${c.border}`, paddingTop: 6 }}>
-                        <span style={{ color: c.primaryText }}>{a.name} <span style={{ color: c.mutedText, fontSize: '0.75rem' }}>{a.kind === 'service' ? 'service balance' : 'hosted'}{readOnly ? ' · read-only' : ''}</span></span>
+                        <span style={{ color: c.primaryText }}>{a.name} <span style={{ color: c.mutedText, fontSize: '0.75rem' }}>{a.kind === 'service' ? 'service balance' : a.kind === 'chain' ? 'chain address · on the Bitcoin card' : 'hosted'}{readOnly ? ' · read-only' : ''}</span></span>
                         <span style={{ color: state.color }}>
                             {state.t}
                             {readOnly && a.manageUrl && <> · <a href={a.manageUrl} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }}>manage at {a.name}</a></>}
@@ -272,7 +272,8 @@ export default function Pockets() {
     const S = useStyles();
     const [showHidden, setShowHidden] = useState(false);
     // empty, unnamed hosted pockets (an ICPSwap pool with nothing left) stay out of this list too
-    const all = sortPockets(pk.pockets.filter((p) => p.hostKey !== '*' && !(p.kind === KIND.hosted && !p.nickname && p.status !== 'error' && ![...p.balances.values()].some((b) => b.total > 0n))));
+    // native Bitcoin (a chain pocket) lives on the Bitcoin card, not in this ICRC list
+    const all = sortPockets(pk.pockets.filter((p) => p.hostKey !== '*' && p.kind !== KIND.chain && !(p.kind === KIND.hosted && !p.nickname && p.status !== 'error' && ![...p.balances.values()].some((b) => b.total > 0n))));
     const shown = all.filter((p) => (p.quietHidden ? pk.showQuiet : showHidden || !p.hidden));
     const hiddenCount = all.filter((p) => p.hidden && !p.quietHidden).length;
     const escrowCount = pk.pockets.filter((p) => p.caps?.quiet && p.hostKey !== '*' && [...p.balances.values()].some((b) => b.total > 0n)).length;
