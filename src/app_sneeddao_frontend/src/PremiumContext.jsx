@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createSneedPremiumActor } from './utils/SneedPremiumUtils';
+import { needsCheck, markFailed } from './utils/premiumCache';
 
 const PremiumContext = createContext();
 export { PremiumContext };
@@ -9,7 +10,6 @@ export { PremiumContext };
 // batches (checkMemberships, at most 500 per query) the first time they are shown, and cached.
 const BATCH_MAX = 500;
 const FLUSH_DELAY_MS = 50; // gathers the principals of one render into one query
-const STALE_MS = 10 * 60 * 1000; // re-checked when shown again after this
 
 export function PremiumProvider({ children }) {
     // principal text -> { until: ms the membership is active until (0: not a member), checkedAt: ms }
@@ -48,8 +48,7 @@ export function PremiumProvider({ children }) {
             publish();
         } catch (err) {
             console.error('PremiumContext: Error checking premium members:', err);
-            // let them be asked again on the next request
-            for (const p of principals) if (cache.current.get(p)?.checkedAt === -1) cache.current.delete(p);
+            markFailed(cache.current, principals, Date.now()); // asked again later, not on the next render
         } finally {
             setLoading(false);
         }
@@ -60,7 +59,7 @@ export function PremiumProvider({ children }) {
         if (!principal) return;
         const p = typeof principal === 'string' ? principal : principal.toString();
         const e = cache.current.get(p);
-        if (e && (e.checkedAt === -1 || Date.now() - e.checkedAt < STALE_MS)) return;
+        if (!needsCheck(e, Date.now())) return;
         cache.current.set(p, { until: e?.until ?? 0, checkedAt: -1 }); // in flight
         queue.current.add(p);
         if (!timer.current) timer.current = setTimeout(flush, FLUSH_DELAY_MS);
