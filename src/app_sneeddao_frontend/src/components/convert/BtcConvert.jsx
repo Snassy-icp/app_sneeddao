@@ -196,7 +196,7 @@ export function BtcWithdraw({ makeActor, me, onDone }) {
     const run = async () => {
         setConfirm(false); setError(''); setResult(null);
         try {
-            const r = await ckbtcWithdraw(makeActor, { address, amount, ledgerFee: bal?.fee, onStep: setStep });
+            const r = await ckbtcWithdraw(makeActor, { address, amount, ledgerFee: bal?.fee, onStep: (s) => setStep(s) });
             setResult(r); setAmountText(''); setAck(false);
             loadBal(); loadHistory(); onDone?.();
         } catch (e) { setError(e.message); }

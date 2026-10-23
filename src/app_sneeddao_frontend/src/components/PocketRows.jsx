@@ -260,7 +260,8 @@ export function NewPocketActions({ token, onAction }) {
 /// the same row design as every other pocket, then the other pockets holding the token, then the
 /// new-pocket actions. `onWithdrawLock` is the card's Sneed Lock withdraw (depositing to Sneed Lock
 /// lives in the Lock flows and the Move dialog, not on every card; `onDeposit` is kept for callers).
-export function TokenPocketBreakdown({ token, hideButtons, onAction, onDeposit, onWithdrawLock }) {
+/// `mainActions`: extra buttons on the Main row (the Bitcoin card's "Move to my Bitcoin address").
+export function TokenPocketBreakdown({ token, hideButtons, onAction, onDeposit, onWithdrawLock, mainActions = [] }) {
     const { theme } = useTheme();
     const c = theme.colors;
     const pk = usePockets();
@@ -279,7 +280,7 @@ export function TokenPocketBreakdown({ token, hideButtons, onAction, onDeposit, 
     return (
         <div style={{ padding: '2px 12px 10px', background: c.secondaryBg, borderRadius: 10, border: `1px solid ${c.border}`, margin: '8px 0', minWidth: 0 }}>
             <PocketLine first avatar={<PocketAvatar pocket={mainPocket} size={26} />} name={displayName(mainPocket)} badge={null}
-                amount={<LineAmount token={token} amount={main} />} />
+                amount={<LineAmount token={token} amount={main} />} actions={hideButtons ? [] : mainActions} />
             {showLock && (
                 <PocketLine avatar={<PocketAvatar pocket={lockPocket} size={26} />} name={displayName(lockPocket)} badge={null}
                     title="Tokens you hold in Sneed Lock; locked ones can't move until they unlock"

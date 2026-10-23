@@ -2,7 +2,9 @@
 // One row: "Bitcoin address" with its balance (confirmed, plus pending when anything is
 // unconfirmed), a Receive button that opens the address with copy and, on request, a QR code,
 // and a Send button that leaves the SPA for btc.html with a normal navigation (sending lives on
-// its own page without analytics; same origin, so the login carries over).
+// its own page without analytics; same origin, so the login carries over). "Move to ckBTC" (A3)
+// opens btc.html's Move tab the same way; the ckBTC row's "Move to my Bitcoin address" is in
+// TokenCard (ckRowMoveShown).
 // Advanced: network, derivation, the canisters involved, and every UTXO with its confirmations.
 //
 // Rendered only behind the feature flag (utils/btc/network.js): staging with Bitcoin testnet4, or
@@ -11,14 +13,14 @@
 // explanation). With the switch off, prod shows BtcBetaOffer instead and derives or reads nothing.
 // Amounts go through formatAmount / formatValue, so privacy mode masks them. Theme colours only.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle, FaPaperPlane } from 'react-icons/fa';
+import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle, FaPaperPlane, FaExchangeAlt } from 'react-icons/fa';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useDenomination } from '../../contexts/DenominationContext';
 import { usePockets } from '../../hooks/usePockets';
 import { formatAmount, computeUsdValue } from '../../utils/StringUtils';
 import { readNative, btcConfigFor } from '../../utils/pockets/adapters/btc_native';
 import { bitcoinUri, deriveBtcAddress } from '../../utils/btc/address';
-import { SIGNER_CANISTER, btcNative, btcSurface } from '../../utils/btc/network';
+import { SIGNER_CANISTER, btcNative, btcSurface, ckMoveFor, btcPageHref } from '../../utils/btc/network';
 import { PocketLine } from '../PocketRows';
 import { PocketButton } from '../PocketVisuals';
 import { CopyValue, QrCode, Notice, Advanced } from '../convert/ConvertUi';
@@ -91,7 +93,7 @@ function ReceiveBtc({ address, cfg }) {
                 </div>
             </div>
             <Notice>
-                <b>Sending</b> opens Sneed Wallet's Bitcoin page (no analytics there); it needs a little signing credit in cycles. Moving to ckBTC comes in a later release.
+                <b>Sending</b> and <b>moving to {cfg.ck?.symbol || 'ckBTC'}</b> open Sneed Wallet's Bitcoin page (no analytics there); both need a little signing credit in cycles.
             </Notice>
             <div style={{ fontSize: '0.72rem', color: c.mutedText, lineHeight: 1.5 }}>
                 The address belongs to your principal: the IC's threshold key behind DFINITY's Chain Fusion Signer holds it, there is no seed phrase. Anyone who knows your principal can compute it. It differs from your Oisy address, because Sneed Hub and Oisy sign you in as different principals.
@@ -160,6 +162,7 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
     if (!cfg && btcSurface(btcNative(ctx?.me ?? null)).offer) return hideButtons ? null : <BtcBetaOffer style={{ padding: '8px 0' }} />;
     if (!ctx || !cfg) return null;
     const status = btcNative(ctx.me);
+    const ck = ckMoveFor(status);
     const address = data?.address || null;
     const s = data?.summary;
     const usd = !cfg.testnet && s && token?.conversion_rate ? computeUsdValue(s.confirmed, 8, token.conversion_rate) : null;
@@ -176,7 +179,8 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
     const actions = hideButtons ? [] : [
         { key: 'receive', icon: FaQrcode, label: 'Receive', onClick: () => setReceiving((r) => !r), disabled: !address },
         // a full page load, not a router push: btc.html must start without the SPA's gtag.js
-        { key: 'send', icon: FaPaperPlane, label: 'Send', onClick: () => { window.location.assign(status.devSource === 'param' ? '/btc.html?btcnet=mainnet#send' : '/btc.html#send'); }, disabled: !address },
+        { key: 'send', icon: FaPaperPlane, label: 'Send', onClick: () => { window.location.assign(btcPageHref(status, 'send')); }, disabled: !address },
+        ...(ck ? [{ key: 'tock', icon: FaExchangeAlt, label: `Move to ${ck.symbol}`, title: `Move bitcoin from this address to ${ck.symbol} in your wallet`, onClick: () => { window.location.assign(btcPageHref(status, 'move')); }, disabled: !address || !(s?.confirmed > 0n) }] : []),
     ];
     return (
         <PocketLine first={first}

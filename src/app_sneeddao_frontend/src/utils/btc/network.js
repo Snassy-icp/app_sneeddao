@@ -34,6 +34,15 @@ export const PROD_HOSTS = Object.freeze([
 /// The Chain Fusion Signer (NNS-governed) that holds every Sneed Wallet BTC key.
 export const SIGNER_CANISTER = 'grghe-syaaa-aaaar-qabyq-cai';
 
+/// The ck pair each Bitcoin network moves to and from (spec/sneed_wallet.md §6, phase A3). Checked
+/// anonymously on 2026-10-23: the ckTESTBTC minter ml52i (dashboard: network testnet = testnet4,
+/// ledger mc6ru, 4 confirmations, check fee 100, min deposit 300, min retrieve 5,000 sats) has the
+/// same candid as the ckBTC minter mqygn for every method Sneed Wallet calls.
+export const CK_PAIRS = Object.freeze({
+    mainnet: Object.freeze({ symbol: 'ckBTC', ledger: 'mxzaz-hqaaa-aaaar-qaada-cai', minter: 'mqygn-kiaaa-aaaar-qaadq-cai' }),
+    testnet: Object.freeze({ symbol: 'ckTESTBTC', ledger: 'mc6ru-gyaaa-aaaar-qaaaq-cai', minter: 'ml52i-qqaaa-aaaar-qaaba-cai' }),
+});
+
 /// Per network: the IC Bitcoin canister, the signer's network variant, the pseudo-ledger key the
 /// pockets model uses for native balances, the explorer, and how the UI names it.
 export const BTC_NETWORKS = Object.freeze({
@@ -46,6 +55,7 @@ export const BTC_NETWORKS = Object.freeze({
         symbol: 'BTC',
         label: 'Bitcoin',
         testnet: false,
+        ck: CK_PAIRS.mainnet,
     }),
     // The IC's Bitcoin testnet canister follows testnet4 (its candid: "testnet; // Bitcoin
     // testnet4"; get_config on g4xu7 reports network = testnet, height ~157k in Oct 2026). The
@@ -59,6 +69,7 @@ export const BTC_NETWORKS = Object.freeze({
         symbol: 'tBTC',
         label: 'Bitcoin testnet4',
         testnet: true,
+        ck: CK_PAIRS.testnet,
     }),
 });
 
@@ -200,6 +211,18 @@ export function btcSurface(status, signedIn = false) {
         intro: Boolean(cfg?.beta),
     };
 }
+
+/// Native ↔ ck moves (phase A3) for `status`: the network's ck pair, or null. Null whenever the
+/// Bitcoin surface is off (prod with the beta switch off, other builds), so no move button, minter
+/// or ledger call exists there.
+export const ckMoveFor = (status) => (status?.enabled && status.config?.ck ? status.config.ck : null);
+/// The "Move to my Bitcoin address" button belongs on the row of the ck token `ledger` only when
+/// that ledger is this network's pair (on staging testnet4 the pair is ckTESTBTC, not the ckBTC
+/// card's token, so the ckBTC row gets no button there).
+export const ckRowMoveShown = (status, ledger) => { const ck = ckMoveFor(status); return Boolean(ck && String(ledger) === ck.ledger); };
+/// The btc.html address for a tab (send, move, move-tobtc, credit, activity), keeping the headless
+/// developer-mode parameter when this page load was switched to mainnet by it.
+export const btcPageHref = (status, tab) => (status?.devSource === 'param' ? `/btc.html?btcnet=mainnet#${tab}` : `/btc.html#${tab}`);
 
 /// The first-time beta explanation was dismissed in this browser.
 export const BETA_INTRO_KEY = 'sneed_btc_beta_intro_seen_v1';

@@ -1,9 +1,9 @@
 # Sneed Wallet: native Bitcoin and "Sign in with Sneed Wallet"
 
-Status: spec draft, 2026-10-23. A1 (receive) and A0/A2 (signing credit, fee source, `btc.html`,
-pending store, send) built. Staging: testnet4 behind the A1 triple flag, plus mainnet developer
+Status: spec draft, 2026-10-23. A1 (receive), A0/A2 (signing credit, fee source, `btc.html`,
+pending store, send) and A3 (native ↔ ckBTC moves, §6) built. Staging: testnet4 behind the A1 triple flag, plus mainnet developer
 mode (§11). **Prod: Bitcoin MAINNET as an opt-in beta** (decided 2026-10-23, §12.1): a "Bitcoin
-(beta)" switch per browser, default off. A3 and A4 are built during the beta. Builds on `spec/oisy_comparison.md` (§3.1 signer,
+(beta)" switch per browser, default off. A3 is built (not yet released); A4 is built during the beta. Builds on `spec/oisy_comparison.md` (§3.1 signer,
 §3.2 Chain Fusion Signer, §5 order) and `spec/programmable_accounts.md` (pockets). Paths are
 relative to `src/app_sneeddao_frontend/src`.
 
@@ -371,6 +371,27 @@ Both directions reuse `utils/ckMinters.js` (ckBTC minter `mqygn-kiaaa-aaaar-qaad
 `mxzaz-hqaaa-aaaar-qaada-cai`). The `/convert` page (`components/convert/BtcConvert.jsx`) keeps
 working for external wallets.
 
+**Built (A3, 2026-10-23; not yet released).** `utils/btc/moves.js` (pure flows, mocks injected),
+`btc/useMoves.js` (the runner), `components/btc/BtcMove.jsx` (Move tab), Moves in
+`BtcActivity.jsx`, a `move` mode in `BtcSend.jsx`; tests `test/canisters/tests/btc-moves.test.js`
+(31, incl. the mock minter + a real ICRC ledger on PocketIC). As built:
+- **Where.** Both directions run on `btc.html` (tab Move, `#move` / `#move-tobtc`). Native → ck
+  signs Bitcoin, so it must (§4). ck → native signs nothing on Bitcoin, but it decides where the
+  minter pays out (the address this page derives) and its record and tracking belong in the same
+  Moves list; one page and one set of rules is simpler than splitting. The card only navigates:
+  "Move to ckBTC" on the native row, "Move to my Bitcoin address" on the ckBTC Main row
+  (`TokenPocketBreakdown` `mainActions`).
+- **Per network** (`network.js` `CK_PAIRS`, `ckMoveFor`): mainnet (prod beta, staging developer
+  mode) ↔ ckBTC; staging testnet4 ↔ **ckTESTBTC** (ledger `mc6ru-gyaaa-aaaar-qaaaq-cai`, minter
+  `ml52i-qqaaa-aaaar-qaaba-cai`; checked anonymously 2026-10-23: dashboard network testnet with
+  testnet4 links, 4 confirmations, check fee 100, min deposit 300, min retrieve 5,000 sats; the
+  candid of every method used matches mqygn). On testnet the ckBTC row of the (mainnet ckBTC)
+  card gets no button (`ckRowMoveShown`); the Move tab uses ckTESTBTC. No pair, no button, no
+  minter or ledger call while the surface is off (prod with the switch off).
+- **Minter terms read 2026-10-23 (mainnet):** min_confirmations 4, check fee 100 sats
+  (`get_deposit_fee`), deposit_btc_min_amount 300, retrieve_btc_min_amount 50,000; estimate for
+  100k sats: Bitcoin fee 212 + minter fee 300.
+
 ### 6.1 Native → ckBTC ("Move to ckBTC")
 1. `ckbtcDepositAddress(makeActor, me, subaccount)` gives the minter's deposit address for the
    target pocket: Main, or any wallet pocket's subaccount.
@@ -385,6 +406,23 @@ working for external wallets.
    - `Checked`/`Tainted` results are shown as `updateBalanceErrorText` already does.
 5. The record shows "minted N ckBTC to <pocket>" with the ledger block index.
 
+As built: target is Main only (pocket subaccounts later). The deposit address comes fresh from
+`get_btc_address { owner = me }` each time the tab opens (no cache) and must parse for the page's
+network. Minimum = max(1,000 sats send minimum, deposit_btc_min_amount, check fee + 1), checked
+before review and again before signing. The pending record (kind `toCkbtc`) carries `ckbtc`
+{ minter, ledger, owner, depositAddress, vout 0, minConfirmations, checkFee, status
+waiting|checked|minted|too_small|tainted, confirmations, checks, nextCheckAt, mintedAmount,
+mintBlock, message }. Phases: submitting → (unknown) → waiting_confs → minting → minted, or
+failed / replaced / dropped (the send) / too_small / tainted (the minter). Confirmations come from
+the free Bitcoin canister query on the deposit address; `update_balance` runs (as the user) every
+60 s tick once ≥ min_confirmations, or once 4 × 10 min have passed when the output isn't visible,
+with backoff (not seen / pending 1, 2, 4 … 15 min; Checked 2 min; busy 1 min; GenericError 5 min).
+Only the record's own outpoint decides; other deposits minted by the same call are mentioned. When
+the minter doesn't report it, `get_known_utxos` tells "minted earlier". "Check / finish" runs a
+check at once (no backoff). Records survive reloads and other tabs (load-modify-save; a final
+state set by another tab is never overwritten). The minter's own `get_known_utxos` polling of
+step 4 is replaced by the Bitcoin canister read plus `update_balance`'s pending list.
+
 ### 6.2 ckBTC → native ("Move to Bitcoin address")
 - `ckbtcWithdraw(makeActor, { address: myBtcAddress, amount, fromSubaccount })`, which runs
   `icrc2_approve` then `retrieve_btc_with_approval`.
@@ -392,6 +430,17 @@ working for external wallets.
   `btcStatusText`.
 - When the minter's txid confirms, the UTXO shows up in §5.2 on its own.
 - No signer cycles are needed. The minter pays the network fee out of the amount.
+
+As built: the allowance is amount + one ledger fee (headroom; the PocketIC test with a real ICRC
+ledger shows the burn takes exactly the amount, so 10 sats stay approved until the 1-hour expiry);
+max = balance − ledger fee. `ckbtcWithdraw` takes `approveAmount` and tags a typed minter `Err`
+(`minterErr`), so the record says failed (nothing burned) vs unknown (no answer after the approve:
+"Show the minter's list" via `retrieve_btc_status_v2_by_account`, then Dismiss). Records live in
+their own store `sneed_btc_moves_v1:<network>:<principal>` (states approving → requesting →
+requested → confirmed, or failed / unknown / too_low / reimbursing / reimbursed / dismissed),
+tracked with `retrieve_btc_status_v2` every tick and on Refresh. The payout address is the one this
+page derives; before the first payout on a device it is checked once against the signer
+(`btc_caller_address`, 0.079B cycles from signing credit), as before a first send.
 
 ### 6.3 Sweep (principal migration, emptying)
 "Send all to address X": every unlocked UTXO goes to one output, with no change, at the chosen
@@ -576,8 +625,8 @@ support can explain and fix any case.
   - Max, sweep, sign-only plus external broadcast.
   - The timeout path: kill the tab mid-call, then recover.
   - Full-RBF speed-up, and CPFP.
-  - ckBTC conversions on the ckTESTBTC minter, if it is still offered for testnet4 (check
-    first).
+  - ckBTC conversions on the ckTESTBTC minter (`ml52i-…`, on testnet4: checked 2026-10-23;
+    wired as the testnet pair in A3).
 - **Mainnet developer mode (staging only).** testnet4 faucets proved unusable, so sending is
   tested with a small amount of real BTC on staging. `utils/btc/network.js` switches native
   Bitcoin to mainnet only when all of these hold: the A1 triple flag is on (staging build, not
@@ -625,7 +674,8 @@ post (topic 899).
 
 Status by phase (2026-10-23): A0 built (signing credit, mempool.space fee source, `btc.html`;
 the pending store is localStorage for now, not the backend layout store). A1 and A2 built. **A3
-and A4 are built during the prod beta**: native ↔ ckBTC moves (§6), speed-up (RBF, and CPFP per
+built** (native ↔ ckBTC moves, §6 "As built"; staging test with real sats in developer mainnet
+mode next, then release with the beta). **A4 is built during the prod beta**: speed-up (RBF, and CPFP per
 Q6) and sweep, and the paid balance cross-check (an update call to the Bitcoin canister) before
 large sends (§4, §5.2). Until A4's cross-check exists, balances and UTXOs come from the
 uncertified queries only; the beta explanation tells users to start with small amounts.
@@ -668,10 +718,17 @@ uncertified queries only; the beta explanation tells users to start with small a
 > exactly as with ICRC tokens in the wallet today: reviewers of this and every later frontend
 > upgrade should treat it as a custody change. Sends happen on `btc.html`, a separate page
 > without analytics, framing or third-party scripts (§4). Each send costs a Bitcoin network fee
-> plus signing cycles paid by the user. Beta limits: no native ↔ ckBTC moves, no speed-up or
-> sweep, and no paid balance cross-check before large sends yet (A3/A4). Files: `utils/btc/*`,
-> `components/btc/*`, `btc/*`, `utils/pockets/adapters/btc_native.js`, `TokenCard.jsx`,
-> `Wallet.jsx`.
+> plus signing cycles paid by the user. Beta limits: no speed-up or sweep, and no paid balance
+> cross-check before large sends yet (A4). Files: `utils/btc/*`, `components/btc/*`, `btc/*`,
+> `utils/pockets/adapters/btc_native.js`, `TokenCard.jsx`, `Wallet.jsx`.
+>
+> *Addition with A3:* moves between native Bitcoin and ckBTC through DFINITY's ckBTC minter, on
+> `btc.html`. To ckBTC: a normal send to the minter's deposit address for the user's principal
+> (`get_btc_address`), then `update_balance` after 4 confirmations. To the Bitcoin address:
+> `icrc2_approve` of the minter for amount + one ledger fee (expires in 1 hour), then
+> `retrieve_btc_with_approval` to the user's own address as derived by this frontend (checked once
+> with the signer). Custody-relevant: the frontend chooses the deposit address and the payout
+> address. Also `utils/btc/moves.js`, `utils/ckMinters.js` (`ckbtcWithdraw`), `PocketRows.jsx`.
 
 ## 13. Open questions
 

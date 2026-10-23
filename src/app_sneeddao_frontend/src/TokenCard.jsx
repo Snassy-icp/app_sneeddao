@@ -25,7 +25,7 @@ import {
     createNnsGovActor
 } from './utils/NnsUtils';
 import { Link } from 'react-router-dom';
-import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag, FaCoins } from 'react-icons/fa';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag, FaCoins, FaBitcoin } from 'react-icons/fa';
 import SwapModal from './components/SwapModal';
 import { isUntilDissolved } from './utils/lockTime';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
@@ -39,7 +39,7 @@ import { usePockets } from './hooks/usePockets';
 import { TokenPocketBreakdown } from './components/PocketRows';
 import { otherPocketsTotal, holders as pocketHolders, nativeBtcForCard } from './utils/pockets/model';
 import BtcNativeSection, { BtcNetworkBadge } from './components/btc/BtcNativeSection';
-import { btcNative, btcSurface } from './utils/btc/network';
+import { btcNative, btcSurface, ckRowMoveShown, btcPageHref } from './utils/btc/network';
 import { BtcBetaOffer } from './components/btc/BtcBeta';
 import { CKBTC } from './utils/ckMinters';
 import { wrapAction } from './utils/wrapActions';
@@ -145,6 +145,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
+    // A3: "Move to my Bitcoin address" on the ckBTC Main row of the Bitcoin card, only when this
+    // network's ck pair is this ledger (not on staging testnet4, whose pair is ckTESTBTC) and never
+    // while the Bitcoin surface is off. It opens btc.html's Move tab (no analytics there).
+    const btcStatusMe = isBtcCard ? btcNative(isAuthenticated && identity ? identity.getPrincipal().toText() : null) : null;
+    const ckToBtcActions = isBtcCard && !hideButtons && ckRowMoveShown(btcStatusMe, pocketLedger) && BigInt(token.balance || 0) > BigInt(token.fee || 0)
+        ? [{ key: 'tobtc', icon: FaBitcoin, label: 'Move to my Bitcoin address', title: 'Turn ckBTC into bitcoin at your own Bitcoin address', onClick: () => { window.location.assign(btcPageHref(btcStatusMe, 'move-tobtc')); } }]
+        : [];
     const { getNeuronDisplayName } = useNaming();
     const { formatValue: denomFormatValue, currencySign } = useDenomination();
     
@@ -2118,7 +2125,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     </div>
                                     
                                     {showBalanceBreakdown && showPockets && (
-                                        <TokenPocketBreakdown token={token} hideButtons={hideButtons} onAction={onPocketAction}
+                                        <TokenPocketBreakdown token={token} hideButtons={hideButtons} onAction={onPocketAction} mainActions={ckToBtcActions}
                                             onDeposit={() => handleDepositToBackend(token)} onWithdrawLock={() => handleWithdrawFromBackend(token)} />
                                     )}
                                     {isBtcCard && (

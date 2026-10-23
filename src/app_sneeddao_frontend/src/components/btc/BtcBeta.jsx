@@ -20,7 +20,8 @@ export function BtcBetaExplainer() {
             <li style={li}><b style={{ color: c.primaryText }}>Native Bitcoin</b> is real bitcoin at your own Bitcoin address (bc1…), on the Bitcoin network. <b style={{ color: c.primaryText }}>ckBTC</b> is a token on the Internet Computer backed 1:1 by bitcoin, fast and cheap between IC wallets. Both show on your Bitcoin card.</li>
             <li style={li}>There is no seed phrase. The key for your address is held by the Internet Computer's threshold signing, through DFINITY's Chain Fusion Signer, and only your principal (your Sneed Hub sign-in) can ask it to sign. Whoever can act as your principal, including this site while you are signed in, can move these coins.</li>
             <li style={li}>Receiving is free. Each send costs a Bitcoin network fee (in BTC) plus a little signing credit in cycles for the signer; the review screen shows both before you confirm.</li>
-            <li style={li}>It is a beta: moving between Bitcoin and ckBTC, speeding up a stuck send and sweeping come later. Start with small amounts.</li>
+            <li style={li}>Moving between Bitcoin and ckBTC goes through DFINITY's ckBTC minter: to ckBTC after 4 Bitcoin confirmations (about 40 minutes) minus a small check fee; back to your address usually within an hour, minus the Bitcoin and minter fees.</li>
+            <li style={li}>It is a beta: speeding up a stuck send and sweeping come later. Start with small amounts.</li>
             <li>The switch is remembered in this browser only. Turn it on in each browser you use; turning it off hides the Bitcoin address here, and your coins stay at the address.</li>
         </ul>
     );

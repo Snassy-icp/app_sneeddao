@@ -6,6 +6,11 @@
 // request. Fee suggestions come from mempool.space, fetched only while this form is open (or
 // never, with "Don't look up fees"). The review step shows the amounts being signed even in
 // privacy mode (formatAmountShown). No browser popups: confirmations are in the page.
+//
+// `move` (phase A3, BtcMove.jsx): the same send to the ck minter's deposit address for the user's
+// account ({ pair, terms, depositAddress, owner }): the destination is fixed, the amount must clear
+// the minter's minimum (moves.js depositGuard), the review shows the check fee, what arrives as
+// ckBTC and the honest wait, and the pending record carries the conversion (kind 'toCkbtc').
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FaPaperPlane, FaSync, FaExternalLinkAlt, FaArrowLeft } from 'react-icons/fa';
 import { useDenomination } from '../../contexts/DenominationContext';
@@ -16,6 +21,7 @@ import { TIERS, TIER_BLOCKS, validateCustomRate, feeNeedsExtraConfirm, feeLookup
 import { sendCycles, ADDRESS_CYCLES, CYCLES_LEDGER_FEE, cyclesUsd, formatCycles } from '../../utils/btc/credit';
 import { executeSend, isAddressVerified, verifySignerAddress, buildSendRequest } from '../../utils/btc/send';
 import { newId } from '../../utils/btc/pending';
+import { depositGuard, depositEta, depositMin, newDepositInfo } from '../../utils/btc/moves';
 import { outpointKey } from '../../utils/btc/utxos';
 import QrScanButton from '../QrScanButton';
 import { Card, Label, inputStyle, Button, Notice, Advanced, Row, Pill, useC } from '../convert/ConvertUi';
@@ -26,7 +32,7 @@ const TIER_LABEL = { slow: 'Slow', normal: 'Normal', fast: 'Fast', custom: 'Cust
 const FEE_POLL_MS = 60_000;
 const json = (v) => JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? x.toString() : x instanceof Uint8Array ? Array.from(x) : x), 2);
 
-export default function BtcSend({ w, onGoCredit, onGoActivity }) {
+export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
     const c = useC();
     const { formatValue } = useDenomination();
     const { cfg, address, btc, fees, records, market, locked } = w;
@@ -60,7 +66,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const custom = tier === 'custom' ? validateCustomRate(customText, tiers) : null;
     const feeRate = tier === 'custom' ? (custom?.ok ? custom.rate : null) : tiers?.[tier] ?? null;
 
-    const dest = to.trim();
+    const dest = move ? move.depositAddress : to.trim();
     const parsedTo = dest ? parseBtcAddress(dest, cfg.network) : null;
     const amount = max ? null : parseBtcAmount(amountText);
     const utxos = btc.data?.utxos || [];
@@ -85,9 +91,12 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const satsUsd = (s) => (cfg.testnet || !market.btcUsd ? null : (Number(s) / 1e8) * market.btcUsd);
     const cycUsd = (x) => cyclesUsd(x, market);
     const extraReasons = plan?.ok ? feeNeedsExtraConfirm({ fee: plan.fee, amount: plan.amount, feeRate: plan.feeRate, tiers }) : [];
-    const ownAddress = parsedTo?.ok && dest === address;
+    const ownAddress = !move && parsedTo?.ok && dest === address;
     const storeBlocked = !records.ok;
-    const canReview = plan?.ok && !storeBlocked && step === 'edit';
+    // a move must arrive above the minter's minimum and check fee, or nothing is minted
+    const guard = move && plan?.ok ? depositGuard({ amount: plan.amount, terms: move.terms, symbol: move.pair.symbol }) : null;
+    const canReview = plan?.ok && !storeBlocked && step === 'edit' && (!guard || guard.ok);
+    const eta = move ? depositEta(move.terms.minConfirmations) : null;
 
     const value = (usd) => (usd != null ? <span style={{ color: c.mutedText }}> · {formatValue(usd)}</span> : null);
     const btcShown = (sats) => <>{formatAmountShown(sats, 8)} {cfg.symbol}</>;
@@ -126,8 +135,11 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
             // 4. send (the pending record is written before the call)
             setProgress('Signing and broadcasting… this takes about 10–40 seconds per coin. Keep this page open.');
             const id = newId();
+            if (move && !depositGuard({ amount: plan.amount, terms: move.terms }).ok) throw new Error('This amount is below the minter\'s minimum. Nothing was sent.');
             const r = await executeSend({
                 signer: w.actors.signer, store: w.store, plan, toAddress: dest, network: cfg.network, ownAddress: address, id,
+                kind: move ? 'toCkbtc' : 'send',
+                extra: move ? { ckbtc: newDepositInfo({ pair: move.pair, owner: move.owner, depositAddress: move.depositAddress, terms: move.terms, amount: plan.amount }) } : null,
                 onSubmitting: () => { w.inFlight.current.add(id); w.loadRecords(); },
             });
             w.inFlight.current.delete(id);
@@ -142,16 +154,24 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         } finally {
             setProgress('');
         }
-    }, [plan, w, charges, verified, cfg.network, realBtc, mainnetOk, address, dest]);
+    }, [plan, w, charges, verified, cfg.network, realBtc, mainnetOk, address, dest, move]);
 
     const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setMainnetOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); };
+    const ckSym = move?.pair.symbol;
 
     // ---------------------------------------------------------------- done
     if (step === 'done' && result) {
         const txid = result.txid || result.record?.expectedTxid;
         return (
             <Card>
-                {result.state === 'broadcast' && (
+                {result.state === 'broadcast' && move && (
+                    <Notice tone="success">
+                        <b>On its way to the ckBTC minter.</b> The minter mints {ckSym} after {move.terms.minConfirmations} Bitcoin confirmations, {eta.text}; it can take longer when blocks are slow.
+                        {' '}Keep this page open and it finishes by itself, or come back any time and press <b>Check / finish</b> under Activity → Moves.
+                        {result.drift && <div style={{ marginTop: 6 }}>Note: the transaction id differs from the one this page computed. Your coins are fine; this is logged for support.</div>}
+                    </Notice>
+                )}
+                {result.state === 'broadcast' && !move && (
                     <Notice tone="success">
                         <b>Sent.</b> The signer handed your transaction to the Bitcoin network. It counts as done after its first confirmation (about 10 minutes, longer at a low fee).
                         {result.drift && <div style={{ marginTop: 6 }}>Note: the transaction id differs from the one this page computed. Your coins are fine; this is logged for support.</div>}
@@ -171,7 +191,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 )}
                 {result.info?.topUp && <div style={{ marginTop: 10 }}><Button onClick={() => onGoCredit(null)}>Top up signing credit</Button></div>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                    <Button variant="ghost" onClick={reset}>New send</Button>
+                    <Button variant="ghost" onClick={reset}>{move ? 'New move' : 'New send'}</Button>
                     <Button variant="ghost" onClick={onGoActivity}>Activity</Button>
                 </div>
             </Card>
@@ -187,11 +207,18 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                     style={{ background: 'none', border: 'none', color: c.secondaryText, cursor: 'pointer', padding: 0, fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <FaArrowLeft size={11} /> Edit
                 </button>
-                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>Review the send <BtcNetworkBadge cfg={cfg} /></h2>
-                <div style={{ fontSize: 13, color: c.mutedText }}>To</div>
+                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{move ? `Review the move to ${ckSym}` : 'Review the send'} <BtcNetworkBadge cfg={cfg} /></h2>
+                <div style={{ fontSize: 13, color: c.mutedText }}>{move ? `To the ${ckSym} minter's deposit address for your account` : 'To'}</div>
                 <div style={{ ...mono, fontSize: 14, color: c.primaryText, marginBottom: 8 }}>{dest} <span style={{ color: c.mutedText }}>({btcAddressTypeLabel(parsedTo.type)})</span></div>
                 {ownAddress && <Notice tone="warning">This is your own address: the coins come back to you, minus the fee.</Notice>}
-                <Row k="Recipient gets" v={<>{btcShown(plan.amount)}{value(satsUsd(plan.amount))}</>} strong />
+                {move ? (
+                    <>
+                        <Row k="Moves" v={<>{btcShown(plan.amount)}{value(satsUsd(plan.amount))}</>} />
+                        <Row k="Minter's check fee" v={btcShown(BigInt(move.terms.checkFee))} sub="taken from the deposit by the minter" />
+                        <Row k={`You get about`} v={<>{formatAmountShown(guard?.receive ?? 0n, 8)} {ckSym}{value(satsUsd(guard?.receive ?? 0n))}</>} strong
+                            sub={`after ${move.terms.minConfirmations} Bitcoin confirmations, ${eta.text}; sometimes longer`} />
+                    </>
+                ) : <Row k="Recipient gets" v={<>{btcShown(plan.amount)}{value(satsUsd(plan.amount))}</>} strong />}
                 <Row k="Network fee" v={<>{btcShown(plan.fee)}{value(satsUsd(plan.fee))}</>}
                     sub={`${plan.feeRate} sat/vB × ${plan.vsize} vB${tier !== 'custom' ? ` · ${TIER_LABEL[tier]}, about ${TIER_BLOCKS[tier]} block${TIER_BLOCKS[tier] === 1 ? '' : 's'}` : ' · custom rate'}${plan.dustToFee > 0n ? ` · includes ${plan.dustToFee} sats of leftover too small to return as change` : ''}`} />
                 <Row k="Leaves your address" v={btcShown(plan.amount + plan.fee)} />
@@ -207,7 +234,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 {cfg.beta && !cfg.devMode && (
                     <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, fontSize: 13, color: c.primaryText, fontWeight: 600 }}>
                         <input type="checkbox" checked={mainnetOk} onChange={(e) => setMainnetOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
-                        <span>I checked the address and amount. This sends real bitcoin and can't be undone.</span>
+                        <span>{move ? `I checked the amount. This sends real bitcoin to the ${ckSym} minter and can't be undone; it comes back as ${ckSym}.` : "I checked the address and amount. This sends real bitcoin and can't be undone."}</span>
                     </label>
                 )}
                 {cfg.devMode && (
@@ -217,6 +244,13 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                     </label>
                 )}
                 <Advanced title="Advanced: the exact request">
+                    {move && (
+                        <div style={{ fontSize: 12, color: c.mutedText, lineHeight: 1.6 }}>
+                            Minter {move.pair.minter} · ledger {move.pair.ledger}<br />
+                            Deposit address from get_btc_address {'{'} owner = {String(move.owner)}, subaccount = none (Main) {'}'}<br />
+                            Then update_balance as you once the deposit has {move.terms.minConfirmations} confirmations. Minimum deposit {String(move.terms.minDeposit ?? 0n)} sats, check fee {String(move.terms.checkFee)} sats.
+                        </div>
+                    )}
                     <div style={{ fontSize: 12, color: c.mutedText }}>btc_caller_send to the Chain Fusion Signer, paid with CallerPaysIcrc2Cycles. Coins are spent in this order; the change output, if any, comes last.</div>
                     <pre style={{ ...mono, fontSize: 11, color: c.secondaryText, background: c.secondaryBg, padding: 8, borderRadius: 8, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
                         {json(buildSendRequest({ inputs: plan.inputs, outputs: [{ address: dest, value: plan.amount }], fee: plan.fee, network: cfg.network }))}
@@ -231,7 +265,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 {sending && <Notice style={{ marginTop: 10 }}>{progress}</Notice>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
                     <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (realBtc && !mainnetOk)}>
-                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `Send ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${cfg.devMode ? ' on MAINNET' : ''}`}
+                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `${move ? 'Move' : 'Send'} ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${move ? ` to ${ckSym}` : ''}${cfg.devMode ? ' on MAINNET' : ''}`}
                     </Button>
                 </div>
             </Card>
@@ -264,6 +298,13 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 <button type="button" onClick={() => w.refreshBtc()} title="Refresh" style={{ marginLeft: 8, background: 'none', border: 'none', color: c.accent, cursor: 'pointer' }}><FaSync size={11} /></button>
             </div>
 
+            {move ? (
+                <div style={{ fontSize: 13, color: c.secondaryText, lineHeight: 1.55 }}>
+                    Sends bitcoin from your address to the {ckSym} minter's deposit address for your account; the minter then mints the same amount of {ckSym} to your wallet's Main account, minus a {String(move.terms.checkFee)} sats check fee.
+                    {' '}It waits for {move.terms.minConfirmations} Bitcoin confirmations first: {eta.text}, sometimes longer.
+                    <div style={{ ...mono, fontSize: 12, color: c.mutedText, marginTop: 4 }}>Deposit address {dest}</div>
+                </div>
+            ) : (<>
             <Label hint={cfg.testnet ? 'testnet4 addresses (tb1…, m…, n…, 2…)' : null}>To (Bitcoin address)</Label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input value={to} onChange={(e) => { setTo(e.target.value); setScanNote(null); }} placeholder={cfg.testnet ? 'tb1q…' : 'bc1q…'} spellCheck={false} autoComplete="off"
@@ -273,13 +314,14 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
             {parsedTo && !parsedTo.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{parsedTo.error}</div>}
             {parsedTo?.ok && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>{btcAddressTypeLabel(parsedTo.type)}{ownAddress ? ' · your own address' : ''}</div>}
             {scanNote && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>{scanNote}</div>}
+            </>)}
 
             <div style={{ marginTop: 14 }}>
-                <Label hint={amount?.ok && !max ? `${amount.sats} sats` : null}>Amount ({cfg.symbol})</Label>
+                <Label hint={amount?.ok && !max ? `${amount.sats} sats` : move ? `at least ${String(depositMin(move.terms))} sats` : null}>Amount ({cfg.symbol})</Label>
                 <div style={{ display: 'flex', gap: 8 }}>
                     <input value={max ? (plan?.ok ? satsToBtcText(plan.amount) : '') : amountText} onChange={(e) => { setMax(false); setAmountText(e.target.value); }} placeholder="0.001" inputMode="decimal" disabled={max}
                         style={inputStyle(c, !max && amountText && !amount?.ok)} aria-label="Amount" />
-                    <Button variant={max ? 'primary' : 'ghost'} onClick={() => setMax(!max)} title="Send everything spendable, minus the fee (no change)">Max</Button>
+                    <Button variant={max ? 'primary' : 'ghost'} onClick={() => setMax(!max)} title={move ? 'Move everything spendable, minus the network fee (no change)' : 'Send everything spendable, minus the fee (no change)'}>Max</Button>
                 </div>
                 {!max && amountText && !amount?.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{amount.error}</div>}
                 {max && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>Sends every spendable coin{chosenList ? ' you chose' : ''}, minus the network fee. No change comes back.</div>}
@@ -305,11 +347,13 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 </div>
             </div>
 
+            {guard && !guard.ok && <Notice tone="warning" style={{ marginTop: 12 }}>{guard.error}</Notice>}
             {plan && !plan.ok && <Notice tone={plan.code === 'insufficient' || plan.code === 'max_too_small' ? 'warning' : 'error'} style={{ marginTop: 12 }}>{plan.message}{plan.needed != null ? ` (needs ${plan.needed} sats, ${plan.available} spendable)` : ''}</Notice>}
             {plan?.ok && (
                 <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, background: c.secondaryBg, border: `1px solid ${c.border}`, fontSize: 13, color: c.secondaryText, lineHeight: 1.6 }}>
                     Network fee ≈ <b style={{ color: c.primaryText }}>{String(plan.fee)} sats</b>{value(satsUsd(plan.fee))} · signing ≈ <b style={{ color: c.primaryText }}>{formatCycles(totalCycles)} cycles</b>{value(cycUsd(totalCycles))}
                     {plan.dustToFee > 0n && <div style={{ color: c.warning }}>≈ {String(plan.dustToFee)} sats added to the fee (leftover below 1,000 sats can't come back as change).</div>}
+                    {guard?.ok && <div>You get about <b style={{ color: c.primaryText }}>{formatAmount(guard.receive, 8)} {ckSym}</b> after the minter's {String(move.terms.checkFee)} sats check fee.</div>}
                 </div>
             )}
 

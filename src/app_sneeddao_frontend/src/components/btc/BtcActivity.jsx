@@ -5,14 +5,18 @@
 //     signing cycles again and says so). "Ask mempool.space" is an opt-in click.
 //   broadcast, never mined after 14 days: offer "Mark as dropped", which frees the coins.
 // Explorer links and lookups are opt-in clicks; nothing is sent to mempool.space on its own.
+// Moves (phase A3): each move to ckBTC (its send record + conversion state, with "Check / finish")
+// and each move to the Bitcoin address (its own record, tracked with the minter), newest first.
 import React, { useMemo, useState } from 'react';
-import { FaExternalLinkAlt, FaCopy } from 'react-icons/fa';
+import { FaExternalLinkAlt, FaCopy, FaSync } from 'react-icons/fa';
 import { formatAmount } from '../../utils/StringUtils';
 import { reconcile, updateRecord, canReissue } from '../../utils/btc/pending';
 import { buildHistory, loadReceives, saveReceives, mergeReceives, receivesKey, ownTxids, checkTxOnMempool } from '../../utils/btc/history';
 import { reissueSend } from '../../utils/btc/send';
 import { sendCycles, formatCycles } from '../../utils/btc/credit';
 import { outpointKey } from '../../utils/btc/utxos';
+import { movePhase, depositEta, MOVE_FINAL, WITHDRAW_FINAL, patchRecord } from '../../utils/btc/moves';
+import { ckbtcWithdrawals, btcStatusText } from '../../utils/ckMinters';
 import { Card, Button, Notice, Advanced, Pill, useC } from '../convert/ConvertUi';
 
 const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflowWrap: 'anywhere' };
@@ -63,7 +67,7 @@ function PendingItem({ w, r, utxoKeys }) {
     return (
         <div style={{ borderTop: `1px solid ${c.border}`, padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ color: c.primaryText, fontWeight: 600 }}>{formatAmount(BigInt(r.amount), 8)} {cfg.symbol} <span style={{ color: c.mutedText, fontWeight: 400 }}>to</span> <span style={{ ...mono, fontWeight: 400 }}>{r.request.outputs[0]?.address}</span></span>
+                <span style={{ color: c.primaryText, fontWeight: 600 }}>{r.kind === 'toCkbtc' && <span style={{ color: c.mutedText, fontWeight: 400 }}>Move to {r.ckbtc?.symbol}: </span>}{formatAmount(BigInt(r.amount), 8)} {cfg.symbol} <span style={{ color: c.mutedText, fontWeight: 400 }}>to</span> <span style={{ ...mono, fontWeight: 400 }}>{r.request.outputs[0]?.address}</span></span>
                 <Pill tone={STATE_TONE[r.state]}>{STATE_TEXT[r.state]}</Pill>
             </div>
             <div style={{ fontSize: 12, color: c.mutedText }}>
@@ -94,7 +98,146 @@ function PendingItem({ w, r, utxoKeys }) {
     );
 }
 
-export default function BtcActivity({ w }) {
+const PHASE = {
+    submitting: ['pending', 'sending'],
+    unknown: ['warning', 'send outcome unknown'],
+    failed: ['error', 'send failed'],
+    replaced: ['muted', 'send replaced'],
+    dropped: ['muted', 'send dropped'],
+    waiting_confs: ['pending', 'waiting for confirmations'],
+    minting: ['pending', 'minting'],
+    minted: ['success', 'minted'],
+    too_small: ['error', 'too small, not minted'],
+    tainted: ['error', 'quarantined by the minter'],
+};
+const WSTATE = {
+    approving: ['pending', 'approving'], requesting: ['pending', 'requesting'], requested: ['pending', 'on its way'], unknown: ['warning', 'outcome unknown'],
+    failed: ['error', 'failed'], confirmed: ['success', 'arrived'], reimbursing: ['warning', 'being refunded'], reimbursed: ['warning', 'refunded as ck'], too_low: ['error', 'too small'], dismissed: ['muted', 'dismissed'],
+};
+const WSTATUS = {
+    Pending: 'queued at the minter', Signing: 'the minter is signing the Bitcoin transaction', Sending: 'handing it to the Bitcoin network',
+    Submitted: 'on the Bitcoin network, waiting for confirmations',
+};
+const Detail = ({ k, v }) => {
+    const c = useC();
+    return v == null || v === '' ? null : <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 12 }}><span style={{ color: c.mutedText }}>{k}</span><span style={{ ...mono, color: c.primaryText, textAlign: 'right' }}>{v}</span></div>;
+};
+
+function DepositItem({ w, mv, r }) {
+    const c = useC();
+    const { cfg } = w;
+    const ck = r.ckbtc;
+    const phase = movePhase(r);
+    const [tone, label] = PHASE[phase] || ['muted', phase];
+    const busy = mv.busyIds.has(r.id);
+    const note = mv.notes[r.id];
+    const txid = r.txid || r.expectedTxid;
+    const sent = ['broadcast', 'confirmed'].includes(r.state);
+    const confs = ck.confirmations;
+    const eta = depositEta(ck.minConfirmations, confs || 0);
+    return (
+        <div style={{ borderTop: `1px solid ${c.border}`, padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ color: c.primaryText, fontWeight: 600 }}>{formatAmount(BigInt(r.amount), 8)} {cfg.symbol} → {ck.symbol}</span>
+                <Pill tone={tone}>{label}</Pill>
+            </div>
+            <div style={{ fontSize: 12, color: c.mutedText }}>
+                {new Date(r.createdAt).toLocaleString()}
+                {phase === 'minted' && ck.mintedAmount != null && <> · minted {formatAmount(BigInt(ck.mintedAmount), 8)} {ck.symbol}</>}
+                {phase === 'waiting_confs' && sent && <> · {confs ?? 0} of {ck.minConfirmations} confirmations · {eta.text}</>}
+                {phase === 'minting' && <> · {ck.minConfirmations}+ confirmations, the minter is finishing</>}
+            </div>
+            {['submitting', 'unknown'].includes(phase) && <div style={{ fontSize: 12, color: c.secondaryText }}>The Bitcoin send is still pending above; the minter is asked once it has gone out.</div>}
+            {ck.message && !note && <div style={{ fontSize: 12, color: ['too_small', 'tainted'].includes(phase) ? c.error : c.secondaryText }}>{ck.message}</div>}
+            {note && <Notice tone={note.tone}>{note.text}</Notice>}
+            {!MOVE_FINAL.includes(phase) && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Button variant="ghost" onClick={() => mv.checkDeposit(r.id, true)} disabled={busy || !sent} title="Ask the minter now (update_balance)">
+                        <FaSync size={10} /> {busy ? 'Checking…' : 'Check / finish'}
+                    </Button>
+                    <span style={{ fontSize: 11, color: c.mutedText }}>Runs by itself every minute while this page is open.</span>
+                </div>
+            )}
+            <Advanced title="Details">
+                <Detail k="Transaction" v={txid ? <a href={`${cfg.explorer}/tx/${txid}`} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }}>{txid} <FaExternalLinkAlt size={9} /></a> : null} />
+                <Detail k="Deposit address" v={ck.depositAddress} />
+                <Detail k="Minter / ledger" v={`${ck.minter} / ${ck.ledger}`} />
+                <Detail k="Check fee" v={`${ck.checkFee} sats`} />
+                <Detail k="Network fee" v={`${r.fee} sats`} />
+                <Detail k="Mint block (ledger index)" v={ck.mintBlock} />
+                <Detail k="Checks" v={String(ck.checks || 0)} />
+                <Detail k="Next automatic check" v={ck.nextCheckAt ? new Date(ck.nextCheckAt).toLocaleTimeString() : null} />
+            </Advanced>
+        </div>
+    );
+}
+
+function WithdrawItem({ w, mv, r }) {
+    const c = useC();
+    const { cfg } = w;
+    const [tone, label] = WSTATE[r.state] || ['muted', r.state];
+    const busy = mv.busyIds.has(r.id);
+    const note = mv.notes[r.id];
+    const [list, setList] = useState(null);
+    const showList = async () => {
+        try { setList(await ckbtcWithdrawals(w.makeActor, w.me, null, r.minter)); } catch (e) { setList({ error: String(e?.message || e).split('\n')[0] }); }
+    };
+    const dismiss = () => { w.movesStore.mutate((rs) => patchRecord(rs, r.id, { state: 'dismissed' }, { now: Date.now(), event: '-> dismissed', detail: 'by the user' })); mv.loadMoves(); };
+    return (
+        <div style={{ borderTop: `1px solid ${c.border}`, padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ color: c.primaryText, fontWeight: 600 }}>{formatAmount(BigInt(r.amount), 8)} {r.symbol} → {cfg.symbol}</span>
+                <Pill tone={tone}>{label}</Pill>
+            </div>
+            <div style={{ fontSize: 12, color: c.mutedText }}>
+                {new Date(r.createdAt).toLocaleString()}{r.state === 'requested' && WSTATUS[r.status] ? ` · ${WSTATUS[r.status]}` : ''}
+                {r.reimbursed && <> · {formatAmount(BigInt(r.reimbursed), 8)} {r.symbol} returned</>}
+            </div>
+            {r.txid && <div style={{ fontSize: 12, ...mono }}><a href={`${cfg.explorer}/tx/${r.txid}`} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }}>{r.txid} <FaExternalLinkAlt size={9} /></a></div>}
+            {r.error && ['failed', 'unknown'].includes(r.state) && <div style={{ fontSize: 12, color: r.state === 'failed' ? c.error : c.warning }}>{r.error}</div>}
+            {note && <Notice tone={note.tone}>{note.text}</Notice>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {r.blockIndex != null && !WITHDRAW_FINAL.includes(r.state) && <Button variant="ghost" onClick={() => mv.refreshWithdrawal(r, true)} disabled={busy}><FaSync size={10} /> {busy ? 'Checking…' : 'Refresh'}</Button>}
+                {r.state === 'unknown' && <Button variant="ghost" onClick={showList}>Show the minter's list</Button>}
+                {r.state === 'unknown' && <Button variant="ghost" onClick={dismiss}>Dismiss</Button>}
+            </div>
+            {list && (
+                <div style={{ fontSize: 12, color: c.secondaryText }}>
+                    {list.error ? `Couldn't read the minter's list (${list.error}).` : !list.length ? 'The minter has no withdrawals for your account: nothing was burned.' : list.slice(0, 10).map((x) => <div key={String(x.blockIndex)}>Burn #{String(x.blockIndex)}: {btcStatusText(x.status).label}</div>)}
+                </div>
+            )}
+            <Advanced title="Details">
+                <Detail k="To" v={r.address} />
+                <Detail k="Burn block (ledger index)" v={r.blockIndex} />
+                <Detail k="Approve block" v={r.approveBlock} />
+                <Detail k="Allowance" v={`${r.approveAmount} sats (amount + ledger fee ${r.ledgerFee})`} />
+                <Detail k="Fee estimate when requested" v={r.estimateFee != null ? `${r.estimateFee} sats` : null} />
+                <Detail k="Minter status" v={r.status} />
+                <Detail k="Minter / ledger" v={`${r.minter} / ${r.ledger}`} />
+            </Advanced>
+        </div>
+    );
+}
+
+/// Moves between native Bitcoin and ck, newest first.
+export function BtcMoves({ w, mv }) {
+    const c = useC();
+    const recs = w.records.ok ? w.records.records : [];
+    const items = [
+        ...recs.filter((r) => r.kind === 'toCkbtc' && r.ckbtc).map((r) => ({ at: r.createdAt, el: <DepositItem key={r.id} w={w} mv={mv} r={r} /> })),
+        ...(mv.moves.ok ? mv.moves.records : []).filter((r) => r.kind === 'toBtc').map((r) => ({ at: r.createdAt, el: <WithdrawItem key={r.id} w={w} mv={mv} r={r} /> })),
+    ].sort((a, b) => b.at - a.at);
+    return (
+        <>
+            <h3 style={{ fontSize: 15, margin: '18px 0 6px', color: c.primaryText }}>Moves</h3>
+            {!mv.moves.ok && <Notice tone="error">{mv.moves.error}</Notice>}
+            {!items.length && <div style={{ fontSize: 13, color: c.mutedText }}>No moves between Bitcoin and {w.ck?.symbol} from this device yet.</div>}
+            {items.map((x) => x.el)}
+        </>
+    );
+}
+
+export default function BtcActivity({ w, mv = null }) {
     const c = useC();
     const { cfg, btc, records } = w;
     const [copied, setCopied] = useState(false);
@@ -110,9 +253,10 @@ export default function BtcActivity({ w }) {
     }, [w.meText, w.storage, btc.data, cfg.network, utxos, recs]);
     const h = buildHistory({ records: recs, receives, tipHeight: btc.data?.tipHeight ?? null, unspent: utxoKeys });
     const pending = h.sends.filter((s) => ['submitting', 'broadcast', 'unknown'].includes(s.state));
-    const done = h.sends.filter((s) => !['submitting', 'broadcast', 'unknown'].includes(s.state));
+    // finished moves to ckBTC are listed under Moves, not Sent
+    const done = h.sends.filter((s) => !['submitting', 'broadcast', 'unknown'].includes(s.state) && s.kind !== 'toCkbtc');
     const copyLog = async () => {
-        try { await navigator.clipboard.writeText(json({ network: cfg.network, principal: w.meText, address: w.address, records: recs })); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
+        try { await navigator.clipboard.writeText(json({ network: cfg.network, principal: w.meText, address: w.address, records: recs, moves: mv?.moves?.ok ? mv.moves.records : [] })); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
     };
 
     return (
@@ -121,6 +265,8 @@ export default function BtcActivity({ w }) {
             <h3 style={{ fontSize: 15, margin: '0 0 6px', color: c.primaryText }}>Pending</h3>
             {!pending.length && <div style={{ fontSize: 13, color: c.mutedText }}>Nothing pending.</div>}
             {pending.map((s) => <PendingItem key={s.id} w={w} r={s.record} utxoKeys={utxoKeys} />)}
+
+            {mv && w.ck && <BtcMoves w={w} mv={mv} />}
 
             <h3 style={{ fontSize: 15, margin: '18px 0 6px', color: c.primaryText }}>Sent</h3>
             {!done.length && <div style={{ fontSize: 13, color: c.mutedText }}>No sends from this device yet.</div>}

@@ -491,12 +491,15 @@ export async function ckbtcCheckDeposit(makeActor, owner, subaccount = null, id 
 }
 
 /// Approve + retrieve_btc_with_approval. Returns { approveBlock, blockIndex }.
-export async function ckbtcWithdraw(makeActor, { address, amount, fromSubaccount = null, ledgerFee = null, ledgerId = CKBTC.ledger, minterId = CKBTC.minter, nowNs = now(), onStep = () => {} }) {
+/// `approveAmount` (default `amount`): the allowance to grant; Sneed Wallet's moves pass amount +
+/// one ledger fee as headroom (utils/btc/moves.js). A typed minter Err throws an Error carrying
+/// `minterErr` (nothing was burned); any other throw after onStep('withdraw') leaves the outcome open.
+export async function ckbtcWithdraw(makeActor, { address, amount, approveAmount = null, fromSubaccount = null, ledgerFee = null, ledgerId = CKBTC.ledger, minterId = CKBTC.minter, nowNs = now(), onStep = () => {} }) {
     onStep('approve');
-    const approveBlock = await approveMinter(makeActor, { ledgerId, spender: minterId, amount, fromSubaccount, fee: ledgerFee, nowNs });
-    onStep('withdraw');
+    const approveBlock = await approveMinter(makeActor, { ledgerId, spender: minterId, amount: approveAmount ?? amount, fromSubaccount, fee: ledgerFee, nowNs });
+    onStep('withdraw', { approveBlock });
     const r = await ckbtcMinter(makeActor, minterId).retrieve_btc_with_approval({ address: String(address).trim(), amount: BigInt(amount), from_subaccount: subOpt(fromSubaccount) });
-    if ('Err' in r) throw new Error(btcWithdrawErrorText(r.Err));
+    if ('Err' in r) { const e = new Error(btcWithdrawErrorText(r.Err)); e.minterErr = r.Err; throw e; }
     onStep('done');
     return { approveBlock, blockIndex: r.Ok.block_index };
 }

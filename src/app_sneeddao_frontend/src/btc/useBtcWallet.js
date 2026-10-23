@@ -6,6 +6,7 @@
 //   icpLedger      for "Top up signing credit from ICP" (transfer to the CMC)
 //   cmc            notify_mint_cycles, the ICP/XDR rate
 //   bitcoin        the IC Bitcoin canister's free queries (UTXOs)
+//   makeActor      any other canister (the ck minter and ledger for moves, utils/btc/moves.js)
 // Reads refresh on open, after each action, and every 60 s while the page is visible; there is no
 // background polling. Fee rates (mempool.space) are NOT read here: only the send form asks for
 // them, while it is open, unless the user turned lookups off (utils/btc/fees.js).
@@ -15,7 +16,7 @@ import { idlFactory as icrc1Idl } from 'external/icrc1_ledger/icrc1_ledger.did.j
 import { idlFactory as cmcIdl } from 'external/cmc/cmc.did.js';
 import { useAuth } from '../AuthContext';
 import priceService from '../services/PriceService';
-import { btcNative, btcSurface, SIGNER_CANISTER } from '../utils/btc/network';
+import { btcNative, btcSurface, ckMoveFor, SIGNER_CANISTER } from '../utils/btc/network';
 import { btcAddressFor } from '../utils/btc/address';
 import { readNative } from '../utils/pockets/adapters/btc_native';
 import { signerIdl } from '../utils/btc/signerIdl';
@@ -24,6 +25,7 @@ import { fetchFeeRates } from '../utils/btc/fees';
 import { CYCLES_LEDGER, readCredit, creditPlan, approveSigner } from '../utils/btc/credit';
 import { storeKey, defaultStorage, lockedOutpoints, reconcileAll } from '../utils/btc/pending';
 import { makeStore } from '../utils/btc/send';
+import { movesKey, makeMovesStore } from '../utils/btc/moves';
 import { CMC_CANISTER_ID_TEXT } from '../utils/cyclesTopUp';
 import { outpointKey } from '../utils/btc/utxos';
 
@@ -39,6 +41,7 @@ function makeActors(identity) {
     const mk = (idl, canisterId) => Actor.createActor(idl, { agent, canisterId });
     const bitcoin = new Map();
     return {
+        make: (idl, id) => mk(idl, typeof id === 'string' ? id : id.toText()),
         bitcoin: (id) => { if (!bitcoin.has(id)) bitcoin.set(id, mk(bitcoinCanisterIdl, id)); return bitcoin.get(id); },
         signer: mk(signerIdl, SIGNER_CANISTER),
         cyclesLedger: mk(icrc1Idl, CYCLES_LEDGER),
@@ -71,6 +74,10 @@ export function useBtcWallet() {
     } : null), [actors, me]);
     const storage = useMemo(() => defaultStorage(), []);
     const store = useMemo(() => (cfg && meText ? makeStore(storage, storeKey(cfg.network, meText)) : null), [cfg, meText, storage]);
+    // native <-> ck moves (A3): only with an active surface (never on prod with the beta switch off)
+    const ck = surface.active ? ckMoveFor(status) : null;
+    const movesStore = useMemo(() => (ck && meText ? makeMovesStore(storage, movesKey(cfg.network, meText)) : null), [ck, cfg, meText, storage]);
+    const makeActor = useMemo(() => (actors ? actors.make : null), [actors]);
 
     const [btc, setBtc] = useState({ data: null, error: null, loading: false });
     const [credit, setCredit] = useState({ data: null, error: null, loading: false });
@@ -182,7 +189,7 @@ export function useBtcWallet() {
     }, [actors, me, refreshCredit]);
 
     return {
-        status, surface, cfg, me, meText, address, actors, storage, store,
+        status, surface, cfg, me, meText, address, actors, storage, store, ck, movesStore, makeActor,
         btc, credit, fees, records, market, locked, inFlight,
         refreshAll, refreshBtc, refreshCredit, refreshFees, refreshMarket, loadRecords, ensureCredit,
     };

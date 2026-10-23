@@ -3,23 +3,30 @@
 // Q2). Same origin as the app, so the stored Internet Identity session carries over: AuthProvider
 // reads the same AuthClient storage (IndexedDB / localStorage of this origin).
 //
-// Tabs: Send · Signing credit · Activity (hash: #send, #credit, #activity).
+// Tabs: Send · Move · Signing credit · Activity (hash: #send, #move or #move-tobtc, #credit,
+// #activity; anything after '&' in the hash, like btcnet=mainnet, is ignored here). Move appears
+// only where the network has a ck pair (utils/btc/network.js ckMoveFor); its records are watched
+// on every tab while the page is open (useMoves).
 import React, { useEffect, useState } from 'react';
 import { FaBitcoin, FaArrowLeft } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatAmount } from '../utils/StringUtils';
 import { useBtcWallet } from './useBtcWallet';
+import { useMoves } from './useMoves';
 import BtcSend from '../components/btc/BtcSend';
 import SigningCredit from '../components/btc/SigningCredit';
 import BtcActivity from '../components/btc/BtcActivity';
+import BtcMove from '../components/btc/BtcMove';
 import { BtcNetworkBadge, MainnetDevBanner } from '../components/btc/TestnetBadge';
 import MainnetDevToggle from '../components/btc/MainnetDevToggle';
 import { BtcBetaOffer, BtcBetaIntro, BtcBetaSwitch } from '../components/btc/BtcBeta';
 import { Card, Button, Notice, Advanced } from '../components/convert/ConvertUi';
 
-const TABS = [['send', 'Send'], ['credit', 'Signing credit'], ['activity', 'Activity']];
-const readTab = () => { const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', ''); return TABS.some(([k]) => k === h) ? h : 'send'; };
+const TABS = [['send', 'Send'], ['move', 'Move'], ['credit', 'Signing credit'], ['activity', 'Activity']];
+const hashHead = () => (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '').split('&')[0];
+const readTab = () => { const h = hashHead(); const t = h.startsWith('move') ? 'move' : h; return TABS.some(([k]) => k === t) ? t : 'send'; };
+const readDir = () => (hashHead() === 'move-tobtc' ? 'tobtc' : 'tock');
 
 function SignIn() {
     const { loginWithII1, loginWithII2, isLoggingIn, authError } = useAuth();
@@ -40,14 +47,20 @@ export default function BtcApp() {
     const c = theme.colors;
     const { isAuthenticated } = useAuth();
     const w = useBtcWallet();
+    const mv = useMoves(w);
     const [tab, setTabState] = useState(readTab);
+    const [dir, setDirState] = useState(readDir);
     const [need, setNeed] = useState(null);
     useEffect(() => {
-        const on = () => setTabState(readTab());
+        const on = () => { setTabState(readTab()); setDirState(readDir()); };
         window.addEventListener('hashchange', on);
         return () => window.removeEventListener('hashchange', on);
     }, []);
-    const setTab = (t) => { try { window.history.replaceState(null, '', `#${t}`); } catch { /* ignore */ } setTabState(t); };
+    // keep anything after '&' (btcnet=mainnet for the headless developer-mode browser)
+    const writeHash = (head) => { try { const rest = window.location.hash.replace('#', '').split('&').slice(1); window.history.replaceState(null, '', `#${[head, ...rest].join('&')}`); } catch { /* ignore */ } };
+    const setTab = (t) => { writeHash(t === 'move' && dir === 'tobtc' ? 'move-tobtc' : t); setTabState(t); };
+    const setDir = (d) => { writeHash(d === 'tobtc' ? 'move-tobtc' : 'move'); setDirState(d); };
+    const tabs = TABS.filter(([k]) => k !== 'move' || w.ck);
 
     const s = w.btc.data?.summary;
     return (
@@ -73,7 +86,7 @@ export default function BtcApp() {
                     </div>
                     {w.cfg.testnet && <Notice tone="warning" style={{ marginBottom: 12 }}>Staging preview on Bitcoin <b>testnet4</b>: test coins with no value. Send only to testnet4 addresses.</Notice>}
                     <nav role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                        {TABS.map(([k, label]) => (
+                        {tabs.map(([k, label]) => (
                             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
                                 style={{ padding: '8px 14px', borderRadius: 999, border: `1px solid ${tab === k ? c.accent : c.border}`, background: tab === k ? `${c.accent}22` : 'transparent', color: c.primaryText, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
                                 {label}
@@ -82,7 +95,9 @@ export default function BtcApp() {
                     </nav>
                     {tab === 'send' && <BtcSend w={w} onGoCredit={(n) => { setNeed(n); setTab('credit'); }} onGoActivity={() => setTab('activity')} />}
                     {tab === 'credit' && <SigningCredit w={w} need={need} />}
-                    {tab === 'activity' && <BtcActivity w={w} />}
+                    {tab === 'move' && w.ck && <BtcMove w={w} mv={mv} dir={dir} onDir={setDir} onGoCredit={(n) => { setNeed(n); setTab('credit'); }} onGoActivity={() => setTab('activity')} />}
+                    {tab === 'move' && !w.ck && <Notice>Moves between Bitcoin and ckBTC aren't available on this network.</Notice>}
+                    {tab === 'activity' && <BtcActivity w={w} mv={mv} />}
                     {w.surface.betaSwitch && (
                         <div style={{ marginTop: 16 }}>
                             <Advanced title="Advanced: Bitcoin (beta)">

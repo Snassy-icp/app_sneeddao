@@ -57,14 +57,17 @@ export function makeStore(storage, key) {
  *   signer       actor with btc_caller_send
  *   store        makeStore(...)
  *   ownAddress   our P2WPKH address (for the change output and the txid)
+ *   kind/extra   'send', or 'toCkbtc' with extra = { ckbtc } (moves.js newDepositInfo)
  * Returns { state: 'broadcast'|'failed'|'unknown'|'not_sent', record, txid?, error?, info? }.
  * 'not_sent' means the record could not be written, so the signer was never called.
  */
-export async function executeSend({ signer, store, plan, toAddress, network, ownAddress, id, kind = 'send', now = Date.now, onSubmitting = null }) {
+export async function executeSend({ signer, store, plan, toAddress, network, ownAddress, id, kind = 'send', extra = null, now = Date.now, onSubmitting = null }) {
     const outputs = [{ address: toAddress, value: plan.amount }];
     const expected = expectedTxid({ inputs: plan.inputs, outputs, change: plan.change, ownAddress, network });
     const t0 = now();
     const rec = newRecord({ id, network, kind, plan, outputs, ownAddress, expected, signingCycles: sendCycles(plan.inputs.length, outputs.length), now: t0 });
+    // a move to ckBTC carries its conversion record (utils/btc/moves.js) in the same pending record
+    if (extra) Object.assign(rec, extra);
     rec.attempts = 1;
     rec.lastAttemptAt = t0;
     if (!store.mutate((rs) => [...rs, rec])) {
