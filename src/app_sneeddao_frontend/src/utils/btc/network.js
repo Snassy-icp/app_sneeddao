@@ -1,17 +1,22 @@
-// Native Bitcoin (spec/sneed_wallet.md, phase A1): which Bitcoin network this build uses, and the
-// feature flag that keeps the whole native-BTC UI off where it must not appear yet.
+// Native Bitcoin (spec/sneed_wallet.md): which Bitcoin network this build uses, and the feature
+// flag that keeps the native-BTC UI, every native-BTC canister call and every address derivation
+// off where they must not happen.
 //
-// Sending (A2) is not built. A user who receives BTC at their Sneed Wallet address could not move
-// it, so the native-BTC UI is OFF on prod and ON only on staging, where it uses Bitcoin testnet
-// (testnet4, worthless coins; staging-no-real-money). Three independent checks, all must pass:
+// Staging (unchanged): ON with Bitcoin testnet (testnet4, worthless coins; staging-no-real-money)
+// when three independent checks all pass:
 //   1. the build was made for staging (process.env.DFX_NETWORK === 'staging', baked in by Vite);
 //   2. the build's own frontend canister id is not the prod frontend's;
 //   3. at run time, the page is not served from a prod host (app.sneeddao.com or the prod
 //      frontend canister's URLs), so a staging bundle copied to prod still stays off.
-// When A2 ships, prod gets its own switch here (mainnet), still default off until launch (A4).
-//
 // Mainnet developer mode (below): on staging only, for allowlisted test identities that opt in,
 // the network is mainnet (real BTC) so sending can be tested; see btcNativeStatus.
+//
+// Prod (Bitcoin beta, decided 2026-10-23): a prod build (DFX_NETWORK === 'ic' AND the prod
+// frontend id) offers an explicit "Bitcoin (beta)" switch, default OFF, remembered per browser
+// (localStorage BETA_KEY). Off: enabled = false, so nothing derives an address or calls the
+// Bitcoin canister or the signer; the UI shows only the explanation and the switch. On: Bitcoin
+// MAINNET with the normal UI (BTC_MAINNET_BETA: a small "Beta" badge, no developer banners).
+// Prod is never testnet and never developer mode.
 //
 // Pure apart from reading process.env, window.location and localStorage; tests pass `e`,
 // `hostname`, `principal`, `storage` and `url`.
@@ -79,6 +84,11 @@ export const BTC_MAINNET_DEV = Object.freeze({ ...BTC_NETWORKS.mainnet, label: '
 
 export const isMainnetDevPrincipal = (principal) => principal != null && MAINNET_DEV_PRINCIPALS.includes(String(principal));
 
+/// Prod Bitcoin beta: mainnet with the normal UI, marked so surfaces show the small "Beta" badge.
+export const BTC_MAINNET_BETA = Object.freeze({ ...BTC_NETWORKS.mainnet, beta: true });
+/// This browser's Bitcoin (beta) switch on prod (localStorage, '1' = on; default off).
+export const BETA_KEY = 'sneed_btc_beta_v1';
+
 const defaultStorage = () => { try { return typeof window !== 'undefined' ? window.localStorage : null; } catch { return null; } };
 const currentUrlParams = () => {
     try { return typeof window !== 'undefined' ? `${window.location.search || ''}&${window.location.hash || ''}` : ''; } catch { return ''; }
@@ -110,7 +120,21 @@ export function setMainnetDevOptIn(on, storage = defaultStorage()) {
     try { if (on) storage?.setItem(MAINNET_DEV_KEY, '1'); else storage?.removeItem(MAINNET_DEV_KEY); } catch { /* storage blocked: not remembered */ }
 }
 
-/// The flag and the network: { enabled, network, config, reason, devAllowed, devMainnet, devSource }.
+/// The Bitcoin (beta) switch of this browser (false when storage is blocked).
+export function betaOptIn(storage = defaultStorage()) {
+    try { return storage?.getItem(BETA_KEY) === '1'; } catch { return false; }
+}
+/// Remember the switch. The page must reload afterwards: the network is decided once per load.
+export function setBetaOptIn(on, storage = defaultStorage()) {
+    try { if (on) storage?.setItem(BETA_KEY, '1'); else storage?.removeItem(BETA_KEY); } catch { /* storage blocked: not remembered */ }
+}
+
+/// True for the prod build: DFX_NETWORK 'ic' and the prod frontend's own canister id.
+export const isProdBuild = (vars) => vars?.DFX_NETWORK === 'ic' && vars?.CANISTER_ID_APP_SNEEDDAO_FRONTEND === PROD_FRONTEND_CANISTER;
+
+/// The flag and the network: { enabled, network, config, reason, devAllowed, devMainnet, devSource,
+/// betaAvailable, betaOn }. betaAvailable: this is the prod build, which offers the Bitcoin (beta)
+/// switch; betaOn: this browser turned it on (then enabled, mainnet, BTC_MAINNET_BETA).
 ///   e = { DFX_NETWORK, CANISTER_ID_APP_SNEEDDAO_FRONTEND } (defaults: the build's process.env)
 ///   hostname (default: window.location.hostname)
 ///   principal: the signed-in principal (text or Principal); null while logged out (testnet)
@@ -125,17 +149,22 @@ export function btcNativeStatus({ e = null, hostname = null, principal = null, s
         CANISTER_ID_APP_SNEEDDAO_FRONTEND: process.env.CANISTER_ID_APP_SNEEDDAO_FRONTEND,
     };
     const host = hostname == null ? currentHost() : String(hostname).toLowerCase();
-    const off = (reason) => ({ enabled: false, network: null, config: null, reason, devAllowed: false, devMainnet: false, devSource: null });
+    const off = (reason, betaAvailable = false) => ({ enabled: false, network: null, config: null, reason, devAllowed: false, devMainnet: false, devSource: null, betaAvailable, betaOn: false });
+    const st = storage === undefined ? defaultStorage() : storage;
+    if (isProdBuild(vars)) {
+        // prod: only the browser's own switch; principal, developer toggle and URL play no part
+        if (!betaOptIn(st)) return off('Bitcoin (beta) is off in this browser', true);
+        return { enabled: true, network: 'mainnet', config: BTC_MAINNET_BETA, reason: 'Bitcoin (beta), mainnet', devAllowed: false, devMainnet: false, devSource: null, betaAvailable: true, betaOn: true };
+    }
     if (vars.DFX_NETWORK !== 'staging') return off('native Bitcoin is not available on this build yet');
     if (vars.CANISTER_ID_APP_SNEEDDAO_FRONTEND === PROD_FRONTEND_CANISTER) return off('prod frontend build');
     if (isProdHost(host)) return off('prod host');
-    const testnet = (devAllowed) => ({ enabled: true, network: 'testnet', config: BTC_NETWORKS.testnet, reason: 'staging: Bitcoin testnet4 preview', devAllowed, devMainnet: false, devSource: null });
+    const testnet = (devAllowed) => ({ enabled: true, network: 'testnet', config: BTC_NETWORKS.testnet, reason: 'staging: Bitcoin testnet4 preview', devAllowed, devMainnet: false, devSource: null, betaAvailable: false, betaOn: false });
     if (!isMainnetDevPrincipal(principal)) return testnet(false);
     const param = urlNetParam(url == null ? currentUrlParams() : url);
-    const st = storage === undefined ? defaultStorage() : storage;
     const source = param === 'mainnet' ? 'param' : param === 'testnet' ? null : mainnetDevOptIn(st) ? 'toggle' : null;
     if (!source) return testnet(true);
-    return { enabled: true, network: 'mainnet', config: BTC_MAINNET_DEV, reason: 'staging: Bitcoin MAINNET developer mode (real BTC)', devAllowed: true, devMainnet: true, devSource: source };
+    return { enabled: true, network: 'mainnet', config: BTC_MAINNET_DEV, reason: 'staging: Bitcoin MAINNET developer mode (real BTC)', devAllowed: true, devMainnet: true, devSource: source, betaAvailable: false, betaOn: false };
 }
 
 const cached = new Map();
@@ -149,3 +178,41 @@ export function btcNative(principal = null) {
 
 /// The flag for this page (independent of who is signed in).
 export const btcNativeEnabled = () => btcNative().enabled;
+/// The Bitcoin row or its beta switch appears on this page: the flag is on, or this is the prod
+/// build that offers the Bitcoin (beta) switch.
+export const btcNativeShown = () => { const s = btcNative(); return s.enabled || s.betaAvailable; };
+
+/// What a surface may do with `status` (one rule for the Bitcoin card, the pockets adapter and
+/// btc.html):
+///   cfg     the network config, or null: nothing native-BTC happens without it
+///   active  derive the address, read the Bitcoin canister, create signer actors: needs cfg AND a
+///           signed-in principal
+///   offer   show the Bitcoin (beta) explanation and switch instead (prod, switch off)
+///   betaSwitch  the switch exists on this build (prod), to turn it on or off
+///   intro   show the first-time beta explanation (prod, switch on)
+export function btcSurface(status, signedIn = false) {
+    const cfg = status?.enabled ? status.config : null;
+    return {
+        cfg,
+        active: Boolean(cfg && signedIn),
+        offer: Boolean(status?.betaAvailable && !status.betaOn),
+        betaSwitch: Boolean(status?.betaAvailable),
+        intro: Boolean(cfg?.beta),
+    };
+}
+
+/// The first-time beta explanation was dismissed in this browser.
+export const BETA_INTRO_KEY = 'sneed_btc_beta_intro_seen_v1';
+export function betaIntroSeen(storage = defaultStorage()) {
+    try { return storage?.getItem(BETA_INTRO_KEY) === '1'; } catch { return false; }
+}
+export function setBetaIntroSeen(storage = defaultStorage()) {
+    try { storage?.setItem(BETA_INTRO_KEY, '1'); } catch { /* storage blocked: shown again next time */ }
+}
+
+/// Turn the Bitcoin (beta) switch on or off in this browser and reload (the network and the
+/// pockets adapters are decided once per page load).
+export function flipBeta(on, storage = defaultStorage()) {
+    setBetaOptIn(on, storage);
+    try { window.location.reload(); } catch { /* not in a browser */ }
+}

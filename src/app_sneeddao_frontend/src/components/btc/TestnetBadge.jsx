@@ -28,10 +28,23 @@ export function MainnetDevBadge({ big = false }) {
     );
 }
 
-/// The badge for `cfg`: TESTNET, the red mainnet developer badge, or nothing.
+/// The small "Beta" badge of native Bitcoin on prod (utils/btc/network.js, Bitcoin beta).
+export function BetaBadge({ big = false }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    return (
+        <span title="Native Bitcoin in Sneed Wallet is in beta. Real bitcoin on Bitcoin mainnet."
+            style={{ fontSize: big ? '0.72rem' : '0.6rem', fontWeight: 700, letterSpacing: 0.4, color: c.accent, border: `1px solid ${c.accent}`, background: `${c.accent}14`, borderRadius: 999, padding: big ? '1px 8px' : '0 6px', whiteSpace: 'nowrap' }}>
+            Beta
+        </span>
+    );
+}
+
+/// The badge for `cfg`: TESTNET, the red mainnet developer badge, Beta, or nothing.
 export function BtcNetworkBadge({ cfg, big = false }) {
     if (!cfg) return null;
     if (cfg.devMode) return <MainnetDevBadge big={big} />;
+    if (cfg.beta) return <BetaBadge big={big} />;
     if (cfg.testnet) return <TestnetBadge big={big} />;
     return null;
 }

@@ -39,7 +39,8 @@ import { usePockets } from './hooks/usePockets';
 import { TokenPocketBreakdown } from './components/PocketRows';
 import { otherPocketsTotal, holders as pocketHolders, nativeBtcForCard } from './utils/pockets/model';
 import BtcNativeSection, { BtcNetworkBadge } from './components/btc/BtcNativeSection';
-import { btcNative } from './utils/btc/network';
+import { btcNative, btcSurface } from './utils/btc/network';
+import { BtcBetaOffer } from './components/btc/BtcBeta';
 import { CKBTC } from './utils/ckMinters';
 import { wrapAction } from './utils/wrapActions';
 import { journalStake, updateStake, removeStake } from './utils/stakeJournal';
@@ -133,6 +134,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // user's own Bitcoin address as one more pocket. Mainnet sats count towards the total; testnet
     // coins (staging) never do.
     const isBtcCard = showPockets && pocketLedger === CKBTC.ledger && btcNative().enabled;
+    // prod with Bitcoin (beta) off in this browser: the explanation and the switch where the native
+    // row would be; nothing is derived or read
+    const btcBetaOffer = showPockets && pocketLedger === CKBTC.ledger && !isBtcCard && !hideButtons && btcSurface(btcNative()).offer;
     const pocketsExtra = showPockets ? otherPocketsTotal(pockets.pockets, pocketLedger) + (isBtcCard ? nativeBtcForCard(pockets.pockets) : 0n) : 0n;
     const pocketCount = showPockets ? pocketHolders(pockets.pockets, pocketLedger).length : 0;
     // Support both new refreshPhase prop and legacy isRefreshing boolean
@@ -1495,7 +1499,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}
                     <div className="header-row-1" style={{ minWidth: 0 }}>
-                        <span className="token-name">{isBtcCard ? <>Bitcoin <span style={{ fontSize: '0.7rem', fontWeight: 500, color: theme.colors.mutedText }}>ckBTC + BTC</span>{(() => { const bc = btcNative(isAuthenticated && identity ? identity.getPrincipal() : null).config; return bc && (bc.testnet || bc.devMode) ? <> <BtcNetworkBadge cfg={bc} /></> : null; })()}</> : (token.name || token.symbol)}</span>
+                        <span className="token-name">{isBtcCard ? <>Bitcoin <span style={{ fontSize: '0.7rem', fontWeight: 500, color: theme.colors.mutedText }}>ckBTC + BTC</span>{(() => { const bc = btcNative(isAuthenticated && identity ? identity.getPrincipal() : null).config; return bc && (bc.testnet || bc.devMode || bc.beta) ? <> <BtcNetworkBadge cfg={bc} /></> : null; })()}</> : (token.name || token.symbol)}</span>
                         <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
                                 denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
@@ -2120,6 +2124,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {isBtcCard && (
                                         <div style={{ padding: '2px 12px 6px', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}`, margin: '8px 0', minWidth: 0 }}>
                                             <BtcNativeSection token={token} hideButtons={hideButtons} first />
+                                        </div>
+                                    )}
+                                    {btcBetaOffer && (
+                                        <div style={{ padding: '8px 12px', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}`, margin: '8px 0', minWidth: 0 }}>
+                                            <BtcBetaOffer />
                                         </div>
                                     )}
                                     {showBalanceBreakdown && !showPockets && (

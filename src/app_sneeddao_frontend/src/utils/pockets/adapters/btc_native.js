@@ -4,8 +4,9 @@
 // `btc:<network>`. A1 is receive-only: caps { receive } and nothing else; sending (A2) and moves to
 // ckBTC (A3) come later.
 //
-// Behind the feature flag (utils/btc/network.js): off on prod, on staging with Bitcoin testnet4
-// (mainnet only in developer mode, for an allowlisted principal that opted in).
+// Behind the feature flag (utils/btc/network.js): on staging with Bitcoin testnet4 (mainnet only
+// in developer mode, for an allowlisted principal that opted in); on prod off until this browser
+// turns on the Bitcoin (beta) switch, then mainnet. Off means no address and no read at all.
 // Tests turn it on with ctx.flags.btcNative = { network: 'testnet' | 'mainnet' }.
 //
 // Reads use the Bitcoin canister's free queries through ctx.actor('bitcoin', id); one read per

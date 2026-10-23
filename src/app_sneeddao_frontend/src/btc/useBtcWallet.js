@@ -15,7 +15,7 @@ import { idlFactory as icrc1Idl } from 'external/icrc1_ledger/icrc1_ledger.did.j
 import { idlFactory as cmcIdl } from 'external/cmc/cmc.did.js';
 import { useAuth } from '../AuthContext';
 import priceService from '../services/PriceService';
-import { btcNative, SIGNER_CANISTER } from '../utils/btc/network';
+import { btcNative, btcSurface, SIGNER_CANISTER } from '../utils/btc/network';
 import { btcAddressFor } from '../utils/btc/address';
 import { readNative } from '../utils/pockets/adapters/btc_native';
 import { signerIdl } from '../utils/btc/signerIdl';
@@ -52,12 +52,14 @@ export function useBtcWallet() {
     const me = isAuthenticated && identity ? identity.getPrincipal() : null;
     const meText = me ? me.toText() : null;
     // the network is decided once the principal is known (mainnet developer mode is per
-    // principal); while logged out it is testnet and nothing is derived or called
+    // principal); while logged out nothing is derived or called. On prod, cfg stays null until
+    // this browser turned on the Bitcoin (beta) switch (utils/btc/network.js).
     const status = btcNative(meText);
-    const cfg = status.enabled ? status.config : null;
-    const address = useMemo(() => (cfg && meText ? btcAddressFor(meText, cfg.network) : null), [cfg, meText]);
-    // no canister is called at all while the flag is off (prod)
-    const actors = useMemo(() => (cfg && identity && isAuthenticated ? makeActors(identity) : null), [cfg, identity, isAuthenticated]);
+    const surface = btcSurface(status, Boolean(meText && identity && isAuthenticated));
+    const cfg = surface.cfg;
+    const address = useMemo(() => (surface.active ? btcAddressFor(meText, cfg.network) : null), [surface.active, cfg, meText]);
+    // no canister is called at all while the flag is off (prod with the switch off)
+    const actors = useMemo(() => (surface.active ? makeActors(identity) : null), [surface.active, identity]);
     // the btc_native adapter's read (shared 20 s cache) needs a minimal pockets ctx
     const ctx = useMemo(() => (actors && me ? {
         me,
@@ -180,7 +182,7 @@ export function useBtcWallet() {
     }, [actors, me, refreshCredit]);
 
     return {
-        status, cfg, me, meText, address, actors, storage, store,
+        status, surface, cfg, me, meText, address, actors, storage, store,
         btc, credit, fees, records, market, locked, inFlight,
         refreshAll, refreshBtc, refreshCredit, refreshFees, refreshMarket, loadRecords, ensureCredit,
     };

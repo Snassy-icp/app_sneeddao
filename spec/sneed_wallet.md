@@ -1,7 +1,9 @@
 # Sneed Wallet: native Bitcoin and "Sign in with Sneed Wallet"
 
-Status: spec draft, 2026-10-23. A1 (receive) built; A0 and A2 (signing credit, fee source,
-`btc.html`, pending store, send) built for staging/testnet4 only, behind the A1 triple flag. Builds on `spec/oisy_comparison.md` (§3.1 signer,
+Status: spec draft, 2026-10-23. A1 (receive) and A0/A2 (signing credit, fee source, `btc.html`,
+pending store, send) built. Staging: testnet4 behind the A1 triple flag, plus mainnet developer
+mode (§11). **Prod: Bitcoin MAINNET as an opt-in beta** (decided 2026-10-23, §12.1): a "Bitcoin
+(beta)" switch per browser, default off. A3 and A4 are built during the beta. Builds on `spec/oisy_comparison.md` (§3.1 signer,
 §3.2 Chain Fusion Signer, §5 order) and `spec/programmable_accounts.md` (pockets). Paths are
 relative to `src/app_sneeddao_frontend/src`.
 
@@ -611,7 +613,7 @@ support can explain and fix any case.
 | A1 | Address (offline + verify), UTXOs, balance, receive QR, `btc_native` pocket adapter, testnet on staging | 1 week |
 | A2 | Send: selection, fee tiers, cost summary, pending locks, `expectedTxid`, error texts, recovery (re-issue, sign-only), history v1 | 1.5–2 weeks |
 | A3 | Native ↔ ckBTC moves, with conversion records and auto `update_balance` | 1 week |
-| A4 | Speed-up (RBF and CPFP), sweep, verified balance, opt-in explorer history, support log view; mainnet launch behind a flag, then default on | 1 week |
+| A4 | Speed-up (RBF and CPFP), sweep, verified balance, opt-in explorer history, support log view. Mainnet went to prod earlier, as the opt-in beta (§12.1); A3/A4 are built during it, default-on comes after | 1 week |
 | A5 | ETH/EVM (address, send, ERC-20, ck conversions from the own address) | 4–6 weeks, separate revision |
 | B1 | `sign.html` entry with the library, permissions, ICRC-27 pocket accounts, decoders, block list, connected-apps settings, test dapp | 2–3 weeks |
 | B2 | ICRC-21 consent messages on Sneed canisters (proposals), signer listing (IdentityKit and the `@icp-sdk/signer` lists), docs for dapps | 1–2 weeks plus outreach |
@@ -620,6 +622,56 @@ support can explain and fix any case.
 Release: staging first (testnet only), then prod behind a flag. Every build that touches
 `utils/btc/` or `sign/` is flagged as custody-relevant in its release note and its forum News
 post (topic 899).
+
+Status by phase (2026-10-23): A0 built (signing credit, mempool.space fee source, `btc.html`;
+the pending store is localStorage for now, not the backend layout store). A1 and A2 built. **A3
+and A4 are built during the prod beta**: native ↔ ckBTC moves (§6), speed-up (RBF, and CPFP per
+Q6) and sweep, and the paid balance cross-check (an update call to the Bitcoin canister) before
+large sends (§4, §5.2). Until A4's cross-check exists, balances and UTXOs come from the
+uncertified queries only; the beta explanation tells users to start with small amounts.
+
+### 12.1 Prod beta: Bitcoin (beta) switch (decided 2026-10-23)
+
+- **Flag** (`utils/btc/network.js`): a prod build (`DFX_NETWORK === 'ic'` and the prod frontend
+  id `pxtkg-…`) offers the switch. Off by default, remembered per browser in localStorage
+  `sneed_btc_beta_v1` (`'1'` = on; blocked storage = off). The UI says it is per browser. The
+  network is decided once per page load, so the switch reloads the page.
+- **Off:** no network config, so no address derivation (receive address included), no Bitcoin
+  canister read, no signer, cycles-ledger or CMC actor, no fee lookup, and the `btc_native`
+  adapter is not registered. The Bitcoin card (ckBTC card, or its own card without ckBTC) shows
+  one line, the switch and "What is this?"; `btc.html` shows the explanation and the switch
+  instead of the send page.
+- **On:** Bitcoin **mainnet** with the normal UI: a small "Beta" badge (no developer banners),
+  the explanation once (dismissed per browser, `sneed_btc_beta_intro_seen_v1`), the switch
+  under Advanced to turn it off, and a review tick on every send ("I checked the address and
+  amount. This sends real bitcoin and can't be undone.").
+- The explanation: native BTC (own bc1 address on Bitcoin) vs ckBTC (IC token backed 1:1); the
+  key is held by the IC's threshold signing via DFINITY's Chain Fusion Signer and controlled by
+  the user's principal (whoever acts as the principal, this site included, can move it); sends
+  cost a Bitcoin network fee plus signing cycles; it is a beta; the switch is per browser.
+- Prod is never testnet and never developer mode (the principal, the developer toggle and
+  `btcnet=…` play no part on prod). Staging is unchanged: testnet4 by default, mainnet developer
+  mode for the allowlisted test identity.
+- Tests: `test/canisters/tests/btc-beta.test.js` (flag matrix, storage key, adapter on a
+  simulated prod page with and without the switch, wiring of receive/send).
+
+### 12.2 Release note (custody-relevant)
+
+> **Custody-relevant frontend release: native Bitcoin (beta) in Sneed Wallet.** This build lets
+> each user turn on "Bitcoin (beta)" on the Bitcoin card. It is off by default and remembered
+> per browser. While it is off, the frontend derives no Bitcoin address and makes no Bitcoin or
+> signer calls. When on, the user gets a real Bitcoin mainnet address whose key is held by the
+> Internet Computer's threshold ECDSA through DFINITY's Chain Fusion Signer
+> (`grghe-syaaa-aaaar-qabyq-cai`) and controlled by the user's principal. There is no seed
+> phrase. Sends are built by this frontend (destination, amount, fee, coins) and signed by the
+> signer for the logged-in principal, so **whoever controls the frontend can move users' BTC**,
+> exactly as with ICRC tokens in the wallet today: reviewers of this and every later frontend
+> upgrade should treat it as a custody change. Sends happen on `btc.html`, a separate page
+> without analytics, framing or third-party scripts (§4). Each send costs a Bitcoin network fee
+> plus signing cycles paid by the user. Beta limits: no native ↔ ckBTC moves, no speed-up or
+> sweep, and no paid balance cross-check before large sends yet (A3/A4). Files: `utils/btc/*`,
+> `components/btc/*`, `btc/*`, `utils/pockets/adapters/btc_native.js`, `TokenCard.jsx`,
+> `Wallet.jsx`.
 
 ## 13. Open questions
 

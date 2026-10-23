@@ -6,7 +6,9 @@
 // Advanced: network, derivation, the canisters involved, and every UTXO with its confirmations.
 //
 // Rendered only behind the feature flag (utils/btc/network.js): staging with Bitcoin testnet4, or
-// mainnet in developer mode (allowlisted principal + opt-in under Advanced; red banner).
+// mainnet in developer mode (allowlisted principal + opt-in under Advanced; red banner), or prod
+// mainnet once this browser turned on the Bitcoin (beta) switch (small Beta badge, one-time
+// explanation). With the switch off, prod shows BtcBetaOffer instead and derives or reads nothing.
 // Amounts go through formatAmount / formatValue, so privacy mode masks them. Theme colours only.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle, FaPaperPlane } from 'react-icons/fa';
@@ -16,12 +18,13 @@ import { usePockets } from '../../hooks/usePockets';
 import { formatAmount, computeUsdValue } from '../../utils/StringUtils';
 import { readNative, btcConfigFor } from '../../utils/pockets/adapters/btc_native';
 import { bitcoinUri, deriveBtcAddress } from '../../utils/btc/address';
-import { SIGNER_CANISTER, btcNative } from '../../utils/btc/network';
+import { SIGNER_CANISTER, btcNative, btcSurface } from '../../utils/btc/network';
 import { PocketLine } from '../PocketRows';
 import { PocketButton } from '../PocketVisuals';
 import { CopyValue, QrCode, Notice, Advanced } from '../convert/ConvertUi';
 import TestnetBadge, { BtcNetworkBadge, MainnetDevBanner } from './TestnetBadge';
 import MainnetDevToggle from './MainnetDevToggle';
+import { BtcBetaOffer, BtcBetaIntro, BtcBetaSwitch } from './BtcBeta';
 
 const REFRESH_MS = 60_000; // §5.2 step 5: every 60 s while visible, timers in the page only
 const QR_KEY = 'sneed_btc_native_show_qr_v1';
@@ -110,6 +113,7 @@ function AdvancedBtc({ data, cfg, me }) {
     return (
         <Advanced title="Advanced">
             <MainnetDevToggle status={btcNative(me)} />
+            {btcSurface(btcNative(me)).betaSwitch && <BtcBetaSwitch on />}
             {row('Network', cfg.label)}
             {row('Address type', 'P2WPKH (Native SegWit)')}
             {d && row('Derivation path', `[${d.path.map((h) => `0x${h}`).join(', ')}]`)}
@@ -150,8 +154,10 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
     const pk = usePockets();
     const ctx = pk.ctx;
     const cfg = btcConfigFor(ctx);
-    const { data, error, loading, reload } = useNativeBtc(cfg ? ctx : null);
+    // no read (and so no address derivation) without a network and a principal
+    const { data, error, loading, reload } = useNativeBtc(cfg && ctx?.me ? ctx : null);
     const [receiving, setReceiving] = useState(false);
+    if (!cfg && btcSurface(btcNative(ctx?.me ?? null)).offer) return hideButtons ? null : <BtcBetaOffer style={{ padding: '8px 0' }} />;
     if (!ctx || !cfg) return null;
     const status = btcNative(ctx.me);
     const address = data?.address || null;
@@ -176,12 +182,13 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
         <PocketLine first={first}
             avatar={<div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.tertiaryBg, border: `1px solid ${c.border}` }}><FaBitcoin size={16} color={cfg.testnet ? c.mutedText : '#f7931a'} /></div>}
             name="Bitcoin address"
-            badge={cfg.testnet || cfg.devMode ? <BtcNetworkBadge cfg={cfg} /> : null}
+            badge={cfg.testnet || cfg.devMode || cfg.beta ? <BtcNetworkBadge cfg={cfg} /> : null}
             amount={amount}
             sub={s && s.pending > 0n ? <>+ <Sats sats={s.pending} cfg={cfg} /> pending</> : cfg.testnet ? 'test coins, no value' : cfg.devMode ? 'REAL BTC · developer mode' : null}
             note={error && data ? `couldn't refresh: ${error}` : null}
             actions={actions}>
             <MainnetDevBanner cfg={cfg} style={{ marginTop: 8 }} />
+            {cfg.beta && <BtcBetaIntro style={{ marginTop: 8 }} />}
             {receiving && address && <ReceiveBtc address={address} cfg={cfg} />}
             {receiving && (
                 <div style={{ marginTop: 6 }}>
@@ -199,6 +206,18 @@ export function BitcoinCard() {
     const c = theme.colors;
     const pk = usePockets();
     const cfg = btcConfigFor(pk.ctx);
+    if (!cfg && btcSurface(btcNative(pk.ctx?.me ?? null)).offer) {
+        // prod, Bitcoin (beta) off in this browser: only the explanation and the switch
+        return (
+            <div className="card" style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <FaBitcoin size={28} color="#f7931a" />
+                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: c.primaryText }}>Bitcoin</span>
+                </div>
+                <BtcBetaOffer />
+            </div>
+        );
+    }
     if (!pk.ctx || !cfg) return null;
     return (
         <div className="card" style={{ minWidth: 0 }}>

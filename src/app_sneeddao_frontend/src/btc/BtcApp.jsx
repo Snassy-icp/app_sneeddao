@@ -15,6 +15,7 @@ import SigningCredit from '../components/btc/SigningCredit';
 import BtcActivity from '../components/btc/BtcActivity';
 import { BtcNetworkBadge, MainnetDevBanner } from '../components/btc/TestnetBadge';
 import MainnetDevToggle from '../components/btc/MainnetDevToggle';
+import { BtcBetaOffer, BtcBetaIntro, BtcBetaSwitch } from '../components/btc/BtcBeta';
 import { Card, Button, Notice, Advanced } from '../components/convert/ConvertUi';
 
 const TABS = [['send', 'Send'], ['credit', 'Signing credit'], ['activity', 'Activity']];
@@ -58,7 +59,10 @@ export default function BtcApp() {
                 <BtcNetworkBadge cfg={w.cfg} big />
             </header>
             <MainnetDevBanner cfg={w.cfg} style={{ marginBottom: 12 }} />
-            {!w.cfg && <Notice tone="warning">Native Bitcoin is not available here ({w.status.reason}).</Notice>}
+            {/* prod with Bitcoin (beta) off in this browser: the explanation and the switch, no send page */}
+            {!w.cfg && w.surface.offer && <Card><BtcBetaOffer open /></Card>}
+            {!w.cfg && !w.surface.offer && <Notice tone="warning">Native Bitcoin is not available here ({w.status.reason}).</Notice>}
+            {w.cfg?.beta && <BtcBetaIntro style={{ marginBottom: 12 }} />}
             {w.cfg && !isAuthenticated && <SignIn />}
             {w.cfg && isAuthenticated && (
                 <>
@@ -79,6 +83,14 @@ export default function BtcApp() {
                     {tab === 'send' && <BtcSend w={w} onGoCredit={(n) => { setNeed(n); setTab('credit'); }} onGoActivity={() => setTab('activity')} />}
                     {tab === 'credit' && <SigningCredit w={w} need={need} />}
                     {tab === 'activity' && <BtcActivity w={w} />}
+                    {w.surface.betaSwitch && (
+                        <div style={{ marginTop: 16 }}>
+                            <Advanced title="Advanced: Bitcoin (beta)">
+                                <div style={{ fontSize: 12, color: c.mutedText }}>Network: <b style={{ color: c.primaryText }}>{w.cfg.label}</b> · Bitcoin canister {w.cfg.bitcoinCanister}</div>
+                                <BtcBetaSwitch on />
+                            </Advanced>
+                        </div>
+                    )}
                     {w.status.devAllowed && (
                         <div style={{ marginTop: 16 }}>
                             <Advanced title="Advanced: network">

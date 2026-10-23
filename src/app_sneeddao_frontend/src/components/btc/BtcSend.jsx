@@ -40,7 +40,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const [chosen, setChosen] = useState(null); // coin control: Set of outpoint keys, or null = automatic
     const [step, setStep] = useState('edit'); // edit | review | sending | done
     const [extraOk, setExtraOk] = useState(false);
-    const [mainnetOk, setMainnetOk] = useState(false); // developer mode: real BTC must be ticked
+    const [mainnetOk, setMainnetOk] = useState(false); // real BTC (beta or developer mode) must be ticked
     const [progress, setProgress] = useState('');
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
@@ -75,6 +75,8 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const [sendingPlan, setSendingPlan] = useState(null);
     const plan = planShown({ step, sendingPlan, livePlan });
 
+    // real bitcoin (prod beta, or staging developer mode) needs the review tick; testnet4 doesn't
+    const realBtc = Boolean(cfg.devMode || cfg.beta);
     const verified = isAddressVerified(w.storage, cfg.network, w.meText, address);
     const signCycles = plan?.ok ? sendCycles(plan.nInputs, 1) : null;
     const charges = plan?.ok ? [signCycles, ...(verified ? [] : [ADDRESS_CYCLES])] : [];
@@ -92,7 +94,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
 
     const doSend = useCallback(async () => {
         if (!plan?.ok) return;
-        if (cfg.devMode && !mainnetOk) return; // real BTC: the mainnet tick is required
+        if (realBtc && !mainnetOk) return; // real BTC: the review tick is required
         setError(null);
         setSendingPlan(plan);
         setStep('sending');
@@ -140,7 +142,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         } finally {
             setProgress('');
         }
-    }, [plan, w, charges, verified, cfg.network, cfg.devMode, mainnetOk, address, dest]);
+    }, [plan, w, charges, verified, cfg.network, realBtc, mainnetOk, address, dest]);
 
     const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setMainnetOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); };
 
@@ -202,6 +204,12 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                         <span>Check this: {extraReasons.join(', and ')}. Tick to confirm the fee is what you want.</span>
                     </label>
                 )}
+                {cfg.beta && !cfg.devMode && (
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, fontSize: 13, color: c.primaryText, fontWeight: 600 }}>
+                        <input type="checkbox" checked={mainnetOk} onChange={(e) => setMainnetOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
+                        <span>I checked the address and amount. This sends real bitcoin and can't be undone.</span>
+                    </label>
+                )}
                 {cfg.devMode && (
                     <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, fontSize: 13, color: '#d0021b', fontWeight: 700 }}>
                         <input type="checkbox" checked={mainnetOk} onChange={(e) => setMainnetOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
@@ -222,7 +230,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 )}
                 {sending && <Notice style={{ marginTop: 10 }}>{progress}</Notice>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (cfg.devMode && !mainnetOk)}>
+                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (realBtc && !mainnetOk)}>
                         <FaPaperPlane size={12} /> {sending ? 'Sending…' : `Send ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${cfg.devMode ? ' on MAINNET' : ''}`}
                     </Button>
                 </div>
