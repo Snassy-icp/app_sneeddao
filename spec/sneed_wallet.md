@@ -572,8 +572,8 @@ post (topic 899).
   `btc.html` (§3 above). Still open: who owns the GA property (if nobody active, a new
   property or a small on-chain page counter), and whether `'unsafe-eval'` can go app-wide.
 - **Q3. Decided (2026-10-23):** one "Bitcoin" card, with native BTC and ckBTC as pockets.
-- **Q4. Fee-rate source.** Add a cached percentile query to the Sneed backend (a proposal, a few
-  B cycles a day), or start with mempool.space only?
+- **Q4. Decided (2026-10-23):** mempool.space first (browser fetch, CSP `connect-src`), with sane
+  bounds on the answer; a cached backend query can come later.
 - **Q5. Decided (2026-10-23):** users always pay signing cycles; no DAO sponsorship.
 - **Q6. Speed-up.** Is full-RBF replacement through the IC's Bitcoin adapter acceptable as the
   only speed-up, or do we also ship CPFP in A4? Both depend on testnet results.
