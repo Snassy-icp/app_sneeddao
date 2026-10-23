@@ -1,3 +1,5 @@
+> **Status: parked (2026-10-23), superseded for settings by spec/dao_settings.md; the canister is built and tested, kept for possible multi-step atomic changes.**
+
 # sneed_proxy: every admin setting by SNS proposal (draft)
 
 The aim is a Sneed DAO run entirely by its members. Every parameter and action that only admins

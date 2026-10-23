@@ -476,6 +476,17 @@ for c in sneedex sneed_lock; do
   test -s "$OUT/${c}_prepaging.wasm"
 done
 rm -rf "$PREV_SRC"
+# sneedex before DAO settings (dao_set / validate_dao_set / dao_settings, spec/dao_settings.md): its
+# source at 4066b698 (HEAD then), for the fail-before run of sneedex-dao-settings.test.js
+# (SNEEDEX_WASM=sneedex_predaoset) and the upgrade test from it (classic persistence)
+SNEEDEX_PREDAOSET_COMMIT=4066b698
+echo "== sneedex at $SNEEDEX_PREDAOSET_COMMIT (moc, sneedex_predaoset)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SNEEDEX_PREDAOSET_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_predaoset.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneedex_predaoset.wasm"
 # the trading and staking bots before the paging fixes (spec/paging_audit.md S8-S11, bot items): their
 # source at 2a0164bc (unchanged to 1788bfee; the unpublished trading bot 0.9.4 / staking bot 0.9.5), for
 # the fail-before runs of bots-paging.test.js (BOTS_BUILD=prepaging); and test builds of that source and

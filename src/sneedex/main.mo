@@ -29,6 +29,7 @@ import T3 "../icrc3/Types";
 import Ext "../sneed_names/Ext";
 import SpecialPrices "../SpecialPrices";
 import RateLimit "../RateLimit";
+import DaoSettings "../DaoSettings";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -6138,6 +6139,163 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #ok();
     };
 
+    // ============================================
+    // DAO SETTINGS (src/DaoSettings.mo, spec/dao_settings.md)
+    // ============================================
+    // One generic nervous system function for the whole canister: SNS governance calls
+    // dao_set(changes) with a batch of settings from the table below; validate_dao_set is its
+    // validator. Adding a setting is a table entry here, i.e. part of an upgrade proposal.
+
+    /// Who may call dao_set: SNS governance (configurable for staging and tests, by a controller
+    /// only), and Sneedex admins too when `daoAdminsMaySet` (staging rehearsals; off by default).
+    var daoGovernance : Principal = SNEED_GOVERNANCE;
+    var daoAdminsMaySet : Bool = false;
+
+    func mayDaoSet(caller : Principal) : Bool {
+        caller == daoGovernance or (daoAdminsMaySet and isAdmin(caller));
+    };
+
+    transient let ICP_UNIT : DaoSettings.Unit = #Token({ symbol = "ICP"; decimals = 8 });
+    transient let MAX_CREATION_FEE_E8S : Nat = 1_000_000_000; // 10 ICP: a typo guard, not a policy
+    transient let MAX_CUT_BPS : Nat = 5_000; // 50%, as the admin setters
+    transient let DAY_S : Nat = 86_400;
+
+    func setConfig(c : T.Config) { config := c };
+    func feeSetting(name : Text, label_ : Text, description : Text, get : () -> Nat64, set : Nat64 -> ()) : DaoSettings.Setting {
+        {
+            name; label_; description; kind = #Nat; unit = ICP_UNIT; min = ?0; max = ?MAX_CREATION_FEE_E8S;
+            check = ?DaoSettings.zeroOrAtLeast(Nat64.toNat(ICP_FEE), ICP_UNIT, name);
+            get = func() : DaoSettings.Value { #Nat(Nat64.toNat(get())) };
+            set = func(v : DaoSettings.Value) { set(Nat64.fromNat(DaoSettings.nat(v))) };
+        };
+    };
+    func natSetting(name : Text, label_ : Text, description : Text, unit : DaoSettings.Unit, min : Nat, max : Nat, get : () -> Nat, set : Nat -> ()) : DaoSettings.Setting {
+        {
+            name; label_; description; kind = #Nat; unit; min = ?min; max = ?max; check = null;
+            get = func() : DaoSettings.Value { #Nat(get()) };
+            set = func(v : DaoSettings.Value) { set(DaoSettings.nat(v)) };
+        };
+    };
+    /// The two halves of one action's rate limit (an override holding the effective rule after the change).
+    func rateSettings(action : Text, label_ : Text) : [DaoSettings.Setting] {
+        let put = func(r : RateLimit.Rule) { Map.set(rateLimitRules, thash, action, r) };
+        [
+            natSetting("rate_limit." # action # ".capacity", label_ # " rate limit: burst", "Calls of " # action # " one caller may make at once (0 = no limit).", #Count, 0, 1_000_000,
+                func() { rateRule(action).capacity }, func(n) { put({ rateRule(action) with capacity = n }) }),
+            natSetting("rate_limit." # action # ".per_minute", label_ # " rate limit: refill per minute", "Calls of " # action # " a caller gets back each minute.", #Count, 1, 1_000_000,
+                func() { rateRule(action).per_minute }, func(n) { put({ rateRule(action) with per_minute = n }) }),
+        ];
+    };
+
+    transient let daoSettingsTable : [DaoSettings.Setting] = Array.flatten<DaoSettings.Setting>([
+        [
+            feeSetting("offer_creation_fee_e8s", "offer creation fee", "ICP charged for creating an offer (0 = free).",
+                func() { offerCreationFeeE8s }, func(n) { offerCreationFeeE8s := n }),
+            feeSetting("premium_offer_creation_fee_e8s", "premium offer creation fee", "ICP charged to Sneed Premium members for creating an offer (0 = free).",
+                func() { premiumOfferCreationFeeE8s }, func(n) { premiumOfferCreationFeeE8s := n }),
+            natSetting("marketplace_fee_rate_bps", "marketplace cut", "Share of the winning bid kept as the marketplace cut, locked into each offer at creation.", #Bps, 0, MAX_CUT_BPS,
+                func() { marketplaceFeeRateBps }, func(n) { marketplaceFeeRateBps := n }),
+            natSetting("premium_auction_cut_bps", "premium marketplace cut", "The cut for offers by Sneed Premium members (0 = the regular cut).", #Bps, 0, MAX_CUT_BPS,
+                func() { premiumAuctionCutBps }, func(n) { premiumAuctionCutBps := n }),
+            {
+                name = "admin_prices.offer_creation_fee_e8s"; label_ = "admin price: offer creation fee";
+                description = "Creation fee for Sneedex admins who are people (none = no admin price; the lowest applicable price is charged).";
+                kind = #OptNat; unit = ICP_UNIT; min = ?0; max = ?MAX_CREATION_FEE_E8S;
+                check = ?DaoSettings.zeroOrAtLeast(Nat64.toNat(ICP_FEE), ICP_UNIT, "admin_prices.offer_creation_fee_e8s");
+                get = func() : DaoSettings.Value { DaoSettings.ofOptNat(specialAdminPrices.offer_creation_fee_e8s) };
+                set = func(v : DaoSettings.Value) { specialAdminPrices := { specialAdminPrices with offer_creation_fee_e8s = DaoSettings.optNat(v) } };
+            },
+            {
+                name = "admin_prices.auction_cut_bps"; label_ = "admin price: marketplace cut";
+                description = "The cut for offers by Sneedex admins who are people (none = no admin price).";
+                kind = #OptNat; unit = #Bps; min = ?0; max = ?MAX_CUT_BPS; check = null;
+                get = func() : DaoSettings.Value { DaoSettings.ofOptNat(specialAdminPrices.auction_cut_bps) };
+                set = func(v : DaoSettings.Value) { specialAdminPrices := { specialAdminPrices with auction_cut_bps = DaoSettings.optNat(v) } };
+            },
+            natSetting("min_offer_duration_ns", "minimum offer duration", "Shortest time between creating an offer and its expiration.", #Nanoseconds, 60_000_000_000, 30 * DAY_S * 1_000_000_000,
+                func() { config.min_offer_duration_ns }, func(n) { setConfig({ config with min_offer_duration_ns = n }) }),
+            natSetting("max_assets_per_offer", "maximum assets per offer", "How many assets one offer may bundle.", #Count, 1, 50,
+                func() { config.max_assets_per_offer }, func(n) { setConfig({ config with max_assets_per_offer = n }) }),
+            natSetting("min_increment_usd_range_min", "bid increment: low warning", "Below this USD value an increment is flagged as low (must stay ≤ the target).", #UsdCents, 1, 10_000_000,
+                func() { config.min_increment_usd_range_min }, func(n) { setConfig({ config with min_increment_usd_range_min = n }) }),
+            natSetting("min_increment_usd_range_max", "bid increment: high warning", "Above this USD value an increment is flagged as high (must stay ≥ the target).", #UsdCents, 1, 10_000_000,
+                func() { config.min_increment_usd_range_max }, func(n) { setConfig({ config with min_increment_usd_range_max = n }) }),
+            natSetting("min_increment_usd_target", "bid increment: suggested", "The suggested minimum bid increment in USD.", #UsdCents, 1, 10_000_000,
+                func() { config.min_increment_usd_target }, func(n) { setConfig({ config with min_increment_usd_target = n }) }),
+            natSetting("min_increment_fallback_tokens", "bid increment: fallback without a USD price", "Suggested increment in the price token's base units when it has no USD price.", #BaseUnits, 1, 1_000_000_000_000_000,
+                func() { config.min_increment_fallback_tokens }, func(n) { setConfig({ config with min_increment_fallback_tokens = n }) }),
+            natSetting("expiration_check_interval_seconds", "expiration sweep interval", "How often the timer settles expired offers and unfinished settlements.", #Seconds, 60, DAY_S,
+                func() { expirationCheckIntervalSeconds }, func(n) { expirationCheckIntervalSeconds := n }),
+            natSetting("neuron_info_cache_staleness_seconds", "staking bot info cache lifetime", "How long cached staking bot neuron info is shown before it is fetched again.", #Seconds, 0, 7 * DAY_S,
+                func() { neuronInfoCacheStalenessSeconds }, func(n) { neuronInfoCacheStalenessSeconds := n }),
+        ],
+        rateSettings("createOffer", "offer creation"),
+        rateSettings("createOffer_premium", "offer creation (Premium)"),
+        rateSettings("reserveBid", "bid reservation"),
+        rateSettings("confirmBid", "bid confirmation"),
+        rateSettings("cancelOffer", "offer cancellation"),
+    ]);
+
+    /// Rules between settings, on the state after the batch.
+    func daoCross(after : Text -> DaoSettings.Value) : ?Text {
+        let lo = DaoSettings.nat(after("min_increment_usd_range_min"));
+        let target = DaoSettings.nat(after("min_increment_usd_target"));
+        let hi = DaoSettings.nat(after("min_increment_usd_range_max"));
+        if (lo > target or target > hi) return ?"bid increment: the suggested value must lie between the low and high warnings";
+        null;
+    };
+
+    /// Execute a DAO decision (GNSF target). Governance only; all changes or none. Traps on any
+    /// refusal, so the proposal is marked failed with the reason. One sneedex_config_update block
+    /// per changed setting (`caller` = governance, `via` = "dao").
+    public shared ({ caller }) func dao_set(args : DaoSettings.SetArgs) : async Text {
+        if (not mayDaoSet(caller)) { Debug.trap("Only Sneed DAO governance can call dao_set") };
+        let planned = switch (DaoSettings.plan(daoSettingsTable, args, daoCross, false)) {
+            case (#ok p) p;
+            case (#err e) Debug.trap(e);
+        };
+        let done = DaoSettings.apply(planned);
+        for (p in done.vals()) {
+            icrc3_add("sneedex_config_update", [
+                ("caller", pv(caller)), ("via", #Text("dao")), ("key", #Text(p.setting.name)),
+                ("value", DaoSettings.icrc3(p.new)), ("old_value", DaoSettings.icrc3(p.old)),
+            ]);
+            if (p.setting.name == "expiration_check_interval_seconds" and expirationTimerId != null) {
+                startExpirationTimerInternal<system>(); // as setExpirationCheckInterval: restart with the new interval
+            };
+        };
+        if (done.size() == 0) "Sneedex: nothing to change (every setting already held its new value)" else DaoSettings.render("Sneedex", done);
+    };
+
+    /// GNSF validator of dao_set: the exact change with units and old → new, or the reason it
+    /// would be refused. Also refuses a change to the value a setting already holds.
+    public query func validate_dao_set(args : DaoSettings.SetArgs) : async DaoSettings.ValidationResult {
+        switch (DaoSettings.plan(daoSettingsTable, args, daoCross, true)) {
+            case (#ok p) #Ok(DaoSettings.render("Sneedex", p));
+            case (#err e) #Err(e);
+        };
+    };
+
+    /// Every DAO-settable setting with its kind, unit, bounds and current value.
+    public query func dao_settings() : async [DaoSettings.Info] { DaoSettings.info(daoSettingsTable) };
+
+    /// Who may call dao_set (SNS governance; plus admins when `admins_too`, for staging).
+    public query func get_dao_settings_access() : async { governance : Principal; admins_too : Bool } {
+        { governance = daoGovernance; admins_too = daoAdminsMaySet };
+    };
+
+    /// Controller only (on ic: SNS root, i.e. by upgrade proposal only): point dao_set at another
+    /// governance canister (staging, tests) and allow admins to call it too.
+    public shared ({ caller }) func set_dao_settings_access(governance : Principal, admins_too : Bool) : async T.Result<()> {
+        if (not Principal.isController(caller)) { return #err(#NotAuthorized) };
+        let old = { governance = daoGovernance; admins_too = daoAdminsMaySet };
+        daoGovernance := governance;
+        daoAdminsMaySet := admins_too;
+        icrc3_config(caller, "dao_settings_access", #Map([("governance", pv(governance)), ("admins_too", flagV(admins_too))]),
+            ?#Map([("governance", pv(old.governance)), ("admins_too", flagV(old.admins_too))]));
+        #ok();
+    };
+
     // Limits of the ingress guard below (the notes and NFT limits are createOffer's and addAsset's own)
     transient let MAX_OFFER_NOTE : Nat = 4_000;
     transient let MAX_NFTS_PER_ASSET : Nat = 50;
@@ -6155,6 +6313,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #get_api_doc : Any;
         #getRateLimits : Any;
         #setRateLimit : Any;
+        #dao_set : Any;
+        #validate_dao_set : Any;
+        #dao_settings : Any;
+        #get_dao_settings_access : Any;
+        #set_dao_settings_access : Any;
         #acceptBid : Any;
         #activateOffer : Any;
         #addAdmin : Any;
@@ -6351,7 +6514,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #queryBid _
                 or #queryOffer _
                 or #getRateLimits _
+                or #validate_dao_set _
+                or #dao_settings _
+                or #get_dao_settings_access _
             ) false;
+            // dao_set is called by SNS governance, inter-canister, which inspect never sees: by ingress
+            // it is refused, except for admins on a deployment that lets them (staging rehearsals)
+            case (#dao_set _) daoAdminsMaySet and isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
+            case (#set_dao_settings_access _) Principal.isController(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             // rate limits: a caller with no call left is refused here, before the call costs anything
             case (#reserveBid _) rateAllows(caller, "reserveBid") and arg.size() <= IngressGuard.SMALL_ARG;
             case (#confirmBid _) rateAllows(caller, "confirmBid") and arg.size() <= IngressGuard.SMALL_ARG;

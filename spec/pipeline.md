@@ -4,7 +4,7 @@ Ideas agreed in direction but not started, with where they are specced. Newest l
 
 | Item | What | Spec / notes |
 |---|---|---|
-| Sneed proxy | One GNSF per topic class lets SNS proposals change any allowlisted admin setting; propose buttons in Sneed Hub. Canister built and tested; deployment pending. | spec/sneed_proxy.md |
+| DAO settings | One generic nervous system function per DAO canister (`dao_set` / `validate_dao_set` / `dao_settings`, shared src/DaoSettings.mo) lets SNS proposals change each canister's fees, prices and limits within bounds in code; propose form in Sneed Hub later. Pilot in Sneedex built and tested (2026-10-23); GNSF 6100 not registered yet. Replaces the sneed proxy for settings (proxy parked: built, tested, kept for multi-step atomic changes). | spec/dao_settings.md (spec/sneed_proxy.md parked) |
 | Special prices | Admin and partner prices in every charging canister. Built, on staging; production proposals pending. | spec/special_prices.md |
 | Wallet subaccounts | Hold, send, receive and approve from subaccounts in the Sneed Hub wallet. | spec/programmable_accounts.md (phase 1) |
 | sneed_vault | Owned subaccount namespaces with per-subaccount funding rules (who may request how much, where, when). | spec/programmable_accounts.md |

@@ -125,6 +125,14 @@ Admin (admins and controllers only):
 `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`,
 `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
+DAO settings (spec/dao_settings.md): `dao_set` writes one `sneedex_config_update` per changed
+setting with `caller` = SNS governance, `via` = `dao`, `key` = the setting name from
+`dao_settings()`, `value` and `old_value` (Nat; `none` as Text for an unset optional). Its keys
+are the ones above where a setting already had one, plus `admin_prices.offer_creation_fee_e8s`,
+`admin_prices.auction_cut_bps` and `rate_limit.<action>.capacity` / `.per_minute`.
+`set_dao_settings_access` (controller only) writes key `dao_settings_access` (Map `governance`,
+`admins_too`).
+
 Not logged: notification settings (per user, private preference), the staking-bot info
 cache and its clearing, cached stakes, the bot hotkey/botkey snapshot timers (internal to
 an escrowed bot), `triggerExpirationCheck` (its effects are logged), wallet registration
