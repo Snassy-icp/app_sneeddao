@@ -142,9 +142,13 @@ The signer canister:
   a frontend upgrade proposal is a custody event for every user's BTC. Proposal reviewers must
   treat it that way, and the release notes for any build that touches `utils/btc/` must say so.
 - Today the CSP allows `https://www.googletagmanager.com` in `script-src` plus `'unsafe-eval'`
-  (`public/.ic-assets.json5`). A third-party script on the wallet origin can sign. Before
-  launch, either remove tag-manager scripts from the app, or keep them off every page that can
-  sign (open question Q2).
+  (`public/.ic-assets.json5`). That script is plain Google Analytics (gtag.js, `G-K4F17LJ7KE`
+  in `index.html`), not a Tag Manager container, but it is still Google-served code running on
+  the wallet origin, where it could sign. **Decided (2026-10-23, Q2):** analytics stay on normal
+  pages and are kept off every page that can sign BTC. Because gtag.js, once loaded, stays in
+  the SPA for every later route, "kept off" means a separate entry: `sign.html` and a
+  `btc.html` send view (own strict headers, no Google scripts, no framing, no `'unsafe-eval'`
+  if the build allows it); the SPA hands over to them with a normal navigation.
 - The CSP's `frame-ancestors` allows tacodao.com and others to iframe the app, which invites
   clickjacking. BTC send and the signer page must refuse to run inside a frame (§9.1).
 
@@ -545,7 +549,7 @@ support can explain and fix any case.
 
 | Phase | Content | Estimate |
 |---|---|---|
-| A0 | Prerequisites: signing credit (cycles-ledger balance, CMC mint, approve and revoke); fee-rate source (backend timer + query by proposal, mempool.space fallback, CSP `connect-src`); decision on tag-manager scripts (Q2); pending store in the backend layout store | 1–1.5 weeks |
+| A0 | Prerequisites: signing credit (cycles-ledger balance, CMC mint, approve and revoke); fee-rate source (backend timer + query by proposal, mempool.space fallback, CSP `connect-src`); `btc.html` / `sign.html` entries without analytics (Q2, decided); pending store in the backend layout store | 1–1.5 weeks |
 | A1 | Address (offline + verify), UTXOs, balance, receive QR, `btc_native` pocket adapter, testnet on staging | 1 week |
 | A2 | Send: selection, fee tiers, cost summary, pending locks, `expectedTxid`, error texts, recovery (re-issue, sign-only), history v1 | 1.5–2 weeks |
 | A3 | Native ↔ ckBTC moves, with conversion records and auto `update_balance` | 1 week |
@@ -564,9 +568,9 @@ post (topic 899).
 - **Q1. Sweep policy for the later principal migration.** Should the "move my account" wizard
   (spec/derivation_origin.md) sweep BTC automatically as one of its steps, or leave it to the
   user? This spec only guarantees that a sweep is possible.
-- **Q2. Third-party scripts.** Remove Google Tag Manager and analytics from the whole app, or
-  only keep them off `sign.html` and the BTC send view? Signing pages must not load them either
-  way. Also: can `'unsafe-eval'` go?
+- **Q2. Third-party scripts. Decided:** keep analytics on normal pages, off `sign.html` and
+  `btc.html` (§3 above). Still open: who owns the GA property (if nobody active, a new
+  property or a small on-chain page counter), and whether `'unsafe-eval'` can go app-wide.
 - **Q3. One "Bitcoin" card** (native + ckBTC as pockets) or two cards (BTC and ckBTC)?
 - **Q4. Fee-rate source.** Add a cached percentile query to the Sneed backend (a proposal, a few
   B cycles a day), or start with mempool.space only?
