@@ -1,0 +1,584 @@
+# Sneed Wallet: native Bitcoin and "Sign in with Sneed Wallet"
+
+Status: spec draft, 2026-10-23. No code yet. Builds on `spec/oisy_comparison.md` (§3.1 signer,
+§3.2 Chain Fusion Signer, §5 order) and `spec/programmable_accounts.md` (pockets). Paths are
+relative to `src/app_sneeddao_frontend/src`.
+
+**Sneed Wallet** is the brand for the wallet part of Sneed Hub (app.sneeddao.com). Two
+deliverables, in this order:
+
+- **A. Native Bitcoin.** Each user gets a real BTC address held by a threshold key through
+  DFINITY's Chain Fusion Signer (`grghe-syaaa-aaaar-qabyq-cai`). Receive, send, balance,
+  history, fee choice, one-click native BTC ↔ ckBTC. ETH/EVM later, the same way.
+- **B. "Sign in with Sneed Wallet".** Sneed Wallet acts as an ICRC signer for other ICP dapps
+  (ICRC-21/25/27/29/49, later scoped ICRC-34 delegations).
+
+## 1. Goals and non-goals
+
+Goals:
+1. A BTC wallet that a casual user can use with one click per action, and that shows every cost
+   up front: the network fee in sats and the signing cost in cycles.
+2. No new Sneed canister in the signing path. Keys live in the IC's threshold ECDSA (`key_1`,
+   secp256k1) behind the NNS-governed signer, not behind an SNS upgrade.
+3. Native BTC and ckBTC feel like two pockets of the same asset. Moving between them is a
+   "Move", not a bridge wizard.
+4. Other dapps can use Sneed Wallet to sign in and make calls. Unknown or dangerous calls are
+   blocked by default.
+
+Non-goals (this spec): WalletConnect, Solana/XRP, cross-chain swaps, PSBT and message signing,
+Taproot or multiple BTC addresses per user, a Sneed-run signing canister.
+
+Project rules that apply everywhere: amounts through `useDenomination().formatValue(usd)`, never
+a hard-coded `$`; principals through `PrincipalInput`, tokens through `TokenSelector`; no
+`window.confirm`/`alert`/`prompt` (the in-app `ConfirmDialog` instead; the ICRC-29 signer popup
+is the standard's own transport and is fine); no "anonymous" options, since every action is
+public on chain and tied to the user's principal; the UI never talks about token price.
+
+## 2. Casual and pro
+
+| Action | Casual (one click, defaults) | Advanced (drill-down) |
+|---|---|---|
+| Receive | "Bitcoin address" row with QR and copy. Address shown free (§4.1). | Network (mainnet/testnet), derivation details, verify the address against the signer (paid, 0.08B cycles). |
+| Send | Address, amount, "Normal" fee preselected. One summary line: "network fee ≈ N sats, signing ≈ X cycles". Confirm. | Fee tier or a custom sat/vB value. Coin control (choose UTXOs). Send max or sweep. Sign without broadcasting and export the hex. Raw transaction preview. |
+| Balance | One number: confirmed BTC + ckBTC on the Bitcoin card, plus "pending" when anything is unconfirmed. | Per-UTXO list with confirmations, locked-by-pending flags, and a cross-check against an update call. |
+| Native ↔ ckBTC | "Move" between the two pockets with one confirm. Minter fees and minimums shown. | Status of each conversion step, retry `update_balance`, the deposit address. |
+| Signing credit | "Signing credit: enough for ~N sends", with "Top up from ICP". | Exact cycles-ledger balance, the allowance to the signer, approve or revoke it. |
+| Signer (B) | Connect a dapp; approve each call with a plain-language summary. | Per-origin permissions, a pocket bound to the connection, raw candid view, the block list. |
+
+## 3. Keys, principal and domain
+
+### 3.1 How the address is derived
+
+The signer derives the BTC key from the path `[0x00 (schema Btc), caller principal bytes]` and
+returns its P2WPKH address. That is the only address type it supports today (`BitcoinAddressType
+= variant { P2WPKH }`). Sources: [derivation_path.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/canister/src/derivation_path.rs),
+[signer.did](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/canister/signer.did).
+
+This has three consequences:
+- **The address is a pure function of the principal.** One BTC address per principal. The
+  ETH address uses schema `0x01` and works the same way.
+- **It can be computed offline.** [`@dfinity/ic-pub-key`](https://github.com/dfinity/ic-pub-key)
+  (npm 1.0.2) derives the signer's BTC and ETH addresses for any principal without an IC call
+  (`signer btc address -u <principal> -n mainnet`). We show the address for free and verify it
+  once against `btc_caller_address` (0.079B cycles) the first time the user sends. Anyone can
+  compute anyone's Sneed Wallet BTC address from their principal. That is a public fact, and the
+  UI says so.
+- **The principal comes from the II origin.** `AuthContext.jsx` sets no `derivationOrigin`, so
+  II derives principals for `https://app.sneeddao.com`. A user's Sneed Wallet BTC address
+  therefore differs from their Oisy address, and the receive screen says so once.
+
+### 3.2 Decided: Sneed Wallet stays on app.sneeddao.com
+
+Decided by the user, 2026-10-23: Sneed Wallet lives inside app.sneeddao.com. There is no own
+domain and no change of derivation origin for this work. The signer (B) is a page on the same
+origin (§9.1), so it sees the same principal and needs no `ii-alternative-origins`.
+
+Housekeeping: `public/.well-known/ii-derivation-origin` holds the staging canister URL and is not
+wired to anything. Leave it alone in this work, and make sure no login code starts reading it.
+
+Staging (`2icdp-6qaaa-aaaal-qjt6a-cai.icp0.io`) has its own origin, so its principals and BTC
+addresses differ from prod. Staging uses Bitcoin **testnet** only, with no real money
+(`staging-no-real-money`).
+
+### 3.3 Domain-hijack risk, and the later fix
+
+Every user's principal is derived from the string `https://app.sneeddao.com`. Whoever serves
+code at that origin can obtain delegations for every user who logs in there. That covers their
+ICP tokens, neurons, locks and bots, and now also their BTC, because the BTC address is a
+function of the same principal.
+
+Losing control of the domain therefore means losing control of those principals. Paths to that
+include a registrar takeover, expiry, DNS hijack, or someone else registering the custom domain
+on a canister they control.
+
+Mitigations now (operational, not code):
+- Registrar lock and auto-renew.
+- 2FA on the registrar and DNS accounts.
+- DNSSEC.
+- Monitoring of the `_canister-id` TXT record and the boundary-node custom-domain registration.
+
+The possible later fix gets its own spec, `spec/derivation_origin.md`, which this spec does not
+write. In outline: set `derivationOrigin` to the frontend canister URL, list app.sneeddao.com in
+`ii-alternative-origins`, and add a "move my account" wizard, since the new principals are
+different.
+
+Requirement for this spec: native BTC must stay **sweepable** to a new principal.
+- The new principal's BTC address can be computed offline (§3.1).
+- A migration is then just a "sweep": spend every UTXO to that address, with no change output
+  (§6.3).
+- No state is keyed by the BTC address alone. The send log and labels are keyed by principal
+  and move with the account.
+
+## 4. Custody and trust, stated honestly
+
+What holds the key:
+- The secret key exists only as threshold shares on the IC's fiduciary subnet (`key_1`).
+- No seed phrase exists, and nobody at Sneed can export the key.
+- The user cannot export it either: there is no backup outside the IC. If the IC's threshold
+  ECDSA service stopped, BTC at these addresses could not be moved. That is the same trust as
+  ckBTC's minter.
+
+Who can sign:
+- Any code that holds a delegation for the user's principal can call `btc_caller_send` and
+  move the user's BTC.
+- In practice that means:
+  1. Our frontend, while the user is logged in.
+  2. Any agent or dapp the user delegated to with the signer in its targets. `ConnectAgent`
+     scopes never include `grghe-…` unless the user adds it in a custom scope, and §9 blocks it
+     for dapps.
+  3. Whoever controls app.sneeddao.com (§3.3).
+
+The signer canister:
+- Its governance is intended to equal the IC's threshold-signing APIs ("upgrade ONLY when there
+  is a security flaw / the threshold APIs change"), and builds are reproducible
+  ([README](https://github.com/dfinity/chain-fusion-signer#governance)).
+- A malicious signer upgrade could sign for anyone. We accept that the same way we accept the
+  IC itself.
+
+**Frontend integrity is custody-critical.**
+- The frontend builds the transaction (destination, amount, fee, UTXOs), so a compromised
+  frontend can drain BTC exactly as it can drain ICRC tokens today.
+- The prod frontend is going to be DAO-controlled (`frontend-dao-handoff-plan`). From then on,
+  a frontend upgrade proposal is a custody event for every user's BTC. Proposal reviewers must
+  treat it that way, and the release notes for any build that touches `utils/btc/` must say so.
+- Today the CSP allows `https://www.googletagmanager.com` in `script-src` plus `'unsafe-eval'`
+  (`public/.ic-assets.json5`). A third-party script on the wallet origin can sign. Before
+  launch, either remove tag-manager scripts from the app, or keep them off every page that can
+  sign (open question Q2).
+- The CSP's `frame-ancestors` allows tacodao.com and others to iframe the app, which invites
+  clickjacking. BTC send and the signer page must refuse to run inside a frame (§9.1).
+
+**Data the frontend trusts:**
+- UTXOs come from the Bitcoin canister's query endpoints. These answer from a single replica
+  and are uncertified ([forum](https://forum.dfinity.org/t/introducing-non-replicated-queries-for-bitcoin-canister/29335)).
+- A lying replica cannot make us overpay the fee. P2WPKH signatures commit to each input's value
+  (BIP-143), so a wrong UTXO value only produces an invalid transaction, which wastes cycles but
+  loses no BTC.
+- A lying replica can hide funds or show phantom ones. Balances are cross-checked by an update
+  call before large sends (§5.2).
+
+## 5. Call flows: native BTC
+
+### 5.1 Canisters and methods
+
+| What | Canister | Method (candid) | Cost to the user |
+|---|---|---|---|
+| Address | Chain Fusion Signer `grghe-syaaa-aaaar-qabyq-cai` | `btc_caller_address : (GetAddressRequest { network; address_type = P2WPKH }, opt PaymentType) -> (variant { Ok : record { address : text }; Err })` | 0.079B cycles (we derive it offline instead, §3.1) |
+| Balance, verified | signer | `btc_caller_balance : (GetBalanceRequest { network; address_type; min_confirmations : opt nat32 }, opt PaymentType)`, which is **deprecated** | 0.113B cycles |
+| UTXOs and balance, fast | Bitcoin canister mainnet `ghsi2-tqaaa-aaaan-aaaca-cai` (testnet `g4xu7-jiaaa-aaaan-aaaaq-cai`; check with `get_config`) | `bitcoin_get_utxos_query`, `bitcoin_get_balance_query` (query, paged with `next_page`, `filter = min_confirmations or page`), `get_blockchain_info` | free (query) |
+| Send | signer | `btc_caller_send : (SendBtcRequest { fee_satoshis : opt nat64; network; utxos_to_spend : vec Utxo; address_type; outputs : vec BtcTxOutput { destination_address; sent_satoshis } }, opt PaymentType) -> (variant { Ok : record { txid : text }; Err : SendBtcError })` | 95B + 37B per input + 1B per output (change included) |
+| Sign only | signer | `btc_caller_sign : (SendBtcRequest, opt PaymentType) -> (variant { Ok : record { txid; signed_transaction_hex }; Err })` | 74B + 37B per input |
+| Payment | cycles ledger `um5iw-rqaaa-aaaaq-qaaba-cai` | `icrc2_approve { spender = { owner = grghe-… } }`; the signer charges with `withdraw_from` when the call carries `opt variant { CallerPaysIcrc2Cycles }` | ledger fee 0.1B per approve, plus the charge |
+| Fee rates | Bitcoin canister | `bitcoin_get_current_fee_percentiles` (update; the canister charges cycles, so a free ingress call is expected to fail; verify) | see §5.4 |
+
+Sources:
+- Signer fee constants: [methods.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/api/src/methods.rs).
+- Bitcoin canister: [candid.did](https://github.com/dfinity/bitcoin-canister/blob/master/canister/candid.did).
+- The signer README's approve-then-`CallerPaysIcrc2Cycles` example: [README](https://github.com/dfinity/chain-fusion-signer#command-line).
+
+Signer facts that shape the design, from [tx_utils.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/canister/src/sign/bitcoin/tx_utils.rs),
+[fee_utils.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/canister/src/sign/bitcoin/fee_utils.rs)
+and [bitcoin_api.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/src/signer/canister/src/sign/bitcoin/bitcoin_api.rs):
+- **We choose the UTXOs.** The signer spends exactly `utxos_to_spend`.
+- **Change.** It adds one change output back to the source address when the remainder is
+  ≥ 1,000 sats. A smaller remainder silently becomes fee.
+- **No opt-in RBF.** Every input has `nSequence = 0xFFFFFFFF`, so BIP-125 replace-by-fee is not
+  signalled. Version 2, locktime 0, `SIGHASH_ALL`.
+- **Default fee.** With `fee_satoshis = null`, the fee is the median of
+  `bitcoin_get_current_fee_percentiles` × (68·inputs + 31·outputs + 11) vbytes, where outputs
+  **exclude** change. That underestimates, so **we always pass `fee_satoshis` explicitly**.
+- **Destinations.** Any address type the `bitcoin` crate parses for the right network is
+  accepted (P2PKH, P2SH, P2WPKH, P2WSH, P2TR).
+- **Broadcast.** `btc_caller_send` broadcasts with `bitcoin_send_transaction` on the IC's
+  Bitcoin adapter. Success means "handed to the adapter", not "in the mempool".
+
+### 5.2 Balance and receive
+
+1. Address: `utils/btc/address.js` derives it with `@dfinity/ic-pub-key` for (signer, principal,
+   network) and caches it per principal (the same pattern as `ADDR_CACHE` in `BtcConvert.jsx`).
+   On the first send we call `btc_caller_address` once and refuse to continue if the two differ.
+2. UTXOs: `bitcoin_get_utxos_query({ network, address, filter = null })`, paging until
+   `next_page = null`. Keep `tip_height` to compute confirmations (`tip_height − height + 1`).
+3. Balance:
+   - **Confirmed** = Σ UTXOs with ≥ 1 confirmation that are not locked by a pending send (§5.5).
+   - **Pending in** = incoming outputs we know of with < 1 confirmation. The Bitcoin canister
+     only sees blocks, so mempool incoming needs an explorer (Advanced, opt-in, §5.6).
+   - **Pending out** = change outputs of our own pending sends.
+4. Cross-check: before any send above a threshold (default: 25% of the balance) or when the
+   user taps "verify", call `bitcoin_get_balance` through `btc_caller_balance` (0.113B). Despite
+   the deprecation it is the only update path a frontend can pay for. If it disagrees with the
+   query sum, block the send and say why.
+5. Refresh: on wallet open, after each send, and every 60 s while the BTC view is visible.
+   Timers in the page only; no polling in the background.
+
+### 5.3 Send
+
+1. Inputs: destination (validated on the client for network and type, with a warning on a
+   testnet address in mainnet mode), amount or "max", and fee tier (§5.4).
+2. UTXO selection (`utils/btc/select.js`, pure, tested):
+   - Candidates are confirmed UTXOs (≥ 1 confirmation; Advanced allows 0-conf own change) that
+     no pending send has locked.
+   - Pick largest-first until `amount + fee(n_in, n_out) ≤ Σ`, then try to drop the smallest
+     inputs while it still fits. Fewer inputs means fewer signatures, and each costs 37B cycles.
+   - vsize = 11 + 68·inputs + Σ output sizes by type (P2WPKH 31, P2PKH 34, P2SH 32,
+     P2WSH/P2TR 43), with change counted when it is ≥ 1,000 sats. This matches Oisy's
+     constants ([btc-utxos.utils.ts](https://github.com/dfinity/oisy-wallet/blob/main/src/frontend/src/btc/utils/btc-utxos.utils.ts)).
+   - "Max" or sweep: every candidate goes in, there is no change, and amount = Σ − fee.
+   - Refuse an amount below 1,000 sats. If the change would fall below 1,000 sats, show "≈ N
+     sats added to fee".
+3. Cost summary:
+   - Network fee: sats, plus `formatValue` of their value.
+   - Signing: `95B + 37B·inputs + 1B·(outputs + change)` cycles, plus 0.1B for the ledger
+     charge.
+   - The amount the recipient gets.
+   - Fat-finger guard: a fee above 10% of the amount, or above 3× the "Fast" rate, needs an
+     extra confirm in the same dialog. No JS popup.
+4. Payment:
+   - If the allowance to the signer on the cycles ledger is below the signing cost, one
+     `icrc2_approve` for exactly the cost plus margin, with `expires_at` = now + 1 h (as
+     `APPROVAL_TTL_NS` in `ckMinters.js`).
+   - Advanced can set a standing allowance with a cap.
+   - If the cycles balance is short: "Top up signing credit" (§7).
+5. Persist, then send:
+   - Write a pending record `{ id, network, utxos, outputs, fee, expectedTxid, createdAt,
+     state: 'submitting' }` to the pending store (§5.5) **before** the call.
+   - `expectedTxid` is computed locally. A segwit txid excludes witnesses and the signer's
+     transaction is deterministic (inputs in our order, outputs in our order, then change), so
+     we know the txid before signing.
+   - Call `btc_caller_send(req, opt CallerPaysIcrc2Cycles)`.
+6. Result:
+   - `Ok { txid }` with txid = expected: state `broadcast`. Show a mempool.space link
+     (`mempoolTx` already exists in `BtcConvert.jsx`).
+   - txid ≠ expected: record the real txid and log a warning, since our builder has drifted.
+   - Errors are mapped to text (`utils/btc/errors.js`, in the style of
+     `btcWithdrawErrorText`):
+     - `BuildP2wpkhError.NotEnoughFunds { available; required }`
+     - `InvalidDestinationAddress`, `WrongBitcoinNetwork`
+     - `PaymentError.InsufficientFunds { needed; available }`, which leads to the top-up
+     - `LedgerWithdrawFromError`
+     - `InternalError { msg }`
+     - A typed `Err` means nothing was broadcast, so the record's state becomes `failed`.
+   - Trap, timeout, or the network dropped: state `unknown`. Recovery is in §8.
+
+### 5.4 Fee choice
+
+Fee tiers: **Slow / Normal / Fast** come from the fee percentiles (millisatoshi per vbyte; the
+canister keeps 101 percentiles over recent transactions), taken at p25 / p50 / p75. Advanced
+also offers a custom sat/vB field. Each tier is shown as "≈ N sats, about X blocks".
+
+Getting the percentiles from a browser is the gap. The update call charges cycles, and Oisy
+fetches them through its own backend (`getCurrentBtcFeePercentiles`,
+[btc-utxos.service.ts](https://github.com/dfinity/oisy-wallet/blob/main/src/frontend/src/btc/services/btc-utxos.service.ts)).
+Options:
+
+| | Source | Trust | Cost |
+|---|---|---|---|
+| a | A cached `btc_fee_percentiles` query on the existing Sneed backend canister, refreshed by a timer (every 10 min; timers, not heartbeats) | IC data, single-replica query | A few B cycles a day for the DAO. Needs a backend upgrade by proposal. |
+| b | `https://mempool.space/api/v1/fees/recommended` | third party; needs a CSP `connect-src` entry | free |
+| c | `fee_satoshis = null` (the signer's median) | IC | free, but no preview and it underestimates (§5.1) |
+
+Recommendation: (a) as the primary source, with (b) as fallback and cross-check (warn when they
+differ by more than 2×). Never (c). This is open question Q4.
+
+### 5.5 Pending store and UTXO locks
+
+The Bitcoin canister keeps reporting a UTXO as unspent until the spending transaction is mined.
+So a second send right after a first one would pick the same UTXOs and conflict. Oisy keeps
+pending sends in its backend for the same reason (`addPendingBtcTransaction`,
+[btc-send.services.ts](https://github.com/dfinity/oisy-wallet/blob/main/src/frontend/src/btc/services/btc-send.services.ts)).
+
+- Records: `{ id, expectedTxid, txid, utxos[outpoint], outputs, fee, feeRate, state:
+  submitting|broadcast|unknown|confirmed|failed|replaced|dropped, createdAt, kind:
+  send|toCkbtc|sweep, ckbtc? }`.
+- Storage: the user's backend layout store keyed by principal, so it syncs across devices, with
+  a localStorage mirror. If the backend store is unreadable, **block sends** ("can't check
+  pending sends") instead of risking a conflict, as Oisy does with
+  `PendingTransactionsNotAvailable`.
+- **Locked UTXOs** are inputs of records in `submitting`, `broadcast` or `unknown`. They are
+  excluded from selection.
+- **Confirmed** when the record's inputs have left the UTXO set, or `txid` is seen at a height.
+  A record then shows confirmations up to 6 and is archived.
+
+### 5.6 History
+
+The Bitcoin canister has no history API, only current UTXOs. History is built from:
+1. **Our log**: every send, sweep and conversion from the pending store, with txid, fee,
+   cycles paid and destination. This is complete for what Sneed Wallet did.
+2. **Receives from UTXOs**: each UTXO not created by our own sends is "received at height h".
+   Spent receives remain in our cache (`utils/btc/history.js`, IndexedDB, per principal).
+3. **Full history (Advanced, opt-in)**: the mempool.space address API. The UI says this
+   tells mempool.space which address the user is looking up, and asks once. It is never
+   called by default.
+
+### 5.7 ETH and EVM later
+
+Same pattern:
+- Address via `eth_address_of_caller` (0.077B), or offline with `ic-pub-key`.
+- `eth_sign_transaction` (EIP-1559, 37B cycles) per transaction.
+- Nonce, gas and broadcast through the EVM RPC canister or public RPC.
+- ERC-20 sends are call data.
+- ETH ↔ ckETH and ERC-20 ↔ ckERC20 reuse `ckethDepositAddress`, `ckethWithdraw` and
+  `ckerc20Withdraw` in `ckMinters.js`. The deposit path calls the helper contract from the
+  user's own address instead of MetaMask.
+
+This gets its own section in a later revision of this spec.
+
+## 6. Native ↔ ckBTC
+
+Both directions reuse `utils/ckMinters.js` (ckBTC minter `mqygn-kiaaa-aaaar-qaadq-cai`, ledger
+`mxzaz-hqaaa-aaaar-qaada-cai`). The `/convert` page (`components/convert/BtcConvert.jsx`) keeps
+working for external wallets.
+
+### 6.1 Native → ckBTC ("Move to ckBTC")
+1. `ckbtcDepositAddress(makeActor, me, subaccount)` gives the minter's deposit address for the
+   target pocket: Main, or any wallet pocket's subaccount.
+2. Show the minimum deposit and the check fee from `ckbtcInfo` (`get_minter_info`), the network
+   fee and the signing cost.
+3. Send as in §5.3, with `kind: toCkbtc` and `ckbtc: { owner, subaccount }` on the record.
+4. After broadcast, watch confirmations: poll the minter's `get_known_utxos` and the Bitcoin
+   canister. Once the minter's `min_confirmations` are reached, call `ckbtcCheckDeposit`
+   (`update_balance`).
+   - Retry with backoff while the result is `NoNewUtxos { current_confirmations }`.
+   - `Minted` closes the record.
+   - `Checked`/`Tainted` results are shown as `updateBalanceErrorText` already does.
+5. The record shows "minted N ckBTC to <pocket>" with the ledger block index.
+
+### 6.2 ckBTC → native ("Move to Bitcoin address")
+- `ckbtcWithdraw(makeActor, { address: myBtcAddress, amount, fromSubaccount })`, which runs
+  `icrc2_approve` then `retrieve_btc_with_approval`.
+- Plan and minimums with `planBtcWithdrawal`. Track with `ckbtcWithdrawals` /
+  `btcStatusText`.
+- When the minter's txid confirms, the UTXO shows up in §5.2 on its own.
+- No signer cycles are needed. The minter pays the network fee out of the amount.
+
+### 6.3 Sweep (principal migration, emptying)
+"Send all to address X": every unlocked UTXO goes to one output, with no change, at the chosen
+fee rate. The destination can be another principal's Sneed Wallet address, derived offline from
+a principal entered through `PrincipalInput` (§3.3). In that case the dialog shows both the
+principal and the derived address.
+
+## 7. Costs
+
+1 T cycles = 1 XDR, fixed by protocol. The UI shows cycles plus `formatValue` of their value,
+with the XDR rate from the CMC.
+
+| Operation | Signer cycles | Other |
+|---|---|---|
+| Show address | 0 (derived offline) | — |
+| Verify address once | 0.079B | ledger fee 0.1B |
+| Verified balance | 0.113B | 0.1B |
+| Send, 1 input → 1 recipient + change | 95 + 37 + 2·1 = **134B** | 0.1B, plus network fee ≈ 141 vB × rate |
+| Send, 2 inputs → 1 + change | **171B** (the signer's own grace default) | ≈ 209 vB × rate |
+| Each extra input | +37B | +68 vB |
+| Sign only (no broadcast) | 74B + 37B·inputs | broadcast elsewhere |
+| Approve the signer | — | 0.1B (cycles ledger fee) |
+| Native → ckBTC | as a send | minter check fee + minimums (`get_minter_info`) |
+| ckBTC → native | 0 | ckBTC ledger fee + minter fee (`estimate_withdrawal_fee`) |
+| ETH signature (later) | 37B | gas |
+
+**Signing credit.** Users pay from their own cycles-ledger balance.
+- "Top up from ICP" does an ICP transfer to the CMC with memo `MINT`, then
+  `notify_mint_cycles`, which mints straight to the user's cycles-ledger account. That is the
+  same move as Oisy's TCYCLES. It is new code; the repo has no cycles-ledger mint today.
+- The DAO could sponsor sends through `PatronPaysIcrc2Cycles(Account)`, a patron account that
+  pays for callers. Its allowance semantics must be verified against the papi library before any
+  design. This is open question Q5.
+
+## 8. Failure handling and recovery
+
+| Case | Detection | Recovery |
+|---|---|---|
+| Call timed out or trapped after signing (`unknown`) | No `Ok`/`Err` came back | Look for `expectedTxid` via the Bitcoin canister (inputs spent once mined) and, opt-in, mempool.space. If it is still unseen after 30 min: **re-issue the identical `btc_caller_send`**, same UTXOs, outputs and fee. The txid is the same, so a duplicate broadcast is harmless. This costs the signing cycles again, and the UI says so. |
+| Signed with `btc_caller_sign` but not broadcast | The record holds `signed_transaction_hex` | "Broadcast": paste-ready hex, plus a one-click POST to mempool.space (opt-in, third party). |
+| Broadcast but stuck (low fee) | 0 confirmations after N blocks; the rate is below the current "Slow" | **Speed up** (full RBF): a new `btc_caller_send` with the **same inputs** and a higher fee that also pays the old fee plus the incremental relay fee. The signer does not signal BIP-125, so this relies on full-RBF relay, which Bitcoin Core enables by default since 28.0 ([release notes](https://bitcoincore.org/en/releases/28.0/)). That must be confirmed on testnet through the IC adapter (Q6). **CPFP** alternative: spend our own unconfirmed change outpoint, which we pass by hand, with a high fee. |
+| Dropped from mempools | Inputs still unspent after ~14 days and not in the mempool | Mark the record `dropped`, which unlocks the UTXOs. The user can resend. |
+| Replaced | Inputs spent by a different txid | Record → `replaced`, linked to the new txid. |
+| Pending store unreadable | Backend read fails | Block sends with the reason. Receive still works. |
+| Address mismatch (offline vs signer) | §5.2 step 1 | Block, log, report to support (`i-am-customer-support`): the offline derivation or the signer has changed. |
+| Bitcoin canister behind | `get_blockchain_info` tip is far behind mempool.space's (when opted in) | Banner: "the IC's Bitcoin view is N blocks behind; balances may be stale". |
+| Cycles too low mid-flow | `PaymentError.InsufficientFunds` | Top-up flow, then retry the same record. |
+
+Every step writes to the record. "Help → BTC send log" shows the records with copyable JSON, so
+support can explain and fix any case.
+
+## 9. Sign in with Sneed Wallet (ICRC signer)
+
+### 9.1 Shape
+- **A separate entry `sign.html`** on app.sneeddao.com, not a route inside the SPA. That buys
+  three things:
+  - **Its own bundle.** `@dfinity/oisy-wallet-signer` 6.0.0 peers on `@icp-sdk/core ^4`,
+    `@icp-sdk/canisters ~3.1`, `@dfinity/utils ~4` and `zod ^4`, while the app is on
+    `@dfinity/agent ^2`.
+  - **Its own headers.** `.ic-assets.json5` headers match files, and SPA routes all serve
+    `index.html`. `sign.html` gets `frame-ancestors 'none'`, `X-Frame-Options: DENY`, and no
+    tag-manager scripts.
+  - **A small audit surface.**
+- **Same origin, same principal.** It reads the II session the app already stored. Verify that
+  the newer auth client reads the agent-v2 `AuthClient` storage. If not, the popup logs in to II
+  itself; the principal is the same because the origin is the same.
+- **Frame-busting in JS too.** If `window.top !== window.self`, the page refuses to run. The
+  BTC send view does the same.
+- **Library.** [`@dfinity/oisy-wallet-signer`](https://github.com/dfinity/oisy-wallet-signer)
+  `Signer.init({ owner: identity, host })`, with prompts registered for
+  `ICRC25_REQUEST_PERMISSIONS`, `ICRC27_ACCOUNTS`, `ICRC21_CALL_CONSENT_MESSAGE` and
+  `ICRC49_CALL_CANISTER`. The transport is ICRC-29 postMessage.
+  - Permissions expire after 7 days by default.
+  - Without ICRC-21 on the target, the library decodes only `icrc1_transfer`, `icrc2_approve`
+    and `icrc2_transfer_from`, and marks them as a warning.
+  - The library handles one prompt at a time.
+  - Standards: [wg-identity-authentication](https://github.com/dfinity/wg-identity-authentication)
+    (ICRC-21/25/27/29/34/49).
+- **Dapp side.** Dapps connect with `IcrcWallet.connect({ url: 'https://app.sneeddao.com/sign.html' })`
+  or any ICRC-29 relying party (`@icp-sdk/signer` 6.1.0, IdentityKit).
+
+### 9.2 Security rules
+1. **Per-origin permissions.** Shown and revocable under Settings → Connected apps: origin,
+   scopes, expiry, bound pocket, last call. The origin comes from the ICRC-29 message event
+   and is shown in full, with punycode decoded and look-alikes flagged.
+2. **Block by default** (the signer refuses; no "approve anyway"):
+   - Chain Fusion Signer `grghe-syaaa-aaaar-qabyq-cai`. A dapp must never sign BTC or ETH as
+     the user.
+   - Management canister `aaaaa-aa`: `update_settings`, `install_code`, `stop`, `delete`.
+   - Cycles ledger `icrc2_approve` to anything.
+   - NNS governance `rrkah-fqaaa-aaaaa-aaaaq-cai` and every SNS governance canister:
+     `manage_neuron` and similar.
+   - Sneed Lock, Sneedex and the user's bots (neuron managers, trading bots).
+   - Any method without a decoder and without an ICRC-21 message.
+3. **Strong-warning tier** (allowed after a typed confirmation in the in-app dialog):
+   - `icrc2_approve` with no `expires_at`, or with an amount above the balance.
+   - ICRC-37 `approve_collection`.
+   - Any `icrc1_transfer` to an account that is not in the user's names or contacts and is
+     above 10% of the balance.
+   - ICRC-7 transfers.
+4. **Decoders.**
+   - ICRC-21 first. Then our own decoders for ICRC-1/2/7/37, built on the existing
+     `CandidValue` / `ProxyPayloadView` renderers and the candid we already ship for Sneed
+     canisters.
+   - The target canister's name and token-safety verdict are shown next to the summary.
+   - Raw candid is always one tap away under Advanced.
+   - Sneed canisters gain `icrc21_canister_call_consent_message` later, by proposal. New
+     methods must join each canister's ingress-guard `msg` variant.
+5. **Pockets as safe accounts.**
+   - ICRC-27 returns the accounts the user picked for this origin. The default is a fresh
+     pocket named after the origin, with Main as opt-in.
+   - When a connection is bound to pocket P, ledger calls must use `from_subaccount = P`; any
+     other subaccount is blocked.
+   - Stated honestly in the UI: a pocket limits **ledger** calls only. Any other call acts as
+     the whole principal, so non-ledger calls always show "acts as your account, not just this
+     pocket".
+6. **No silent calls.** Every ICRC-49 call gets a popup approval. The user may set "auto-approve
+   reads" only for query-only methods.
+7. **Logging.** Every request is appended to a local log: origin, method, target, decision,
+   result. Support can read it.
+
+### 9.3 ICRC-34 scoped delegations (later, opt-in)
+- The library does not implement ICRC-34, and Oisy deliberately does not offer it.
+- We already issue scoped, expiring delegations in `ConnectAgent`. ICRC-34 would issue a
+  delegation with `targets` limited to the dapp's own canisters, after the block list is
+  removed from them. Ledgers, governance, the signer, `aaaaa-aa` and Sneed Lock can never be
+  targets.
+- Expiry is at most 8 h, revocable by logging out.
+- Off by default, per origin, behind Advanced.
+
+## 10. Wallet UI and pockets
+
+- **Bitcoin card.**
+  - Native BTC joins the ckBTC token card as a pocket of a new kind, `chain`. It has
+    `adapterId: 'btc_native'`, `account: null`, `address`, and a balances map keyed by the
+    pseudo-ledger `btc:mainnet`.
+  - The card's total = ckBTC across pockets + native BTC (confirmed). The existing "in N
+    pockets ▸" disclosure lists them.
+  - Q3 asks whether to merge into one "Bitcoin" card or keep a separate native card.
+- **Adapter.** `utils/pockets/adapters/btc_native.js` implements `listMyAccounts` (one item:
+  the address), `balance`, and caps `{ receive, send, convert }`. It is registered in
+  `adapters/index.js` with `enabled(ctx)` behind a feature flag.
+  - Sends use §5.3, not `withdraw`.
+  - A failing Bitcoin canister read shows "couldn't read Bitcoin" on that row only, as for any
+    adapter.
+  - `model.js` gains `KIND.chain`. Totals logic is unchanged, except that native sats are added
+    to the ckBTC total only on the merged Bitcoin card.
+- **Move.** Move between "Bitcoin address" and any ckBTC pocket runs §6. The move dialog shows
+  the minimum, fees and the expected wait (minutes for ckBTC → BTC, ≈ the minter's
+  confirmations × 10 min for BTC → ckBTC).
+- **Receive QR.** The existing `QrCode` from `ConvertUi` with a `bitcoin:` URI. The QR is
+  only shown on request, as for pockets.
+- **Signing credit** shows as a service-balance-style row under Settings → Sneed Wallet, not
+  as a token.
+- **New files** (all pure logic tested with node tests):
+  - `utils/btc/address.js`, `select.js`, `fees.js`, `txid.js` (non-witness serialisation for
+    `expectedTxid`), `pending.js`, `history.js`, `errors.js`, `signerIdl.js`,
+    `bitcoinCanisterIdl.js`
+  - `components/btc/*`
+  - `sign/` (the separate entry)
+
+## 11. Testing
+
+- **Unit (node, in the frontend):**
+  - UTXO selection and vsize/fee math, including dust-to-fee and max/sweep.
+  - `expectedTxid` against transactions the signer returns on testnet (golden vectors).
+  - Offline address = `btc_caller_address` for fixed principals (mainnet and testnet).
+  - Error mapping.
+  - Signer rules: block list, pocket binding, warning tiers. Each rule gets a test that fails
+    without it (`fix-discoveries-with-tests`).
+- **Bitcoin testnet (testnet4) through the prod signer.** The signer accepts `network =
+  testnet`, so staging runs the full flow on real infrastructure for a few hundred B cycles.
+  - Receive from a faucet.
+  - Send 1-in and 3-in.
+  - Max, sweep, sign-only plus external broadcast.
+  - The timeout path: kill the tab mid-call, then recover.
+  - Full-RBF speed-up, and CPFP.
+  - ckBTC conversions on the ckTESTBTC minter, if it is still offered for testnet4 (check
+    first).
+- **Local regtest.**
+  - `dfx` with the Bitcoin adapter and `bitcoind -regtest`, plus a locally deployed signer
+    wasm from its releases (`network = regtest`). This is for mining-controlled tests: stuck,
+    replaced and dropped.
+  - PocketIC's Bitcoin support is to be checked. If pic-js can host the Bitcoin canister and
+    signer, the signer rules get canister-level tests in `test/canisters`; otherwise regtest
+    via dfx only.
+- **Signer (B).** A tiny test dapp page on staging that uses `IcrcWallet`, plus scripted
+  hostile requests (signer target, `aaaaa-aa`, unlimited approve, wrong subaccount). Each one
+  must be refused.
+- **`npm run check`** in the frontend after every change.
+
+## 12. Phased plan
+
+| Phase | Content | Estimate |
+|---|---|---|
+| A0 | Prerequisites: signing credit (cycles-ledger balance, CMC mint, approve and revoke); fee-rate source (backend timer + query by proposal, mempool.space fallback, CSP `connect-src`); decision on tag-manager scripts (Q2); pending store in the backend layout store | 1–1.5 weeks |
+| A1 | Address (offline + verify), UTXOs, balance, receive QR, `btc_native` pocket adapter, testnet on staging | 1 week |
+| A2 | Send: selection, fee tiers, cost summary, pending locks, `expectedTxid`, error texts, recovery (re-issue, sign-only), history v1 | 1.5–2 weeks |
+| A3 | Native ↔ ckBTC moves, with conversion records and auto `update_balance` | 1 week |
+| A4 | Speed-up (RBF and CPFP), sweep, verified balance, opt-in explorer history, support log view; mainnet launch behind a flag, then default on | 1 week |
+| A5 | ETH/EVM (address, send, ERC-20, ck conversions from the own address) | 4–6 weeks, separate revision |
+| B1 | `sign.html` entry with the library, permissions, ICRC-27 pocket accounts, decoders, block list, connected-apps settings, test dapp | 2–3 weeks |
+| B2 | ICRC-21 consent messages on Sneed canisters (proposals), signer listing (IdentityKit and the `@icp-sdk/signer` lists), docs for dapps | 1–2 weeks plus outreach |
+| B3 | ICRC-34 scoped delegations, opt-in | 1–2 weeks |
+
+Release: staging first (testnet only), then prod behind a flag. Every build that touches
+`utils/btc/` or `sign/` is flagged as custody-relevant in its release note and its forum News
+post (topic 899).
+
+## 13. Open questions
+
+- **Q1. Sweep policy for the later principal migration.** Should the "move my account" wizard
+  (spec/derivation_origin.md) sweep BTC automatically as one of its steps, or leave it to the
+  user? This spec only guarantees that a sweep is possible.
+- **Q2. Third-party scripts.** Remove Google Tag Manager and analytics from the whole app, or
+  only keep them off `sign.html` and the BTC send view? Signing pages must not load them either
+  way. Also: can `'unsafe-eval'` go?
+- **Q3. One "Bitcoin" card** (native + ckBTC as pockets) or two cards (BTC and ckBTC)?
+- **Q4. Fee-rate source.** Add a cached percentile query to the Sneed backend (a proposal, a few
+  B cycles a day), or start with mempool.space only?
+- **Q5. Who pays signing cycles.** Users only, or should the DAO sponsor (e.g. the first N
+  sends per user through `PatronPaysIcrc2Cycles`)? That would be a motion, and it needs abuse
+  limits.
+- **Q6. Speed-up.** Is full-RBF replacement through the IC's Bitcoin adapter acceptable as the
+  only speed-up, or do we also ship CPFP in A4? Both depend on testnet results.
+- **Q7. Signer scope at launch.** Ledger-only (ICRC-1/2/7/37 plus ICRC-21-capable canisters),
+  with everything else blocked, or also allow decoded calls to known third-party canisters
+  behind warnings?
+- **Q8. Default connected account.** A fresh pocket per origin (safer, the proposed default) or
+  Main?
+- **Q9. Brand surface.** Is "Sneed Wallet" a renamed wallet page inside Sneed Hub, or a
+  separate PWA entry or landing page at app.sneeddao.com/wallet?
