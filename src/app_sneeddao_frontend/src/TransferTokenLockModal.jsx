@@ -4,7 +4,7 @@ import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, formatAmountShown } from './utils/StringUtils';
 import { dateToReadable } from './utils/DateUtils';
 import { isUntilDissolved } from './utils/lockTime';
 import { parseSubaccountHex } from './utils/lockNft';
@@ -88,8 +88,8 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       }
     });
 
-    const lockAmount = formatAmount(tokenLock.amount, token.decimals);
-    const feeAmount = formatAmount(BigInt(token.fee) * BigInt(feeInfo.feesRequired), token.decimals);
+    const lockAmount = formatAmountShown(tokenLock.amount, token.decimals);
+    const feeAmount = formatAmountShown(BigInt(token.fee) * BigInt(feeInfo.feesRequired), token.decimals);
     const feeExplanation = feeInfo.needsPreSend 
       ? ` (including 1 tx fee to prepare your backend subaccount for the transfer)`
       : ` (drawn from your backend liquid balance)`;

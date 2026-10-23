@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from './contexts/ThemeContext';
 import { formatAmount } from './utils/StringUtils';
+import { maskIfPrivate } from './utils/privacyMode';
 
 // Accent colors matching wallet page
 const walletPrimary = '#10b981';
@@ -435,10 +436,10 @@ const ConsolidateModal = ({
                                     fontWeight: '700',
                                     fontSize: '1.25rem'
                                 }}>
-                                    ${totalUSD.toLocaleString(undefined, { 
+                                    {maskIfPrivate(`$${totalUSD.toLocaleString(undefined, { 
                                         minimumFractionDigits: 2, 
                                         maximumFractionDigits: 2 
-                                    })}
+                                    })}`)}
                                 </span>
                             </div>
                             

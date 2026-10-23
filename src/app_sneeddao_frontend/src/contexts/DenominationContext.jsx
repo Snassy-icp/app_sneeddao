@@ -19,6 +19,8 @@ import {
     fetchDenomTokenUsdPrice,
 } from '../utils/DenominationUtils';
 import { getTokenMetadataSync } from '../hooks/useTokenCache';
+import { usePrivacyMode } from '../hooks/usePrivacyMode';
+import { PRIVACY_MASK, isPrivacyMode } from '../utils/privacyMode';
 
 const STORAGE_KEY = 'denominationToken';
 const DENOM_CHANGED_EVENT = 'denominationTokenChanged';
@@ -44,6 +46,8 @@ export function DenominationProvider({ children }) {
     });
 
     const priceRefreshTimer = useRef(null);
+    // Privacy mode masks every formatted value; it is a dependency so consumers re-render on a flip.
+    const [privacy] = usePrivacyMode();
 
     // Fetch / refresh the denomination token's USD price
     const refreshPrice = useCallback(async (tokenId) => {
@@ -97,15 +101,17 @@ export function DenominationProvider({ children }) {
     const formatValue = useCallback((usdValue) => {
         const denom = convertUSD(usdValue);
         if (denom == null) return '...';
+        if (privacy) return PRIVACY_MASK;
         return formatDenomAmount(denom, denomTokenId, denomTokenSymbol);
-    }, [convertUSD, denomTokenId, denomTokenSymbol]);
+    }, [convertUSD, denomTokenId, denomTokenSymbol, privacy]);
 
     /** Compact formatting for badges and tab subtitles. Returns null when zero. */
     const formatValueCompact = useCallback((usdValue) => {
         const denom = convertUSD(usdValue);
         if (denom == null) return null;
-        return formatDenomCompact(denom, denomTokenId, denomTokenSymbol);
-    }, [convertUSD, denomTokenId, denomTokenSymbol]);
+        const text = formatDenomCompact(denom, denomTokenId, denomTokenSymbol);
+        return privacy && text != null ? PRIVACY_MASK : text;
+    }, [convertUSD, denomTokenId, denomTokenSymbol, privacy]);
 
     const currencySign = getCurrencySign(denomTokenId);
     const isFiat = currencySign ? isFiatSign(currencySign) : true;
@@ -124,7 +130,8 @@ export function DenominationProvider({ children }) {
         currencySign,
         isFiat,
         isUSD,
-    }), [denomTokenId, denomTokenSymbol, denomTokenUsdPrice, setDenomToken, convertUSD, formatValue, formatValueCompact, currencySign, isFiat, isUSD]);
+        privacy,
+    }), [privacy, denomTokenId, denomTokenSymbol, denomTokenUsdPrice, setDenomToken, convertUSD, formatValue, formatValueCompact, currencySign, isFiat, isUSD]);
 
     return (
         <DenominationContext.Provider value={value}>
@@ -143,8 +150,8 @@ export function useDenomination() {
             denomTokenUsdPrice: 1,
             setDenomToken: () => {},
             convertUSD: (v) => v,
-            formatValue: (v) => v != null ? `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '...',
-            formatValueCompact: (v) => v != null && v > 0 ? `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null,
+            formatValue: (v) => v != null ? (isPrivacyMode() ? PRIVACY_MASK : `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`) : '...',
+            formatValueCompact: (v) => v != null && v > 0 ? (isPrivacyMode() ? PRIVACY_MASK : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`) : null,
             currencySign: '$',
             isFiat: true,
             isUSD: true,

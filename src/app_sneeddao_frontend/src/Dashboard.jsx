@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { toJsonString, formatAmount } from './utils/StringUtils';
+import { toJsonString, formatAmount, formatAmountShown } from './utils/StringUtils';
+import { maskIfPrivate } from './utils/privacyMode';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenMetaForSwap } from './utils/TokenUtils';
@@ -119,8 +120,8 @@ function Dashboard() {
         
                     if (matchingPosition) {
                         details[`${swapCanisterId.toText()}-${positionId}`] = {
-                            token0Amount: formatAmount(matchingPosition.token0Amount, canisterData.token0Decimals),
-                            token1Amount: formatAmount(matchingPosition.token1Amount, canisterData.token1Decimals),
+                            token0Amount: formatAmountShown(matchingPosition.token0Amount, canisterData.token0Decimals),
+                            token1Amount: formatAmountShown(matchingPosition.token1Amount, canisterData.token1Decimals),
                             token0Symbol: canisterData.token0Symbol,
                             token1Symbol: canisterData.token1Symbol,
                         };
@@ -240,10 +241,10 @@ function Dashboard() {
                                                         borderRadius: '4px'
                                                     }}>
                                                         <p style={{ margin: '5px 0' }}>
-                                                            <strong>Token0:</strong> {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token0Amount} {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token0Symbol}
+                                                            <strong>Token0:</strong> {maskIfPrivate(positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token0Amount)} {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token0Symbol}
                                                         </p>
                                                         <p style={{ margin: '5px 0' }}>
-                                                            <strong>Token1:</strong> {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token1Amount} {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token1Symbol}
+                                                            <strong>Token1:</strong> {maskIfPrivate(positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token1Amount)} {positionDetails[`${lock[1].toText()}-${lock[2].position_id}`].token1Symbol}
                                                         </p>
                                                     </div>
                                                 )}

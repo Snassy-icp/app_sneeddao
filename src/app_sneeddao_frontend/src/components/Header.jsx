@@ -8,6 +8,8 @@ import PrincipalBox from '../PrincipalBox';
 import DonateButton from './DonateButton';
 import SnsDropdown from './SnsDropdown';
 import ThemeToggle from './ThemeToggle';
+import PrivacyToggle from './PrivacyToggle';
+import { maskIfPrivate } from '../utils/privacyMode';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import usePremiumStatus from '../hooks/usePremiumStatus';
 import { useWalletOptional } from '../contexts/WalletContext';
@@ -1546,6 +1548,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Theme</span>
                                 <ThemeToggle size="small" />
                             </div>
+
+                            <div style={{
+                                borderTop: `1px solid ${theme.colors.border}`,
+                                padding: '12px 16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                            }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Privacy mode</span>
+                                <PrivacyToggle label />
+                            </div>
                         </div>
                     )}
                 </div>
@@ -2141,7 +2154,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                 }}
-                                title={`${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect worth $${collectiblesItems.reduce((sum, item) => sum + (item.usdValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (fees, rewards, maturity)`}
+                                title={`${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect worth ${maskIfPrivate(`$${collectiblesItems.reduce((sum, item) => sum + (item.usdValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)} (fees, rewards, maturity)`}
                             >
                                 <FaGift size={10} />
                                 <span>{collectiblesCount}</span>

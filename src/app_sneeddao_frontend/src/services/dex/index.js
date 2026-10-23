@@ -6,7 +6,6 @@
 
 export { DexAggregator } from './DexAggregator.js';
 export { ICPSwapDex } from './dexes/ICPSwapDex.js';
-export { KongDex } from './dexes/KongDex.js';
 export { BaseDex } from './dexes/BaseDex.js';
 export {
   SwapStep,

@@ -9,7 +9,7 @@ import { useAuth } from '../AuthContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import ConfirmationModal from '../ConfirmationModal';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
-import { formatAmount, parseAmountToBigInt } from '../utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 import { normalizeId } from '../utils/IdUtils';
 import { approvalRisk, setApproval, subaccountHex, accountKey } from '../utils/approvals';
 import { knownSpenderName } from '../utils/approvalSpenders';
@@ -157,7 +157,7 @@ function ApprovalRow({ a, token, showToken, onChanged }) {
             {mine && a.spender && !editing && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button style={btn(true)} onClick={() => { setStatus(null); setConfirm({ kind: 'revoke', amount: 0n, expiresAt: null }); }}>Revoke</button>
-                    <button style={btn(false)} onClick={() => { setStatus(null); setAmountText(risk.unlimited ? '' : formatAmount(a.allowance, decimals).replace(/,/g, '')); setExpiryChoice(a.expiresAt == null ? '7d' : 'keep'); setEditing(true); }}>Change</button>
+                    <button style={btn(false)} onClick={() => { setStatus(null); setAmountText(risk.unlimited ? '' : formatAmountRaw(a.allowance, decimals)); setExpiryChoice(a.expiresAt == null ? '7d' : 'keep'); setEditing(true); }}>Change</button>
                 </div>
             )}
             {editing && (

@@ -1,3 +1,5 @@
+import { maskIfPrivate } from './privacyMode';
+
 function toJsonString(o) {
     return JSON.stringify(o, (key, value) =>
         typeof value === 'bigint'
@@ -6,7 +8,15 @@ function toJsonString(o) {
     );
   }
 
-const formatAmount = (amount, decimals) => {
+/**
+ * Display a token amount (base units → "1,234.5"). Masked while privacy mode is on; use
+ * formatAmountShown where the user must see the figure (the review step of a send), and
+ * formatAmountRaw for input fields.
+ */
+const formatAmount = (amount, decimals) => maskIfPrivate(formatAmountShown(amount, decimals));
+
+/** formatAmount that ignores privacy mode: for amounts the user is about to sign. */
+const formatAmountShown = (amount, decimals) => {
     const balanceBigInt = BigInt(amount);
     const decimalsBigInt = BigInt(decimals);
     const divisor = 10n ** decimalsBigInt;
@@ -56,10 +66,10 @@ function getUSD(amount, decimals, conversion_rate, denomFormatFn) {
     if (amount > 0n && conversion_rate > 0) {
         if (denomFormatFn) {
             const usdVal = computeUsdValue(amount, decimals, conversion_rate);
-            return (<i className="usd-text"> • {denomFormatFn(usdVal)}</i>);
+            return (<i className="usd-text"> • {maskIfPrivate(denomFormatFn(usdVal))}</i>);
         }
         const usd = formatAmountWithConversion(amount, decimals, conversion_rate);
-        return (<i className="usd-text"> • ${usd}</i>);
+        return (<i className="usd-text"> • {maskIfPrivate(`$${usd}`)}</i>);
     }
     return (<i></i>);
 }
@@ -101,6 +111,7 @@ const parseAmountToBigInt = (input, decimals) => {
 export {
     toJsonString,
     formatAmount,
+    formatAmountShown,
     formatAmountRaw,
     formatAmountWithConversion,
     computeUsdValue,

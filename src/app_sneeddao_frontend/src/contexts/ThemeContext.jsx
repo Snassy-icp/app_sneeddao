@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { usePrivacyMode } from '../hooks/usePrivacyMode';
 
 const ThemeContext = createContext();
 
@@ -102,6 +103,9 @@ export const ThemeProvider = ({ children }) => {
   });
 
   const theme = themes[currentTheme];
+  // Subscribed so a privacy-mode flip re-renders every useTheme() consumer: amounts are masked
+  // inside the shared formatters (utils/privacyMode.js), which only run again on a render.
+  const [privacyMode] = usePrivacyMode();
 
   const toggleTheme = () => {
     const newTheme = currentTheme === 'dark' ? 'bright' : 'dark';
@@ -138,7 +142,8 @@ export const ThemeProvider = ({ children }) => {
     toggleTheme,
     setTheme,
     isDark: currentTheme === 'dark',
-    isBright: currentTheme === 'bright'
+    isBright: currentTheme === 'bright',
+    privacyMode,
   };
 
   return (

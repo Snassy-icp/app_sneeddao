@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import StagingBanner from './components/StagingBanner';
+import { PrivacyHost } from './components/PrivacyToggle';
 import PushOpenHandler from './components/PushOpenHandler';
 import Login from './Login';
 import Wallet from './Wallet';
@@ -220,6 +221,7 @@ function App() {
                     <PushOpenHandler />
                     <AppDialogHost />
                     <StagingBanner />
+                    <PrivacyHost />
                     <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />

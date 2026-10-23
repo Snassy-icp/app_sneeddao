@@ -8,6 +8,8 @@ import { useDenomination } from '../../contexts/DenominationContext';
 import { loadPrice, priceOf } from '../../utils/revenueData';
 import { useStoreVersion } from '../../utils/revenueStore';
 import { parseBtcAddress, btcAddressTypeLabel } from '../../utils/ckAddress';
+import { maskIfPrivate } from '../../utils/privacyMode';
+import QrScanButton from '../QrScanButton';
 import {
     CKBTC, ckbtcInfo, ckbtcDepositAddress, ckbtcKnownUtxos, ckbtcCheckDeposit, ckbtcWithdraw, ckbtcWithdrawals,
     ckbtcMinter, ledgerInfo, planBtcWithdrawal, parseUnits, formatUnits, btcStatusText, btcTxidHex,
@@ -117,7 +119,7 @@ export function BtcDeposit({ makeActor, me, onMinted }) {
                 <div style={{ marginTop: 10, fontSize: 13, color: c.secondaryText }}>
                     {check.pending.map((p) => (
                         <div key={`${btcTxidHex(p.outpoint.txid)}:${p.outpoint.vout}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                            <span>{btc(p.value)} BTC</span>
+                            <span>{maskIfPrivate(btc(p.value))} BTC</span>
                             <span>{String(p.confirmations)} / {confs ?? '?'} confirmations</span>
                         </div>
                     ))}
@@ -130,7 +132,7 @@ export function BtcDeposit({ makeActor, me, onMinted }) {
                     const txid = btcTxidHex(u.outpoint.txid);
                     return (
                         <div key={`${txid}:${u.outpoint.vout}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, flexWrap: 'wrap', color: c.primaryText }}>
-                            <span>{btc(u.value)} BTC · block {String(u.height)}</span>
+                            <span>{maskIfPrivate(btc(u.value))} BTC · block {String(u.height)}</span>
                             <a href={mempoolTx(txid)} target="_blank" rel="noreferrer" style={{ color: c.accent }}>{txid.slice(0, 10)}…:{u.outpoint.vout} <FaExternalLinkAlt size={10} /></a>
                         </div>
                     );
@@ -150,6 +152,7 @@ export function BtcWithdraw({ makeActor, me, onDone }) {
     const [bal, setBal] = useState(null);
     const [amountText, setAmountText] = useState('');
     const [address, setAddress] = useState('');
+    const [scanNote, setScanNote] = useState(null);
     const [fee, setFee] = useState(null);
     const [ack, setAck] = useState(false);
     const [confirm, setConfirm] = useState(false);
@@ -208,7 +211,7 @@ export function BtcWithdraw({ makeActor, me, onDone }) {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                    <Label hint={bal ? `Balance ${btc(bal.balance)} ckBTC` : null}>Amount (ckBTC)</Label>
+                    <Label hint={bal ? `Balance ${maskIfPrivate(btc(bal.balance))} ckBTC` : null}>Amount (ckBTC)</Label>
                     <div style={{ display: 'flex', gap: 8 }}>
                         <input inputMode="decimal" placeholder="0.001" value={amountText} onChange={(e) => setAmountText(e.target.value)} style={inputStyle(c, amountText !== '' && amount == null)} aria-label="Amount in ckBTC" />
                         <Button variant="ghost" onClick={() => plan.max != null && setAmountText(formatUnits(plan.max, 8).replace(/,/g, ''))} disabled={!plan.max}>Max</Button>
@@ -217,7 +220,11 @@ export function BtcWithdraw({ makeActor, me, onDone }) {
                 </div>
                 <div>
                     <Label hint={addr?.ok ? btcAddressTypeLabel(addr.type) : null}>Bitcoin address</Label>
-                    <input placeholder="bc1q…" value={address} onChange={(e) => setAddress(e.target.value)} spellCheck={false} autoCapitalize="none" autoCorrect="off" style={{ ...inputStyle(c, addr && !addr.ok), fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 14 }} aria-label="Bitcoin address" />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <input placeholder="bc1q…" value={address} onChange={(e) => { setAddress(e.target.value); setScanNote(null); }} spellCheck={false} autoCapitalize="none" autoCorrect="off" style={{ ...inputStyle(c, addr && !addr.ok), fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 14, flex: 1, minWidth: 0 }} aria-label="Bitcoin address" />
+                        <QrScanButton target="btc" title="Scan a Bitcoin address QR code" onScan={(value, r) => { setAddress(value); setScanNote(r.note || null); }} />
+                    </div>
+                    {scanNote && <div style={{ fontSize: 12, color: c.warning, marginTop: 4 }}>{scanNote}</div>}
                     {addr && !addr.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{addr.error}</div>}
                 </div>
                 {amount != null && amount > 0n && (

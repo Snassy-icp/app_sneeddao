@@ -52,6 +52,7 @@ import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCan
 import { fetchAndCacheSnsData, getAllSnses, getSnsById, getSnsByLedgerId, buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
+import PrivacyToggle from './components/PrivacyToggle';
 import PrincipalInput from './components/PrincipalInput';
 import TokenIcon from './components/TokenIcon';
 import { fetchUserNeurons, fetchUserNeuronsForSns, uint8ArrayToHex } from './utils/NeuronUtils';
@@ -6073,6 +6074,7 @@ function Wallet() {
                                         }}>
                                             {denomFormatValue(totalDollarValue)}
                                         </div>
+                                        <PrivacyToggle size={13} />
                                         {/* Admin debug report button */}
                                         {isAdmin && (
                                             <button

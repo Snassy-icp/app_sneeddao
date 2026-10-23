@@ -11,6 +11,8 @@ import { useDenomination } from '../../contexts/DenominationContext';
 import { loadPrice, priceOf } from '../../utils/revenueData';
 import { useStoreVersion } from '../../utils/revenueStore';
 import { parseEthAddress, principalToBytes32, subaccountToBytes32, encodeDepositEth } from '../../utils/ckAddress';
+import { maskIfPrivate } from '../../utils/privacyMode';
+import QrScanButton from '../QrScanButton';
 import {
     CKETH, ckethInfo, ckethGasPrice, ckethMinter, ckethWithdraw, ckerc20Withdraw, ckethWithdrawals, ckethDepositAddress,
     ledgerInfo, planEthWithdrawal, planErc20Withdrawal, parseUnits, formatUnits, ethStatusText, DEPOSITS_UNAVAILABLE,
@@ -52,6 +54,7 @@ export function EthWithdraw({ makeActor, me, asset, onDone }) {
     const [price, setPrice] = useState(null);
     const [amountText, setAmountText] = useState('');
     const [recipient, setRecipient] = useState('');
+    const [scanNote, setScanNote] = useState(null);
     const [blocked, setBlocked] = useState(false);
     const [ack, setAck] = useState(false);
     const [confirm, setConfirm] = useState(false);
@@ -123,17 +126,21 @@ export function EthWithdraw({ makeActor, me, asset, onDone }) {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                    <Label hint={tok ? `Balance ${fmt(tok.balance, asset.decimals)} ${asset.symbol}` : null}>Amount ({asset.symbol})</Label>
+                    <Label hint={tok ? `Balance ${maskIfPrivate(fmt(tok.balance, asset.decimals))} ${asset.symbol}` : null}>Amount ({asset.symbol})</Label>
                     <div style={{ display: 'flex', gap: 8 }}>
                         <input inputMode="decimal" placeholder="0.0" value={amountText} onChange={(e) => setAmountText(e.target.value)} style={inputStyle(c, amountText !== '' && amount == null)} aria-label={`Amount in ${asset.symbol}`} />
                         <Button variant="ghost" onClick={() => plan.max != null && setAmountText(formatUnits(plan.max, asset.decimals).replace(/,/g, ''))} disabled={!plan.max}>Max</Button>
                     </div>
                     {amount != null && usd(amount) && <div style={{ fontSize: 12, color: c.mutedText, marginTop: 4 }}>≈ {usd(amount)}</div>}
-                    {!isEth && eth && <div style={{ fontSize: 12, color: c.mutedText, marginTop: 4 }}>ckETH for gas: {fmt(eth.balance, 18)} ckETH</div>}
+                    {!isEth && eth && <div style={{ fontSize: 12, color: c.mutedText, marginTop: 4 }}>ckETH for gas: {maskIfPrivate(fmt(eth.balance, 18))} ckETH</div>}
                 </div>
                 <div>
                     <Label hint={addr?.ok && addr.checksummed ? 'Checksum OK' : null}>Ethereum address</Label>
-                    <input placeholder="0x…" value={recipient} onChange={(e) => setRecipient(e.target.value)} spellCheck={false} autoCapitalize="none" autoCorrect="off" style={{ ...inputStyle(c, addr && (!addr.ok || blocked)), fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 14 }} aria-label="Ethereum address" />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <input placeholder="0x…" value={recipient} onChange={(e) => { setRecipient(e.target.value); setScanNote(null); }} spellCheck={false} autoCapitalize="none" autoCorrect="off" style={{ ...inputStyle(c, addr && (!addr.ok || blocked)), fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 14, flex: 1, minWidth: 0 }} aria-label="Ethereum address" />
+                        <QrScanButton target="eth" title="Scan an Ethereum address QR code" onScan={(value, r) => { setRecipient(value); setScanNote(r.note || null); }} />
+                    </div>
+                    {scanNote && <div style={{ fontSize: 12, color: c.warning, marginTop: 4 }}>{scanNote}</div>}
                     {addr && !addr.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{addr.error}</div>}
                     {blocked && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>The minter blocks this address; it will not send there.</div>}
                 </div>
@@ -320,7 +327,7 @@ function WalletDeposit({ me, asset, helper }) {
             {wallet && (
                 <>
                     <Row k={`From (${wallet.name})`} v={<a href={etherscanAddress(wallet.account)} target="_blank" rel="noreferrer" style={{ color: c.accent, wordBreak: 'break-all' }}>{wallet.account.slice(0, 8)}…{wallet.account.slice(-6)}</a>}
-                        sub={bal != null ? `Balance ${fmt(bal, asset.decimals)} ${asset.native}` : null} />
+                        sub={bal != null ? `Balance ${maskIfPrivate(fmt(bal, asset.decimals))} ${asset.native}` : null} />
                     {String(wallet.chainId).toLowerCase() !== '0x1' && <Notice tone="warning">Your wallet is not on Ethereum mainnet. It will be asked to switch before sending.</Notice>}
                     <div>
                         <Label>Amount ({asset.native})</Label>

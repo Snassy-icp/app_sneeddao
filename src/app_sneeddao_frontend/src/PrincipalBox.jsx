@@ -7,6 +7,7 @@ import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
+import PrivacyToggle, { PRIVACY_SHORTCUT_HINT } from './components/PrivacyToggle';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
 import { useWalletLayout } from './contexts/WalletLayoutContext';
@@ -3177,6 +3178,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       )}
                       </>
                       )}
+                  </div>
+
+                  {/* Privacy mode: hide balances and amounts for screen sharing */}
+                  <div style={{ padding: '0 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Privacy mode <span style={{ opacity: 0.7 }}>({PRIVACY_SHORTCUT_HINT})</span></span>
+                      <PrivacyToggle label />
                   </div>
 
                   {/* Log Out Button */}

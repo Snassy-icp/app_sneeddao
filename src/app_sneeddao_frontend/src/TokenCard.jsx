@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatAmount, formatAmountRaw, parseAmountToBigInt, getUSD, computeUsdValue } from './utils/StringUtils';
+import { formatAmount, formatAmountShown, formatAmountRaw, parseAmountToBigInt, getUSD, computeUsdValue } from './utils/StringUtils';
 import { useDenomination } from './contexts/DenominationContext';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
@@ -1724,7 +1724,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 >
                                     <FaSeedling size={12} />
                                     <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
-                                        ${maturityUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        {denomFormatValue(maturityUSD)}
                                     </span>
                                 </span>
                             );
@@ -1748,7 +1748,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 >
                                     <FaHourglassHalf size={12} />
                                     <span style={{ fontSize: '12px' }}>
-                                        ${disbursingUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        {denomFormatValue(disbursingUSD)}
                                     </span>
                                 </span>
                             );
@@ -1772,7 +1772,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 >
                                     <FaGift size={12} />
                                     <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
-                                        ${rewardsUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        {denomFormatValue(rewardsUSD)}
                                     </span>
                                 </span>
                             );
@@ -3253,7 +3253,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 {(neuron.maturity_e8s_equivalent || 0n) > 0n && userHasPermission(neuron, PERM.DISBURSE_MATURITY) && (
                                                                     <button
                                                                         onClick={async () => {
-                                                                            if (await appConfirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
+                                                                            if (await appConfirm(`Disburse ${formatAmountShown(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
                                                                                 disburseMaturity(neuronIdHex);
                                                                             }
                                                                         }}

@@ -24,6 +24,7 @@ import { Principal } from '@dfinity/principal';
 import { setMySettings } from '../utils/BackendUtils';
 import { useDenomination } from '../contexts/DenominationContext';
 import { icrc1Transfer } from '../utils/icrcTx';
+import { maskIfPrivate } from '../utils/privacyMode';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1013,7 +1014,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     const config = { identity, agent, host };
     const agg = new DexAggregator(config);
     agg.registerDex(new ICPSwapDex(config));
-    // KongSwap has shut down: no Kong quotes. KongDex stays in services/dex for reference only.
+    // KongSwap has shut down: only ICPSwap is registered, so no Kong quote is ever asked for (the
+    // KongDex adapter was removed; the split-swap code below stays dormant without a second DEX).
     aggregatorRef.current = agg;
     setAggregatorReady(true);
 
@@ -2025,7 +2027,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 <span>
                   Bal:{' '}
                   <span style={{ color: theme.colors.secondaryText, fontWeight: 500 }}>
-                    {inputBalance !== null ? formatAmount(inputBalance, inputTokenInfo.decimals) : '...'} {inputTokenInfo.symbol}
+                    {inputBalance !== null ? maskIfPrivate(formatAmount(inputBalance, inputTokenInfo.decimals)) : '...'} {inputTokenInfo.symbol}
                   </span>
                   {inputBalance !== null && inputUsdPrice !== null && (
                     <span style={{ opacity: 0.7 }}>
@@ -2110,7 +2112,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 <span>
                   Bal:{' '}
                   <span style={{ color: theme.colors.secondaryText, fontWeight: 500 }}>
-                    {outputBalance !== null ? formatAmount(outputBalance, outputTokenInfo.decimals) : '...'} {outputTokenInfo.symbol}
+                    {outputBalance !== null ? maskIfPrivate(formatAmount(outputBalance, outputTokenInfo.decimals)) : '...'} {outputTokenInfo.symbol}
                   </span>
                   {outputBalance !== null && outputUsdPrice !== null && (
                     <span style={{ opacity: 0.7 }}>

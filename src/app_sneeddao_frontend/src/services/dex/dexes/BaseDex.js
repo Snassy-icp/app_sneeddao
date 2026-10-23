@@ -1,7 +1,7 @@
 /**
  * BaseDex — Abstract base class for DEX adapters.
  *
- * Each concrete adapter (ICPSwapDex, KongDex, …) must extend this class and
+ * Each concrete adapter (ICPSwapDex, …) must extend this class and
  * implement every method marked with `throw new Error('Not implemented')`.
  *
  * This file is self-contained.  It can be used outside the SneedDAO website.

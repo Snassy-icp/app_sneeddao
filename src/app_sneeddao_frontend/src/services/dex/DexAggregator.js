@@ -11,7 +11,7 @@
  * Usage:
  *   const agg = new DexAggregator({ identity, agent });
  *   agg.registerDex(new ICPSwapDex({ identity, agent }));
- *   agg.registerDex(new KongDex({ identity, agent }));
+ *   // (KongSwap has shut down; its adapter was removed. Split quotes need a second DEX.)
  *
  *   const quotes = await agg.getQuotes({ inputToken, outputToken, amount });
  *   const result = await agg.swap({ quote: quotes[0], slippage: 0.01, onProgress });

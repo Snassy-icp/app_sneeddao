@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
 import { HttpAgent } from "@dfinity/agent";
-import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
+import { formatAmount, formatAmountShown, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
+import { maskIfPrivate } from './utils/privacyMode';
 import { maxSendable, planSend, planFeeCount, tokenWithPockets } from './utils/sendPlan';
 import { usePockets } from './hooks/usePockets';
 import PocketPicker from './components/PocketPicker';
@@ -12,6 +13,7 @@ import { planTransfer, transferProblem } from './utils/pockets/move';
 import { normalizeId } from './utils/IdUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
+import QrScanButton from './components/QrScanButton';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import {
@@ -46,6 +48,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
   const [toId, setToId] = useState(null);
   const [fromRules, setFromRules] = useState(null);
   const [recipient, setRecipient] = useState('');
+  const [scanNote, setScanNote] = useState(null); // what a scanned payment code also asked for
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -119,6 +122,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
   useEffect(() => {
     if (!show) {
       setRecipient('');
+      setScanNote(null);
       setAmount('');
       setShowSubaccountInput(false);
       setSubaccountType('hex');
@@ -646,7 +650,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
               color: theme.colors.mutedText,
               fontSize: '0.75rem'
             }}>
-              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} {reviewData.feeNote || (reviewData.feeCount > 1 ? `fees (${reviewData.feeCount} transfers: Sneed Lock balance and wallet)` : 'fee')}
+              + {formatAmountShown(reviewData.fee, token.decimals)} {token.symbol} {reviewData.feeNote || (reviewData.feeCount > 1 ? `fees (${reviewData.feeCount} transfers: Sneed Lock balance and wallet)` : 'fee')}
             </div>
           </div>
 
@@ -1089,9 +1093,11 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
           }}>
             Recipient Address:
           </label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
           <PrincipalInput
             value={recipient}
-            onChange={setRecipient}
+            onChange={(v) => { setRecipient(v); setScanNote(null); }}
             placeholder={isICP ? "Enter principal ID, name, extended address, or account ID" : "Enter principal ID, name, or extended address"}
             style={{
               width: '100%',
@@ -1102,6 +1108,22 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
               fontSize: '0.9rem'
             }}
           />
+          </div>
+          <QrScanButton
+            target={isICP ? 'icp' : 'icrc'}
+            title="Scan the recipient's QR code"
+            onScan={(value, r) => {
+              setRecipient(value);
+              const otherToken = r.ledger && ledgerId && r.ledger !== ledgerId
+                ? `This code asks for a payment on another ledger (${r.ledger}), not ${token.symbol}. Check you picked the right token.`
+                : null;
+              setScanNote([otherToken, r.note].filter(Boolean).join(' ') || null);
+            }}
+          />
+          </div>
+          {scanNote && (
+            <div style={{ marginTop: '6px', fontSize: '0.8rem', color: theme.colors.warning }}>{scanNote}</div>
+          )}
 
           {/* ICP Account ID detection feedback */}
           {detectedAccountId && (
@@ -1691,7 +1713,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
             color: theme.colors.secondaryText,
             fontSize: '0.9rem'
           }}>
-            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol} per transfer · Max you can send: {formatAmountRaw(fromPocket ? pocketMax() : maxSendable(planToken, { frontendOnly: !!(isICP && detectedAccountId) }), token.decimals)} {token.symbol}
+            Fee: {formatAmountShown(token.fee, token.decimals)} {token.symbol} per transfer · Max you can send: {maskIfPrivate(formatAmountRaw(fromPocket ? pocketMax() : maxSendable(planToken, { frontendOnly: !!(isICP && detectedAccountId) }), token.decimals))} {token.symbol}
           </label>
         </div>
 

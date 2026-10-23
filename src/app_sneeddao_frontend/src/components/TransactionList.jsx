@@ -12,7 +12,9 @@ import { useNaming } from '../NamingContext';
 import PrincipalInput from './PrincipalInput';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
-import { subaccountToHex } from '../utils/StringUtils';
+import { subaccountToHex, formatAmount as formatTokenAmount } from '../utils/StringUtils';
+import { transactionsToCsv, downloadCsv } from '../utils/txCsv';
+import { getTokenMetadataSync } from '../hooks/useTokenCache';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet, FaTimes, FaCopy } from 'react-icons/fa';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
@@ -107,6 +109,8 @@ function TransactionList({
     const [rawTransactions, setRawTransactions] = useState([]);
     const [allTransactions, setAllTransactions] = useState([]);
     const [displayedTransactions, setDisplayedTransactions] = useState([]);
+    const [exportRows, setExportRows] = useState([]); // every loaded row that passes the filters, sorted (CSV export)
+    const [tokenMeta, setTokenMeta] = useState(null); // { decimals, symbol } of the ledger
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
@@ -607,13 +611,8 @@ function TransactionList({
         return 0n;
     };
 
-    const formatAmount = (amount, decimals = 8) => {
-        const value = Number(amount) / Math.pow(10, decimals);
-        return value.toLocaleString(undefined, {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 8
-        });
-    };
+    // The ledger's own decimals (amounts used to be shown as if every token had 8). Masked in privacy mode.
+    const formatAmount = (amount) => (tokenMeta ? formatTokenAmount(amount, tokenMeta.decimals) : '…');
 
     const formatTimestamp = (timestamp) => {
         return new Date(Number(timestamp) / 1_000_000).toLocaleString();
@@ -731,79 +730,33 @@ function TransactionList({
         return sortConfig.direction === 'asc' ? <FaArrowUp size={10} /> : <FaArrowDown size={10} />;
     };
 
-    // CSV Export
+    // CSV export of every loaded row that passes the current filters (not only this page).
+    // Amounts are exact decimals in the ledger's units and never masked: the file is for the user.
     const exportTransactionsToCSV = () => {
-        if (displayedTransactions.length === 0) {
-            alert('No transactions to export');
-            return;
-        }
-
-        const headers = [
-            'Transaction Index', 'Type', 'From Principal', 'From Name', 'From Nickname', 'From Subaccount',
-            'To Principal', 'To Name', 'To Nickname', 'To Subaccount', 'Amount (E8s)', 'Amount (Tokens)',
-            'Fee (E8s)', 'Fee (Tokens)', 'Timestamp', 'Memo', 'Created At Timestamp'
-        ];
-
-        const csvRows = displayedTransactions.map(tx => {
-            const transaction = tx.transaction || tx;
-            const txType = transaction.kind || 'unknown';
-            const fromPrincipal = getFromPrincipal(tx);
-            const toPrincipal = getToPrincipal(tx);
-            const amount = getTransactionAmount(tx);
-            
-            const fromDisplayInfo = fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null;
-            const toDisplayInfo = toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null;
-            
-            const fromSubaccount = transaction.transfer?.[0]?.from?.subaccount?.[0] || 
-                                 transaction.burn?.[0]?.from?.subaccount?.[0] || 
-                                 transaction.approve?.[0]?.from?.subaccount?.[0];
-            const toSubaccount = transaction.transfer?.[0]?.to?.subaccount?.[0] || 
-                               transaction.mint?.[0]?.to?.subaccount?.[0] || 
-                               transaction.approve?.[0]?.spender?.subaccount?.[0];
-            
-            const fee = transaction.transfer?.[0]?.fee?.[0] || transaction.approve?.[0]?.fee?.[0] || 0n;
-            const memo = transaction.transfer?.[0]?.memo?.[0] || transaction.mint?.[0]?.memo?.[0] || 
-                        transaction.burn?.[0]?.memo?.[0] || transaction.approve?.[0]?.memo?.[0] || '';
-            const timestamp = tx.timestamp || transaction.timestamp || '';
-            const createdAtTime = transaction.created_at_time?.[0] || '';
-            
-            return [
-                tx.id || '', txType, fromPrincipal ? fromPrincipal.toString() : '',
-                fromDisplayInfo?.name || '', fromDisplayInfo?.nickname || '',
-                fromSubaccount ? subaccountToHex(fromSubaccount) : '',
-                toPrincipal ? toPrincipal.toString() : '', toDisplayInfo?.name || '', toDisplayInfo?.nickname || '',
-                toSubaccount ? subaccountToHex(toSubaccount) : '', amount.toString(), formatAmount(amount),
-                fee.toString(), formatAmount(fee), timestamp ? formatTimestamp(timestamp) : '',
-                Array.isArray(memo) ? memo.join('') : memo, createdAtTime ? formatTimestamp(createdAtTime) : ''
-            ];
-        });
-
-        const csvContent = [
-            headers.join(','),
-            ...csvRows.map(row => row.map(cell => {
-                const cellStr = String(cell);
-                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-                    return `"${cellStr.replace(/"/g, '""')}"`;
-                }
-                return cellStr;
-            }).join(','))
-        ].join('\n');
-
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
-        const filename = `transactions_${timestamp}.csv`;
-        
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        if (exportRows.length === 0 || !tokenMeta) return;
+        const csv = transactionsToCsv(exportRows, { decimals: tokenMeta.decimals, symbol: tokenMeta.symbol, ledger: ledgerCanisterId?.toString?.() || '' });
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+        const who = principalId ? `_${principalId.toString().slice(0, 11)}` : '';
+        downloadCsv(csv, `transactions_${tokenMeta.symbol || 'token'}${who}_${stamp}.csv`);
     };
+
+    // Token decimals and symbol, for amounts and the CSV.
+    useEffect(() => {
+        if (!ledgerCanisterId) { setTokenMeta(null); return; }
+        const id = ledgerCanisterId.toString();
+        const cached = getTokenMetadataSync(id);
+        if (cached?.decimals != null) { setTokenMeta({ decimals: Number(cached.decimals), symbol: cached.symbol || '' }); return; }
+        let live = true;
+        setTokenMeta(null);
+        const ledger = createSnsLedgerActor(id, { agentOptions: { identity } });
+        Promise.all([ledger.icrc1_decimals(), ledger.icrc1_symbol().catch(() => '')])
+            .then(([decimals, symbol]) => { if (live) setTokenMeta({ decimals: Number(decimals), symbol: symbol || '' }); })
+            .catch((err) => {
+                console.warn('TransactionList: could not read token decimals, assuming 8:', err);
+                if (live) setTokenMeta({ decimals: 8, symbol: '' });
+            });
+        return () => { live = false; };
+    }, [ledgerCanisterId?.toString?.()]);
 
     // Effects
     useEffect(() => {
@@ -847,6 +800,7 @@ function TransactionList({
             });
 
             const sorted = sortTransactions(filtered);
+            setExportRows(sorted);
             const start = page * pageSize;
             setDisplayedTransactions(sorted.slice(start, start + pageSize));
             setTotalTransactions(sorted.length);
@@ -871,6 +825,7 @@ function TransactionList({
 
             const sortedTxs = sortTransactions(filteredTxs);
             setDisplayedTransactions(sortedTxs);
+            setExportRows(sortedTxs);
         }
     }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
 
@@ -1236,8 +1191,8 @@ function TransactionList({
                                 {/* Export button */}
                                 <button
                                     onClick={exportTransactionsToCSV}
-                                    disabled={displayedTransactions.length === 0}
-                                    title={`Export ${displayedTransactions.length} transactions to CSV`}
+                                    disabled={exportRows.length === 0 || !tokenMeta}
+                                    title={`Download the ${exportRows.length} loaded transaction${exportRows.length === 1 ? '' : 's'} that match the filters as CSV (exact amounts, ISO times)`}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -1249,13 +1204,13 @@ function TransactionList({
                                         color: 'white',
                                         fontSize: '0.8rem',
                                         fontWeight: '600',
-                                        cursor: displayedTransactions.length === 0 ? 'not-allowed' : 'pointer',
-                                        opacity: displayedTransactions.length === 0 ? 0.5 : 1,
-                                        boxShadow: displayedTransactions.length === 0 ? 'none' : `0 2px 8px ${txPrimary}40`
+                                        cursor: exportRows.length === 0 || !tokenMeta ? 'not-allowed' : 'pointer',
+                                        opacity: exportRows.length === 0 || !tokenMeta ? 0.5 : 1,
+                                        boxShadow: exportRows.length === 0 || !tokenMeta ? 'none' : `0 2px 8px ${txPrimary}40`
                                     }}
                                 >
                                     <FaDownload size={11} />
-                                    Export
+                                    Export CSV
                                 </button>
                             </div>
                         </div>
