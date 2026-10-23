@@ -11,7 +11,7 @@ import { FaPaperPlane, FaSync, FaExternalLinkAlt, FaArrowLeft } from 'react-icon
 import { useDenomination } from '../../contexts/DenominationContext';
 import { formatAmount, formatAmountShown } from '../../utils/StringUtils';
 import { parseBtcAddress, btcAddressTypeLabel } from '../../utils/ckAddress';
-import { planSend, parseBtcAmount, satsToBtcText, spendable } from '../../utils/btc/select';
+import { planSend, planShown, parseBtcAmount, satsToBtcText, spendable } from '../../utils/btc/select';
 import { TIERS, TIER_BLOCKS, validateCustomRate, feeNeedsExtraConfirm, feeLookupDisabled, setFeeLookupDisabled } from '../../utils/btc/fees';
 import { sendCycles, ADDRESS_CYCLES, CYCLES_LEDGER_FEE, cyclesUsd, formatCycles } from '../../utils/btc/credit';
 import { executeSend, isAddressVerified, verifySignerAddress, buildSendRequest } from '../../utils/btc/send';
@@ -72,10 +72,8 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         if (!max && !amount?.ok) return null;
         return planSend({ utxos, locked, amount: max ? null : amount.sats, max, feeRate, destType: parsedTo.type, inputs: chosenList });
     }, [btc.data, parsedTo?.ok, parsedTo?.type, feeRate, max, amount?.ok, amount?.sats, utxos, locked, chosenList]); // eslint-disable-line react-hooks/exhaustive-deps
-    // While a send is in flight the coins it spends become reserved, so the live plan turns invalid;
-    // the review screen keeps showing the plan being sent until the outcome is known.
     const [sendingPlan, setSendingPlan] = useState(null);
-    const plan = step === 'sending' && sendingPlan ? sendingPlan : livePlan;
+    const plan = planShown({ step, sendingPlan, livePlan });
 
     const verified = isAddressVerified(w.storage, cfg.network, w.meText, address);
     const signCycles = plan?.ok ? sendCycles(plan.nInputs, 1) : null;

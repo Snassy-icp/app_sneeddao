@@ -161,3 +161,11 @@ export function satsToBtcText(sats) {
     const frac = (v % 100_000_000n).toString().padStart(8, '0').replace(/0+$/, '');
     return frac ? `${whole}.${frac}` : `${whole}`;
 }
+
+/**
+ * The plan the send screen shows. While a send is in flight its coins become reserved, so the live
+ * plan turns invalid; the plan being sent stays on screen until the outcome is known.
+ */
+export function planShown({ step, sendingPlan, livePlan }) {
+    return step === 'sending' && sendingPlan ? sendingPlan : livePlan;
+}

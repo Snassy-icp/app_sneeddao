@@ -16,7 +16,7 @@ import { IDL } from '@dfinity/candid';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import {
-    txVsize, feeFor, spendable, planSend, parseBtcAmount, satsToBtcText, CHANGE_MIN_SATS, MIN_SEND_SATS,
+    txVsize, feeFor, spendable, planSend, planShown, parseBtcAmount, satsToBtcText, CHANGE_MIN_SATS, MIN_SEND_SATS,
 } from '../../../src/app_sneeddao_frontend/src/utils/btc/select.js';
 import { computeTxid, expectedTxid, scriptPubKey, txidToInternal, serializeNonWitness } from '../../../src/app_sneeddao_frontend/src/utils/btc/txid.js';
 import {
@@ -708,5 +708,21 @@ describe('record bookkeeping', () => {
         for (let i = 0; i < 40; i++) rs = updateRecord(rs, 'r1', {}, { now: i, event: `e${i}` });
         expect(rs[0].log.length).toBe(30);
         expect(rs[0].log.at(-1).event).toBe('e39');
+    });
+});
+
+describe('the send screen while signing (found in the real-sats test)', () => {
+    it('keeps showing the plan being sent after its coins become reserved', () => {
+        const utxos = [utxo(1, 63_451)];
+        const reviewed = planSend({ utxos, amount: 10_000n, feeRate: 1, destType: 'p2wpkh' });
+        expect(reviewed.ok).toBe(true);
+        // mid-send the coin is reserved, so a freshly computed plan has nothing to spend
+        const live = planSend({ utxos, locked: new Set(reviewed.inputs.map((u) => `${u.txid}:${u.vout}`)), amount: 10_000n, feeRate: 1, destType: 'p2wpkh' });
+        expect(live.ok).toBe(false);
+        const shown = planShown({ step: 'sending', sendingPlan: reviewed, livePlan: live });
+        expect(shown.ok).toBe(true);
+        expect(shown.amount).toBe(10_000n);
+        // outside a send the live plan is shown, as before
+        expect(planShown({ step: 'review', sendingPlan: reviewed, livePlan: live })).toBe(live);
     });
 });
