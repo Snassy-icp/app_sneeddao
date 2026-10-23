@@ -412,3 +412,20 @@ export const hasExtraPockets = (pockets) => pockets.some((p) => p.id !== MAIN_ID
 
 /// The ICRC-1 account a pocket receives on, or null (books-only balances).
 export const receiveAccount = (p) => (p.caps?.receive || p.kind === KIND.wallet ? p.account : null);
+
+/// Dust (spec feedback 2026-10-23): a hosted balance at or below the ledger's transfer fee can't be
+/// withdrawn, so it is dropped from unnamed hosted pockets (lists, rows, totals). `feeFor(ledger)`
+/// gives the fee (null when unknown: kept). Wallet pockets, the Sneed Lock wallet (the token list
+/// shows it as before) and service balances are left alone.
+export function dropDust(pockets, feeFor) {
+    return pockets.map((p) => {
+        if (p.kind !== KIND.hosted || p.id === LOCK_POCKET_ID || (p.nickname || '').trim()) return p;
+        let balances = null;
+        for (const [l, b] of p.balances) {
+            const fee = feeFor(l);
+            if (fee == null) continue;
+            if (b.total <= big(fee)) { balances = balances || new Map(p.balances); balances.delete(l); }
+        }
+        return balances ? { ...p, balances, dust: true } : p;
+    });
+}

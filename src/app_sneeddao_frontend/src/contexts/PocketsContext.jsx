@@ -41,7 +41,9 @@ export function PocketsProvider({ children }) {
     const [hideEmpty, setHideEmptyState] = useState(() => readLocal(HIDE_EMPTY_KEY, true));
     const [showQuiet, setShowQuietState] = useState(false);
     // Sneedex escrows stay out of sight unless something can be withdrawn, or the user asks (Advanced)
-    const pockets = useMemo(() => M.applyQuiet(rawPockets, { showQuiet }), [rawPockets, showQuiet]);
+    // and hosted dust at or below the ledger fee (it can't be withdrawn) stays out of sight too
+    const feeByLedger = useMemo(() => new Map(walletTokens.map((t) => [ledgerText(t), t.fee]).filter(([l, f]) => l && f != null)), [walletTokens]);
+    const pockets = useMemo(() => M.applyQuiet(M.dropDust(rawPockets, (l) => feeByLedger.get(l) ?? null), { showQuiet }), [rawPockets, showQuiet, feeByLedger]);
     const run = useRef(0);
     const registryRef = useRef(null);
 

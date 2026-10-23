@@ -5,12 +5,14 @@
 // Top up for service balances. Actions go back to the caller (`onAction(kind, pocket, token)`), which
 // opens the one send dialog.
 import React, { useState } from 'react';
-import { FaShieldAlt, FaQrcode, FaPaperPlane, FaExchangeAlt, FaArrowUp, FaPlus, FaExclamationTriangle, FaCheck } from 'react-icons/fa';
+import { FaShieldAlt, FaQrcode, FaPaperPlane, FaExchangeAlt, FaArrowUp, FaArrowDown, FaPlus, FaExclamationTriangle, FaCheck } from 'react-icons/fa';
+import { useDenomination } from '../contexts/DenominationContext';
+import { formatAmount, computeUsdValue } from '../utils/StringUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePockets } from '../hooks/usePockets';
 import { normalizeId } from '../utils/IdUtils';
 import { displayName, totalIn, countedIn, balanceOf, sortPockets, holders, MAIN_ID, LOCK_POCKET_ID, KIND, receiveAccount, ALL, isQuiet } from '../utils/pockets/model';
-import { PocketAvatar, HostBadge, TokenAmount, PocketButton } from './PocketVisuals';
+import { PocketAvatar, HostBadge, PocketButton } from './PocketVisuals';
 import { wrapKindOf } from '../utils/wrapActions';
 import { encodeAccount, accountIdentifierHex } from '../utils/pockets/subaccount';
 import { CopyValue, QrCode } from './convert/ConvertUi';
@@ -73,12 +75,61 @@ const ACTIONS = {
     topup: { icon: FaPlus, label: 'Top up' },
     wrap: { icon: FaExchangeAlt, label: 'Wrap to sGLDT' },
     unwrap: { icon: FaExchangeAlt, label: 'Unwrap to GLDT' },
-    tomain: { icon: FaArrowUp, label: 'Move to Main to wrap', title: 'Wrapping works from Main' },
+    tomain: { icon: FaArrowUp, label: 'Move to Main', title: 'Wrapping works from Main' },
 };
 
-/// One pocket for one token, in the token card's look: avatar, name and host badge on the left,
-/// the amount with the token's logo and its value on the right, actions under it.
-export function PocketRow({ pocket: p, token, onAction, hideButtons = false, title = null }) {
+/// The one pocket row (320px and up): [avatar] [name + small badge, truncating] [amount, right;
+/// it wraps under the name when there is no room] and small action buttons that wrap below.
+/// No fixed widths: every flex child has min-width 0.
+export function PocketLine({ avatar, name, badge, amount, sub, actions = [], note, children, first = false, title }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    return (
+        <div title={title} style={{ padding: '10px 0', borderTop: first ? 'none' : `1px solid ${c.border}`, minWidth: 0 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 140px', minWidth: 0 }}>
+                    {avatar}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: c.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{name}</span>
+                        {badge ? <span style={{ flexShrink: 0, maxWidth: '50%', overflow: 'hidden' }}>{badge}</span> : null}
+                    </div>
+                </div>
+                <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 0, maxWidth: '100%', flex: '0 1 auto' }}>
+                    {amount}
+                    {sub ? <div style={{ fontSize: '0.72rem', color: c.mutedText, overflowWrap: 'anywhere' }}>{sub}</div> : null}
+                </div>
+            </div>
+            {note ? <div style={{ fontSize: '0.72rem', color: c.mutedText, marginTop: 4, overflowWrap: 'anywhere' }}>{note}</div> : null}
+            {actions.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {actions.map((a) => <PocketButton key={a.key} small icon={a.icon} title={a.title} onClick={a.onClick} disabled={a.disabled}>{a.label}</PocketButton>)}
+                </div>
+            )}
+            {children}
+        </div>
+    );
+}
+
+/// The amount on a row: "0.2126 SNEED" and its value (useDenomination); wraps instead of overflowing.
+export function LineAmount({ token, amount }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const { formatValue } = useDenomination();
+    const usd = token?.conversion_rate ? computeUsdValue(amount, token.decimals, token.conversion_rate) : null;
+    return (
+        <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: c.primaryText, overflowWrap: 'anywhere' }}>
+                {formatAmount(amount, token?.decimals ?? 8)} <span style={{ color: c.secondaryText, fontWeight: 600 }}>{token?.symbol || ''}</span>
+            </div>
+            {usd != null && usd > 0 ? <div style={{ fontSize: '0.72rem', color: c.mutedText }}>{formatValue(usd)}</div> : null}
+        </div>
+    );
+}
+
+const fmt = (v, token) => formatAmount(v, token?.decimals ?? 8);
+
+/// One pocket for one token: a PocketLine with its avatar, host badge, amount and actions.
+export function PocketRow({ pocket: p, token, onAction, hideButtons = false, title = null, first = false }) {
     const { theme } = useTheme();
     const c = theme.colors;
     const [receiving, setReceiving] = useState(false);
@@ -87,43 +138,24 @@ export function PocketRow({ pocket: p, token, onAction, hideButtons = false, tit
     const amount = b?.total ?? 0n;
     const reserved = isQuiet(p) && b && b.total > (b.available ?? b.total) ? b.total - b.available : 0n;
     const act = (k) => (k === 'receive' ? setReceiving((r) => !r) : onAction?.(k, p, token));
-    const actions = hideButtons ? [] : pocketActions(p, ledger);
+    const actions = hideButtons ? [] : pocketActions(p, ledger).map((k) => ({ key: k, ...ACTIONS[k], onClick: () => act(k) }));
+    const avatar = title && token?.logo ? <img src={token.logo} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }} /> : <PocketAvatar pocket={p} size={26} />;
     return (
-        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 12, background: c.secondaryBg, border: `1px solid ${c.border}`, minWidth: 0 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                {title ? (token?.logo ? <img src={token.logo} alt="" style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0 }} /> : <PocketAvatar pocket={p} />) : <PocketAvatar pocket={p} />}
-                <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: c.primaryText, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || displayName(p)}</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 2 }}>
-                        {!title && <HostBadge pocket={p} />}
-                        {p.grants > 0 && <span title={`${p.grants} grant${p.grants > 1 ? 's' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: c.accent, fontSize: '0.72rem' }}><FaShieldAlt size={10} />{p.grants}</span>}
-                    </div>
-                </div>
-                <div style={{ flexShrink: 0, maxWidth: '55%' }}>
-                    {p.status === 'error'
-                        ? <span style={{ fontSize: '0.8rem', color: c.warning, display: 'inline-flex', alignItems: 'center', gap: 6 }}><FaExclamationTriangle size={11} /> couldn't read {p.host || p.adapterId}</span>
-                        : <TokenAmount token={token} amount={amount} sub={b?.locked > 0n ? `${formatLocked(b.locked, token)} locked` : reserved > 0n ? `${formatLocked(reserved, token)} in escrow` : null} />}
-                </div>
-            </div>
-            {b?.note && <div style={{ fontSize: '0.72rem', color: c.mutedText, marginTop: 6 }}>{b.note}</div>}
-            {actions.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    {actions.map((k) => <PocketButton key={k} icon={ACTIONS[k].icon} title={ACTIONS[k].title} onClick={() => act(k)}>{ACTIONS[k].label}</PocketButton>)}
-                </div>
-            )}
+        <PocketLine first={first} avatar={avatar} name={title || displayName(p)}
+            badge={title || p.kind === KIND.wallet || (p.host && displayName(p).includes(p.host)) ? null : <HostBadge pocket={p} />}
+            amount={p.status === 'error'
+                ? <span style={{ fontSize: '0.78rem', color: c.warning, display: 'inline-flex', alignItems: 'center', gap: 5 }}><FaExclamationTriangle size={10} /> couldn't read</span>
+                : <LineAmount token={token} amount={amount} />}
+            sub={b?.locked > 0n ? `locked ${fmt(b.locked, token)} / free ${fmt(b.available ?? 0n, token)}` : reserved > 0n ? `${fmt(reserved, token)} in escrow` : null}
+            note={p.grants > 0 ? <span style={{ color: c.accent, display: 'inline-flex', alignItems: 'center', gap: 4 }}><FaShieldAlt size={10} /> {p.grants} grant{p.grants > 1 ? 's' : ''}</span> : null}
+            actions={actions}>
             {receiving && <div style={{ marginTop: 10 }}><ReceivePanel pocket={p} ledger={ledger} /></div>}
-        </div>
+        </PocketLine>
     );
 }
 
-const formatLocked = (v, token) => {
-    const d = token?.decimals ?? 8;
-    const n = Number(v) / 10 ** d;
-    return `${n.toLocaleString(undefined, { maximumFractionDigits: Math.min(d, 8) })} ${token?.symbol || ''}`.trim();
-};
-
-/// "New pocket" and "Move to a new pocket" right in a token card (casual and pro: one click, no
-/// trip to /wallet/pockets). The new pocket's Receive panel opens in place.
+/// "New pocket" and "Move to a new pocket", one compact row in a token card (casual and pro: one
+/// click, no trip to /wallet/pockets). The new pocket's Receive panel opens in place.
 export function NewPocketActions({ token, onAction }) {
     const { theme } = useTheme();
     const c = theme.colors;
@@ -147,24 +179,24 @@ export function NewPocketActions({ token, onAction }) {
     };
     const pocket = created ? pk.pocketById(created) : null;
     return (
-        <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <PocketButton icon={FaPlus} disabled={busy} onClick={() => make(false)} title="A numbered subaccount of your wallet: receive on it, approve from it">New pocket</PocketButton>
-                {canMove && <PocketButton icon={FaExchangeAlt} disabled={busy} onClick={() => make(true)}>Move to a new pocket</PocketButton>}
+        <div style={{ paddingTop: 10, borderTop: `1px solid ${c.border}` }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <PocketButton small icon={FaPlus} disabled={busy} onClick={() => make(false)} title="A numbered subaccount of your wallet: receive on it, approve from it">New pocket</PocketButton>
+                {canMove && <PocketButton small icon={FaExchangeAlt} disabled={busy} onClick={() => make(true)} title="Create a pocket and move tokens there from Main">Move to new</PocketButton>}
             </div>
-            {err && <div style={{ color: c.error, fontSize: '0.8rem', marginTop: 6 }}>{err}</div>}
+            {err && <div style={{ color: c.error, fontSize: '0.78rem', marginTop: 6 }}>{err}</div>}
             {pocket && (
-                <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 12, background: c.secondaryBg, border: `1px solid ${c.accent}55` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                        <PocketAvatar pocket={pocket} />
-                        <div style={{ fontWeight: 700, color: c.primaryText, flex: '1 1 auto' }}>{displayName(pocket)} created</div>
-                        {!named ? (
-                            <div style={{ display: 'flex', gap: 6, flex: '1 1 220px' }}>
-                                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={32} placeholder="Name it (optional, private)"
-                                    style={{ flex: 1, minWidth: 0, padding: '6px 10px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.primaryBg, color: c.primaryText, fontSize: '0.85rem' }} />
-                                <PocketButton icon={FaCheck} disabled={!name.trim() || busy} onClick={async () => { try { await pk.rename(pocket, name); setNamed(true); } catch (e) { setErr(e?.message || String(e)); } }}>Save</PocketButton>
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: c.primaryBg, border: `1px solid ${c.accent}55`, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10, minWidth: 0 }}>
+                        <PocketAvatar pocket={pocket} size={26} />
+                        <span style={{ fontWeight: 700, color: c.primaryText, fontSize: '0.88rem' }}>{displayName(pocket)} created</span>
+                        {!named && (
+                            <div style={{ display: 'flex', gap: 6, flex: '1 1 180px', minWidth: 0 }}>
+                                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={32} placeholder="Name it (private)"
+                                    style={{ flex: 1, minWidth: 0, padding: '5px 9px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.secondaryBg, color: c.primaryText, fontSize: '0.82rem' }} />
+                                <PocketButton small icon={FaCheck} disabled={!name.trim() || busy} onClick={async () => { try { await pk.rename(pocket, name); setNamed(true); } catch (e) { setErr(e?.message || String(e)); } }}>Save</PocketButton>
                             </div>
-                        ) : null}
+                        )}
                     </div>
                     <ReceivePanel pocket={pocket} ledger={ledger} />
                 </div>
@@ -173,8 +205,44 @@ export function NewPocketActions({ token, onAction }) {
     );
 }
 
-/// The pockets holding this token besides Main and the Sneed Lock wallet (which the card shows
-/// already), and the new-pocket actions.
+/// The token card's breakdown with pockets: Main (Wallet) and Sneed Lock as the first two rows, in
+/// the same row design as every other pocket, then the other pockets holding the token, then the
+/// new-pocket actions. `onDeposit` / `onWithdrawLock` are the card's Sneed Lock deposit / withdraw.
+export function TokenPocketBreakdown({ token, hideButtons, onAction, onDeposit, onWithdrawLock }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const pk = usePockets();
+    const ledger = ledgerOf(token);
+    const fee = BigInt(token?.fee ?? 0);
+    const main = BigInt(token?.balance ?? 0);
+    const lockTotal = BigInt(token?.balance_backend ?? 0);
+    const locked = BigInt(token?.locked ?? 0);
+    const lockFree = BigInt(token?.available_backend ?? (lockTotal > locked ? lockTotal - locked : 0n));
+    const mainPocket = pk.pockets.find((p) => p.id === MAIN_ID) || { id: MAIN_ID, kind: KIND.wallet, number: null, account: null, nickname: '' };
+    const lockPocket = pk.pockets.find((p) => p.id === LOCK_POCKET_ID) || { id: LOCK_POCKET_ID, kind: KIND.hosted, adapterId: 'sneed_lock', host: 'Sneed Lock', defaultLabel: 'Sneed Lock', nickname: '' };
+    const others = ledger ? sortPockets(holders(pk.pockets, ledger).concat(pk.pockets.filter((p) => p.status === 'error' && !p.hidden && p.ledgers.includes(ledger))))
+        .filter((p, i, a) => a.findIndex((q) => q.id === p.id) === i)
+        .filter((p) => p.id !== MAIN_ID && p.id !== LOCK_POCKET_ID) : [];
+    const showLock = lockTotal > 0n;
+    return (
+        <div style={{ padding: '2px 12px 10px', background: c.secondaryBg, borderRadius: 10, border: `1px solid ${c.border}`, margin: '8px 0', minWidth: 0 }}>
+            <PocketLine first avatar={<PocketAvatar pocket={mainPocket} size={26} />} name={displayName(mainPocket)} badge={null}
+                amount={<LineAmount token={token} amount={main} />}
+                actions={!hideButtons && main > fee ? [{ key: 'dep', icon: FaArrowDown, label: 'Deposit to Sneed Lock', onClick: onDeposit }] : []} />
+            {showLock && (
+                <PocketLine avatar={<PocketAvatar pocket={lockPocket} size={26} />} name={displayName(lockPocket)} badge={null}
+                    title="Tokens you hold in Sneed Lock; locked ones can't move until they unlock"
+                    amount={<LineAmount token={token} amount={lockTotal} />}
+                    sub={locked > 0n ? `locked ${fmt(locked, token)} / free ${fmt(lockFree, token)}` : null}
+                    actions={!hideButtons && lockFree > 0n ? [{ key: 'wd', icon: FaArrowUp, label: 'Withdraw', onClick: onWithdrawLock }] : []} />
+            )}
+            {others.map((p) => <PocketRow key={p.id} pocket={p} token={token} onAction={onAction} hideButtons={hideButtons} />)}
+            {!hideButtons && <NewPocketActions token={token} onAction={onAction} />}
+        </div>
+    );
+}
+
+/// The pockets holding this token besides Main and the Sneed Lock wallet, and the new-pocket actions.
 export default function PocketRows({ token, onAction, hideButtons, includeBase = false }) {
     const pk = usePockets();
     const ledger = ledgerOf(token);
@@ -207,18 +275,18 @@ export function PocketTokenList({ tokens, onAction }) {
     if (!pocket) return null;
     const shown = tokens.filter((t) => !pk.hideEmpty || totalIn(pocket, ledgerOf(t)) > 0n);
     return (
-        <div style={{ background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 16, padding: 14, minWidth: 0, marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <PocketAvatar pocket={pocket} size={42} />
+        <div style={{ background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 14, padding: '12px 14px 4px', minWidth: 0, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, paddingBottom: 8 }}>
+                <PocketAvatar pocket={pocket} size={36} />
                 <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: c.primaryText }}>{displayName(pocket)}</div>
-                    <div style={{ marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: c.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(pocket)}</div>
+                    <div style={{ marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                         <HostBadge pocket={pocket} />
-                        {pocket.status === 'error' && <span style={{ color: c.warning, fontSize: '0.78rem' }}>couldn't read {pocket.host}</span>}
+                        {pocket.status === 'error' && <span style={{ color: c.warning, fontSize: '0.75rem' }}>couldn't read {pocket.host}</span>}
                     </div>
                 </div>
             </div>
-            {!shown.length && <div style={{ padding: '12px 0 2px', fontSize: '0.85rem', color: c.mutedText }}>This pocket holds none of your wallet's tokens yet.</div>}
+            {!shown.length && <div style={{ padding: '10px 0', fontSize: '0.85rem', color: c.mutedText, borderTop: `1px solid ${c.border}` }}>This pocket holds none of your wallet's tokens yet.</div>}
             {shown.map((t) => <PocketRow key={ledgerOf(t)} pocket={pocket} title={t.symbol} token={t} onAction={onAction} />)}
         </div>
     );

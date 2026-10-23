@@ -72,7 +72,7 @@ function PocketApprovals({ pocket, tokens }) {
     );
 }
 
-function PocketCard({ pocket: p, tokens }) {
+export function PocketCard({ pocket: p, tokens }) {
     const pk = usePockets();
     const S = useStyles();
     const [open, setOpen] = useState(null); // 'rename' | 'receive' | 'approvals'
@@ -113,23 +113,25 @@ function PocketCard({ pocket: p, tokens }) {
                     const reserved = b.available != null && b.total > b.available && !b.locked ? b.total - b.available : 0n;
                     const sub = b.locked > 0n ? `locked ${formatAmount(b.locked, t.decimals)} / free ${formatAmount(b.available ?? 0n, t.decimals)}` : reserved > 0n ? `${formatAmount(reserved, t.decimals)} in escrow` : null;
                     return (
-                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, background: c.primaryBg, border: `1px solid ${c.border}` }}>
-                            <span style={{ fontSize: '0.8rem', color: c.secondaryText, fontWeight: 600 }}>{t.symbol}</span>
-                            <TokenAmount token={t} amount={b.total} sub={sub} />
+                        <div key={l} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: 8, rowGap: 2, padding: '8px 10px', borderRadius: 10, background: c.primaryBg, border: `1px solid ${c.border}`, minWidth: 0 }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: c.secondaryText, fontWeight: 600, minWidth: 0 }}>
+                                {t.logo ? <img src={t.logo} alt="" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0 }} /> : null}{t.symbol}
+                            </span>
+                            <div style={{ marginLeft: 'auto', minWidth: 0, maxWidth: '100%' }}><TokenAmount token={{ ...t, logo: null }} amount={b.total} sub={sub} /></div>
                         </div>
                     );
                 })}
             </div>
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-                {(wallet || p.caps?.receive) && <PocketButton icon={FaQrcode} onClick={() => toggle('receive')}>Receive</PocketButton>}
-                {canName && <PocketButton icon={FaPen} onClick={() => toggle('rename')}>Rename</PocketButton>}
-                {wallet && <PocketButton icon={FaHandshake} onClick={() => toggle('approvals')}>Approvals</PocketButton>}
+                {(wallet || p.caps?.receive) && <PocketButton small icon={FaQrcode} onClick={() => toggle('receive')}>Receive</PocketButton>}
+                {canName && <PocketButton small icon={FaPen} onClick={() => toggle('rename')}>Rename</PocketButton>}
+                {wallet && <PocketButton small icon={FaHandshake} onClick={() => toggle('approvals')}>Approvals</PocketButton>}
                 {p.id !== MAIN_ID && canName && !p.quietHidden && (
-                    <PocketButton icon={p.hidden ? FaEye : FaEyeSlash} disabled={busy} onClick={() => run(() => pk.hide(p, !p.hidden))}>{p.hidden ? 'Unhide' : 'Hide'}</PocketButton>
+                    <PocketButton small icon={p.hidden ? FaEye : FaEyeSlash} disabled={busy} onClick={() => run(() => pk.hide(p, !p.hidden))}>{p.hidden ? 'Unhide' : 'Hide'}</PocketButton>
                 )}
                 {p.id !== MAIN_ID && wallet && p.registered && (
-                    <PocketButton icon={FaTrash} disabled={busy} onClick={() => run(async () => {
+                    <PocketButton small icon={FaTrash} disabled={busy} onClick={() => run(async () => {
                         const has = rows.length > 0;
                         const ok = await appConfirm(has
                             ? `Forget ${displayName(p)}? It still holds tokens, so the wallet will find it again; nothing moves.`

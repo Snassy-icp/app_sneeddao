@@ -50,8 +50,8 @@ export function HostBadge({ pocket: p }) {
     const logo = p.kind !== KIND.wallet ? HOST_LOGOS[p.adapterId] : null;
     const tone = p.kind === KIND.service ? c.warning : p.kind === KIND.hosted ? c.accent : c.success;
     return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 600, padding: '1px 7px', borderRadius: 999, color: tone, background: `${tone}18`, border: `1px solid ${tone}40`, whiteSpace: 'nowrap' }}>
-            {logo && <img src={logo} alt="" style={{ width: 11, height: 11, objectFit: 'contain' }} />}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 600, padding: '1px 6px', borderRadius: 999, color: tone, background: `${tone}18`, border: `1px solid ${tone}40`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', boxSizing: 'border-box', verticalAlign: 'middle' }}>
+            {logo && <img src={logo} alt="" style={{ width: 10, height: 10, objectFit: 'contain', flexShrink: 0 }} />}
             {badge(p) === displayName(p) ? (p.kind === KIND.service ? 'Service balance' : 'Holds for you') : badge(p)}
         </span>
     );
@@ -67,7 +67,7 @@ export function TokenAmount({ token, amount, align = 'right', strong = true, sub
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: align === 'right' ? 'flex-end' : 'flex-start', minWidth: 0 }}>
             {token?.logo ? <img src={token.logo} alt="" style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} /> : null}
             <div style={{ textAlign: align, minWidth: 0 }}>
-                <div style={{ fontSize: '0.92rem', fontWeight: strong ? 700 : 500, color: c.primaryText, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: strong ? 700 : 500, color: c.primaryText, overflowWrap: 'anywhere' }}>
                     {formatAmount(amount, token?.decimals ?? 8)} <span style={{ color: c.secondaryText, fontWeight: 600 }}>{token?.symbol || ''}</span>
                 </div>
                 {(usd != null && usd > 0) || sub ? (
@@ -79,18 +79,18 @@ export function TokenAmount({ token, amount, align = 'right', strong = true, sub
 }
 
 /// A pill action button, the same everywhere pockets show.
-export function PocketButton({ icon: Icon, children, onClick, title, primary = false, disabled = false }) {
+export function PocketButton({ icon: Icon, children, onClick, title, primary = false, disabled = false, small = false }) {
     const { theme } = useTheme();
     const c = theme.colors;
     return (
         <button type="button" title={title} disabled={disabled} onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
             style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 999,
+                display: 'inline-flex', alignItems: 'center', gap: small ? 5 : 6, padding: small ? '4px 9px' : '6px 12px', fontSize: small ? '0.72rem' : '0.78rem', fontWeight: 600, borderRadius: small ? 8 : 999, whiteSpace: 'nowrap', lineHeight: 1.3,
                 cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
                 background: primary ? c.accent : 'transparent', color: primary ? '#fff' : c.primaryText,
                 border: primary ? `1px solid ${c.accent}` : `1px solid ${c.border}`,
             }}>
-            {Icon && <Icon size={11} />} {children}
+            {Icon && <Icon size={small ? 9 : 11} />} {children}
         </button>
     );
 }

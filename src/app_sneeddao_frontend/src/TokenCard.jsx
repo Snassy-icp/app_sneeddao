@@ -36,7 +36,7 @@ import { TokenApprovalsBadge, TokenApprovalsRow } from './components/ApprovalsLi
 import { icrc1Transfer } from './utils/icrcTx';
 import { appAlert, appConfirm } from './utils/appDialog';
 import { usePockets } from './hooks/usePockets';
-import PocketRows from './components/PocketRows';
+import { TokenPocketBreakdown } from './components/PocketRows';
 import { otherPocketsTotal, holders as pocketHolders } from './utils/pockets/model';
 import { wrapAction } from './utils/wrapActions';
 import { journalStake, updateStake, removeStake } from './utils/stakeJournal';
@@ -2106,7 +2106,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         <div className="balance-value">{formatAmount((token.available || 0n) + pocketsExtra, token.decimals)}{getUSD((token.available || 0n) + pocketsExtra, token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                     </div>
                                     
-                                    {showBalanceBreakdown && (
+                                    {showBalanceBreakdown && showPockets && (
+                                        <TokenPocketBreakdown token={token} hideButtons={hideButtons} onAction={onPocketAction}
+                                            onDeposit={() => handleDepositToBackend(token)} onWithdrawLock={() => handleWithdrawFromBackend(token)} />
+                                    )}
+                                    {showBalanceBreakdown && !showPockets && (
                                         <div className="balance-breakdown" style={{ 
                                             padding: '12px', 
                                             background: theme.colors.secondaryBg, 
@@ -2240,7 +2244,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     </button>
                                                 )}
                                             </div>
-                                            {showPockets && <PocketRows token={token} hideButtons={hideButtons} onAction={onPocketAction} />}
                                         </div>
                                     )}
                                     {(token.locked || 0n) > 0n && (

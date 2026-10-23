@@ -537,3 +537,30 @@ describe('GLDT / sGLDT wrap actions with pockets, and ledger ids that lost their
     expect(ID.normalizeId(JSON.parse(JSON.stringify({ id: p })).id)).toBe(GLDT); // what JSON makes of a Principal
   });
 });
+
+describe('dust: hosted balances at or below the ledger fee stay out of sight', () => {
+  it('drops them from unnamed hosted pockets only (not Main, numbered pockets, Sneed Lock or services)', () => {
+    const swap = { id: 'icpswap', name: 'ICPSwap', kind: 'hosted', withdrawTo: 'main', withdraw() {} };
+    let ps = M.mergePockets({ me, discovered: [{ subaccount: sub(1) }], hosted: [
+      { adapter: swap, items: [{ hostKey: 'p1', ledgers: [L1, L2] }, { hostKey: 'p2', ledgers: [L1] }] },
+      { adapter: lockAdapter, items: [{ hostKey: 'wallet', account: { owner: LOCK, subaccount: sub(50) } }] },
+      { adapter: monAdapter, items: [{ hostKey: 'balance' }] },
+    ] });
+    ps = ps.map((p) => (p.hostKey === 'p1' ? M.withBalance(M.withBalance(p, L1, 311n), L2, 5_000n)
+      : p.hostKey === 'p2' ? M.withBalance(p, L1, 1_000n)
+        : p.number === 1 || p.id === M.LOCK_POCKET_ID || p.kind === 'service' ? M.withBalance(p, L1, 5n) : p));
+    const fee = (l) => (l === L1 ? 1_000n : l === L2 ? 10n : null);
+    const out = M.dropDust(ps, fee);
+    const byId = Object.fromEntries(out.map((p) => [p.id, p]));
+    expect([...byId['h:icpswap:p1'].balances.keys()]).toEqual([L2]); // 311 ≤ fee dropped, 5,000 kept
+    expect(byId['h:icpswap:p2'].balances.size).toBe(0); // exactly the fee: can't be withdrawn either
+    expect(M.holders(out, L1).map((p) => p.id)).not.toContain('h:icpswap:p2');
+    expect(byId[M.walletPocketId(sub(1))].balances.get(L1).total).toBe(5n);
+    expect(byId[M.LOCK_POCKET_ID].balances.get(L1).total).toBe(5n);
+    expect(byId['s:sneed_mon:balance'].balances.get(L1).total).toBe(5n);
+    // a named one keeps its dust; unknown fees keep everything
+    const named = M.dropDust(ps.map((p) => (p.hostKey === 'p2' ? { ...p, nickname: 'Pool' } : p)), fee);
+    expect(named.find((p) => p.hostKey === 'p2').balances.get(L1).total).toBe(1_000n);
+    expect(M.dropDust(ps, () => null).find((p) => p.hostKey === 'p1').balances.size).toBe(2);
+  });
+});
