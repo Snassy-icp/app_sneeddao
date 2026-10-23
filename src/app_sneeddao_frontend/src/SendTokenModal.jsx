@@ -37,7 +37,7 @@ const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWOR
 // switcher's selection, or a pocket row's Send); `toPocketId` / mode 'move' moves to one of my
 // pockets (Move, Withdraw, Top up). Without other pockets the dialog is as it always was: Main +
 // Sneed Lock, split by utils/sendPlan.js. `onPocketTransferDone(token)` refreshes after a pocket send.
-function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toPocketId = null, mode = 'send', onPocketTransferDone }) {
+function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toPocketId = null, mode = 'send', onPocketTransferDone, fillMax = false }) {
   const { theme } = useTheme();
   const pk = usePockets();
   const ledgerId = normalizeId(token?.ledger_canister_id || token?.principal);
@@ -91,6 +91,11 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, fromPocket?.id, ledgerId]);
+  // "Move all to Main" (emptying a pocket before removing it): the amount starts at MAX
+  useEffect(() => {
+    if (show && fillMax && fromPocket && fromRules) setAmount(formatAmountRaw(pocketMax(), token.decimals));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show, fillMax, fromPocket?.id, fromRules]);
   /// The most a pocket send can deliver: what the pocket gives, less the fees of later steps.
   const pocketMax = () => {
     if (!fromRules) return 0n;

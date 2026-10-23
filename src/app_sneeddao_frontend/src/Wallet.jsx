@@ -3695,7 +3695,7 @@ function Wallet() {
     const openSendModal = (token, opts = {}) => {
         setSelectedToken(token);
         const sel = walletPockets.selected;
-        setSendPocketOptions({ fromPocketId: opts.fromPocketId ?? (sel && sel !== ALL_POCKETS ? sel : null), toPocketId: opts.toPocketId ?? null, mode: opts.mode || 'send' });
+        setSendPocketOptions({ fromPocketId: opts.fromPocketId ?? (sel && sel !== ALL_POCKETS ? sel : null), toPocketId: opts.toPocketId ?? null, mode: opts.mode || 'send', fillMax: Boolean(opts.fillMax) });
         setShowSendModal(true);
     };
 
@@ -3708,6 +3708,7 @@ function Wallet() {
         else if (kind === 'wrap') openWrapModal(token);
         else if (kind === 'unwrap') openUnwrapModal(token);
         else if (kind === 'tomain') openSendModal(token, { fromPocketId: pocket.id, toPocketId: MAIN_ID, mode: 'move' });
+        else if (kind === 'emptytomain') openSendModal(token, { fromPocketId: pocket.id, toPocketId: MAIN_ID, mode: 'move', fillMax: true });
         else if (kind === 'moveto') openSendModal(token, { fromPocketId: MAIN_ID, toPocketId: pocket.id, mode: 'move' }); // a pocket just created from the card
     };
 
@@ -10880,6 +10881,7 @@ function Wallet() {
                     fromPocketId={sendPocketOptions.fromPocketId}
                     toPocketId={sendPocketOptions.toPocketId}
                     mode={sendPocketOptions.mode}
+                    fillMax={sendPocketOptions.fillMax}
                     onPocketTransferDone={(t) => handleRefreshToken(t)}
                 />
                 <WithdrawTokenModal

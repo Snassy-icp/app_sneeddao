@@ -564,3 +564,19 @@ describe('dust: hosted balances at or below the ledger fee stay out of sight', (
     expect(M.dropDust(ps, () => null).find((p) => p.hostKey === 'p1').balances.size).toBe(2);
   });
 });
+
+describe('removing a pocket', () => {
+  it('only remembered or named wallet pockets other than Main; empty ones remove, others empty first', () => {
+    const ps = M.mergePockets({ me,
+      registry: [{ account: { owner: me, subaccount: sub(5) }, nickname: 'Old', pocket: { host: null, ledgers: [], hidden: false } }],
+      discovered: [{ subaccount: sub(6), ledger: L1, balance: 3n }],
+      hosted: [{ adapter: lockAdapter, items: [{ hostKey: 'wallet', account: { owner: LOCK, subaccount: sub(50) } }] }] });
+    const byNum = (n) => ps.find((p) => p.number === n);
+    expect(M.canRemove(byNum(5))).toBe(true);
+    expect(M.isEmpty(byNum(5))).toBe(true);
+    expect(M.canRemove(byNum(6))).toBe(false); // found by discovery only: nothing to remove (it is not remembered)
+    expect(M.isEmpty(byNum(6))).toBe(false);
+    expect(M.canRemove(ps.find((p) => p.id === M.MAIN_ID))).toBe(false);
+    expect(M.canRemove(ps.find((p) => p.id === M.LOCK_POCKET_ID))).toBe(false);
+  });
+});

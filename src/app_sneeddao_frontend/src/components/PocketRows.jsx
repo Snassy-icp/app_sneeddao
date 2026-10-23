@@ -5,13 +5,14 @@
 // Top up for service balances. Actions go back to the caller (`onAction(kind, pocket, token)`), which
 // opens the one send dialog.
 import React, { useState } from 'react';
-import { FaShieldAlt, FaQrcode, FaPaperPlane, FaExchangeAlt, FaArrowUp, FaArrowDown, FaPlus, FaExclamationTriangle, FaCheck } from 'react-icons/fa';
+import { FaTrash, FaShieldAlt, FaQrcode, FaPaperPlane, FaExchangeAlt, FaArrowUp, FaArrowDown, FaPlus, FaExclamationTriangle, FaCheck } from 'react-icons/fa';
 import { useDenomination } from '../contexts/DenominationContext';
 import { formatAmount, computeUsdValue } from '../utils/StringUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePockets } from '../hooks/usePockets';
 import { normalizeId } from '../utils/IdUtils';
-import { displayName, totalIn, countedIn, balanceOf, sortPockets, holders, MAIN_ID, LOCK_POCKET_ID, KIND, receiveAccount, ALL, isQuiet } from '../utils/pockets/model';
+import { displayName, totalIn, countedIn, balanceOf, sortPockets, holders, MAIN_ID, LOCK_POCKET_ID, KIND, receiveAccount, ALL, isQuiet, isEmpty, canRemove } from '../utils/pockets/model';
+import { appConfirm } from '../utils/appDialog';
 import { PocketAvatar, HostBadge, PocketButton } from './PocketVisuals';
 import { wrapKindOf } from '../utils/wrapActions';
 import { encodeAccount, accountIdentifierHex } from '../utils/pockets/subaccount';
@@ -22,15 +23,22 @@ const ledgerOf = (token) => normalizeId(token?.ledger_canister_id || token?.prin
 
 
 /// Where to send tokens to this pocket: its ICRC-1 text, a QR code and, for ICP, the account identifier.
+const QR_KEY = 'sneed_pockets_show_qr_v1';
+const readQr = () => { try { return localStorage.getItem(QR_KEY) === '1'; } catch { return false; } };
+const writeQr = (v) => { try { localStorage.setItem(QR_KEY, v ? '1' : '0'); } catch { /* storage blocked */ } };
+
 export function ReceivePanel({ pocket, ledger }) {
     const { theme } = useTheme();
     const c = theme.colors;
+    // the QR code only on request (it takes a lot of room on a phone); remembered on this device
+    const [showQr, setShowQrState] = useState(readQr);
+    const setShowQr = (v) => { setShowQrState(v); writeQr(v); };
     const account = receiveAccount(pocket);
     if (!account) return <div style={{ fontSize: '0.8rem', color: c.mutedText }}>This balance is kept in {pocket.host || 'the service'}'s own books: top it up through the service.</div>;
     const text = encodeAccount(account);
     return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
-            <QrCode text={text} size={148} />
+            {showQr && <QrCode text={text} size={148} />}
             <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: '0.75rem', color: c.mutedText }}>ICRC-1 account{pocket.number != null ? ` (pocket #${pocket.number})` : ''}</div>
                 <CopyValue value={text} label="account" />
@@ -40,6 +48,10 @@ export function ReceivePanel({ pocket, ledger }) {
                         <CopyValue value={accountIdentifierHex(account)} label="account identifier" />
                     </>
                 )}
+                <button type="button" onClick={(e) => { e.stopPropagation(); setShowQr(!showQr); }}
+                    style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: c.accent, cursor: 'pointer', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <FaQrcode size={10} /> {showQr ? 'Hide QR' : 'Show QR'}
+                </button>
                 {pocket.kind === KIND.wallet && pocket.number != null && (
                     <div style={{ fontSize: '0.72rem', color: c.mutedText }}>Only wallets that understand subaccounts can pay this pocket; for others use Main.</div>
                 )}
@@ -76,6 +88,7 @@ const ACTIONS = {
     wrap: { icon: FaExchangeAlt, label: 'Wrap to sGLDT' },
     unwrap: { icon: FaExchangeAlt, label: 'Unwrap to GLDT' },
     tomain: { icon: FaArrowUp, label: 'Move to Main', title: 'Wrapping works from Main' },
+    remove: { icon: FaTrash, label: 'Remove', title: 'Remove this pocket from your list' },
 };
 
 /// The one pocket row (320px and up): [avatar] [name + small badge, truncating] [amount, right;
@@ -128,17 +141,54 @@ export function LineAmount({ token, amount }) {
 
 const fmt = (v, token) => formatAmount(v, token?.decimals ?? 8);
 
+/// "Remove pocket": an empty pocket is forgotten (after a yes); one that still holds tokens says to
+/// empty it first and offers "Move all to Main" for the tokens it holds (`tokens`).
+export function RemovePocketPanel({ pocket: p, tokens = [], onAction, onDone }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const pk = usePockets();
+    const [err, setErr] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const held = tokens.filter((t) => totalIn(p, ledgerOf(t)) > 0n);
+    if (!isEmpty(p)) {
+        return (
+            <div style={{ marginTop: 8, fontSize: '0.78rem', color: c.secondaryText }} onClick={(e) => e.stopPropagation()}>
+                <div>{displayName(p)} still holds tokens: empty it first, then remove it.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                    {held.map((t) => <PocketButton key={ledgerOf(t)} small icon={FaArrowUp} onClick={() => onAction?.('emptytomain', p, t)}>Move all {t.symbol} to Main</PocketButton>)}
+                </div>
+            </div>
+        );
+    }
+    const remove = async () => {
+        setErr(null);
+        const ok = await appConfirm(`Remove ${displayName(p)} from your pockets? The subaccount stays on-chain: if tokens arrive there later, the wallet finds it again.`, { type: 'warning', confirmText: 'Remove' });
+        if (!ok) return;
+        setBusy(true);
+        try { await pk.forget(p); onDone?.(); } catch (e) { setErr(e?.message || String(e)); } finally { setBusy(false); }
+    };
+    return (
+        <div style={{ marginTop: 8, fontSize: '0.78rem', color: c.secondaryText }} onClick={(e) => e.stopPropagation()}>
+            <PocketButton small icon={FaTrash} disabled={busy} onClick={remove}>Remove {displayName(p)}</PocketButton>
+            <div style={{ marginTop: 4, color: c.mutedText }}>The subaccount stays on-chain; if tokens arrive later, it comes back.</div>
+            {err && <div style={{ color: c.error, marginTop: 4 }}>{err}</div>}
+        </div>
+    );
+}
+
 /// One pocket for one token: a PocketLine with its avatar, host badge, amount and actions.
 export function PocketRow({ pocket: p, token, onAction, hideButtons = false, title = null, first = false }) {
     const { theme } = useTheme();
     const c = theme.colors;
     const [receiving, setReceiving] = useState(false);
+    const [removing, setRemoving] = useState(false);
     const ledger = ledgerOf(token);
     const b = balanceOf(p, ledger);
     const amount = b?.total ?? 0n;
     const reserved = isQuiet(p) && b && b.total > (b.available ?? b.total) ? b.total - b.available : 0n;
-    const act = (k) => (k === 'receive' ? setReceiving((r) => !r) : onAction?.(k, p, token));
-    const actions = hideButtons ? [] : pocketActions(p, ledger).map((k) => ({ key: k, ...ACTIONS[k], onClick: () => act(k) }));
+    const act = (k) => (k === 'receive' ? setReceiving((r) => !r) : k === 'remove' ? setRemoving((r) => !r) : onAction?.(k, p, token));
+    const keys = hideButtons ? [] : [...pocketActions(p, ledger), ...(canRemove(p) && !title ? ['remove'] : [])];
+    const actions = keys.map((k) => ({ key: k, ...ACTIONS[k], onClick: () => act(k) }));
     const avatar = title && token?.logo ? <img src={token.logo} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0 }} /> : <PocketAvatar pocket={p} size={26} />;
     return (
         <PocketLine first={first} avatar={avatar} name={title || displayName(p)}
@@ -150,6 +200,7 @@ export function PocketRow({ pocket: p, token, onAction, hideButtons = false, tit
             note={p.grants > 0 ? <span style={{ color: c.accent, display: 'inline-flex', alignItems: 'center', gap: 4 }}><FaShieldAlt size={10} /> {p.grants} grant{p.grants > 1 ? 's' : ''}</span> : null}
             actions={actions}>
             {receiving && <div style={{ marginTop: 10 }}><ReceivePanel pocket={p} ledger={ledger} /></div>}
+            {removing && <RemovePocketPanel pocket={p} tokens={[token]} onAction={onAction} />}
         </PocketLine>
     );
 }
@@ -270,6 +321,7 @@ export function PocketTokenList({ tokens, onAction }) {
     const { theme } = useTheme();
     const c = theme.colors;
     const pk = usePockets();
+    const [removing, setRemoving] = useState(false);
     if (pk.selected === ALL) return null;
     const pocket = pk.pockets.find((p) => p.id === pk.selected);
     if (!pocket) return null;
@@ -285,7 +337,9 @@ export function PocketTokenList({ tokens, onAction }) {
                         {pocket.status === 'error' && <span style={{ color: c.warning, fontSize: '0.75rem' }}>couldn't read {pocket.host}</span>}
                     </div>
                 </div>
+                {canRemove(pocket) && <PocketButton small icon={FaTrash} onClick={() => setRemoving(!removing)}>Remove</PocketButton>}
             </div>
+            {removing && <div style={{ paddingBottom: 8 }}><RemovePocketPanel pocket={pocket} tokens={tokens} onAction={onAction} onDone={() => pk.setSelected(ALL)} /></div>}
             {!shown.length && <div style={{ padding: '10px 0', fontSize: '0.85rem', color: c.mutedText, borderTop: `1px solid ${c.border}` }}>This pocket holds none of your wallet's tokens yet.</div>}
             {shown.map((t) => <PocketRow key={ledgerOf(t)} pocket={pocket} title={t.symbol} token={t} onAction={onAction} />)}
         </div>

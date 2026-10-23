@@ -134,10 +134,10 @@ export function PocketCard({ pocket: p, tokens }) {
                     <PocketButton small icon={FaTrash} disabled={busy} onClick={() => run(async () => {
                         const has = rows.length > 0;
                         const ok = await appConfirm(has
-                            ? `Forget ${displayName(p)}? It still holds tokens, so the wallet will find it again; nothing moves.`
-                            : `Forget ${displayName(p)}? It leaves your pocket list; its name stays. Nothing moves.`, { type: 'warning', confirmText: 'Forget' });
+                            ? `Remove ${displayName(p)}? It still holds tokens, so the wallet will find it again: empty it first (Move all to Main). Nothing moves.`
+                            : `Remove ${displayName(p)} from your pockets? The subaccount stays on-chain: if tokens arrive there later, the wallet finds it again.`, { type: 'warning', confirmText: 'Remove' });
                         if (ok) await pk.forget(p);
-                    })}>Forget</PocketButton>
+                    })}>Remove</PocketButton>
                 )}
             </div>
             {err && <div style={{ color: c.error, fontSize: '0.8rem', marginTop: 6 }}>{err}</div>}

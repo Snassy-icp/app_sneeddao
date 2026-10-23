@@ -429,3 +429,10 @@ export function dropDust(pockets, feeFor) {
         return balances ? { ...p, balances, dust: true } : p;
     });
 }
+
+/// Nothing in any ledger (as far as the model has read).
+export const isEmpty = (p) => ![...p.balances.values()].some((b) => b.total > 0n);
+
+/// "Remove pocket" (forget it in the registry): the user's own remembered or named wallet pockets
+/// other than Main. The subaccount stays on-chain; tokens arriving later bring it back via discovery.
+export const canRemove = (p) => p.kind === KIND.wallet && p.id !== MAIN_ID && Boolean(p.registered || (p.nickname || '').trim());
