@@ -30,30 +30,40 @@ const listing = (ctx) => once(ctx, 'sneedex:list', async () => {
 
 const itemOf = async (ctx, pocket) => (await listing(ctx)).find((i) => i.hostKey === pocket.hostKey);
 
+/// The escrow's balance and what withdrawBidEscrow / withdrawOfferCreationPayment would give now.
+async function escrowState(ctx, pocket, ledger) {
+    const item = pocket.meta ? pocket : await itemOf(ctx, pocket);
+    const meta = item?.meta;
+    const [balance, fee] = await Promise.all([ledgerBalance(ctx, ledger, pocket.account), feeOf(ctx, ledger)]);
+    if (!meta || meta.kind === 'payment') return { balance, fee, withdrawable: minus(balance, fee), allOnly: true, why: null };
+    const b = meta.bid;
+    const st = stateOf(b);
+    if (st === 'Won') return { balance, fee, withdrawable: 0n, why: 'a won bid stays in escrow until the seller is paid' };
+    // as withdrawBidEscrow (2026-10-22): a confirmed bid keeps its amount, which pays the later refund or payout fees included
+    const reserved = b.tokens_escrowed && !PAID_OUT.includes(st) ? big(b.amount) : 0n;
+    return { balance, fee, withdrawable: minus(balance, reserved + fee), why: reserved > 0n ? 'the bid amount stays in escrow while the bid stands' : null };
+}
+
 export const sneedexAdapter = {
     id: 'sneedex',
     name: 'Sneedex',
     kind: 'hosted',
     receivesDirectly: true,
     withdrawTo: 'main',
+    quiet: true,
     enabled: (ctx) => Boolean(ctx.canisterIds?.sneedex),
     async listMyAccounts(ctx) { return listing(ctx); },
+    /// `available` is what can be withdrawn now: these escrows are quiet pockets (model.js), shown
+    /// and counted only with that, unless the user turns "Show Sneedex escrows" on.
     async balance(ctx, pocket, ledger) {
-        const t = await ledgerBalance(ctx, ledger, pocket.account);
-        return { total: t, available: t };
+        const e = await escrowState(ctx, pocket, ledger);
+        const reserved = e.balance > e.withdrawable ? e.balance - e.withdrawable : 0n;
+        return { total: e.balance, available: e.withdrawable, ...(e.why && reserved > 0n ? { note: e.why } : {}) };
     },
     /// What can leave now, and why not more.
     async rules(ctx, pocket, ledger) {
-        const item = pocket.meta ? pocket : await itemOf(ctx, pocket);
-        const meta = item?.meta;
-        const [balance, fee] = await Promise.all([ledgerBalance(ctx, ledger, pocket.account), feeOf(ctx, ledger)]);
-        if (!meta || meta.kind === 'payment') return { withdrawable: minus(balance, fee), fee, allOnly: true, why: null };
-        const b = meta.bid;
-        const st = stateOf(b);
-        if (st === 'Won') return { withdrawable: 0n, fee, why: 'a won bid stays in escrow until the seller is paid' };
-        // as withdrawBidEscrow (2026-10-22): a confirmed bid keeps its amount, which pays the later refund or payout fees included
-        const reserved = b.tokens_escrowed && !PAID_OUT.includes(st) ? big(b.amount) : 0n;
-        return { withdrawable: minus(balance, reserved + fee), fee, why: reserved > 0n ? 'the bid amount stays in escrow while the bid stands' : null };
+        const e = await escrowState(ctx, pocket, ledger);
+        return { withdrawable: e.withdrawable, fee: e.fee, why: e.why, ...(e.allOnly ? { allOnly: true } : {}) };
     },
     /// Fund a bid (or the creation payment) from a wallet pocket.
     async deposit(ctx, pocket, ledger, amount, fromSubaccount) {

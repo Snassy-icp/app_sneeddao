@@ -20,6 +20,18 @@ export const OpKind = IDL.Variant({
 });
 const OpState = IDL.Variant({ pending: IDL.Null, approved: IDL.Int, vetoed: IDL.Null, executed: IDL.Int, failed: IDL.Text, expired: IDL.Null, cancelled: IDL.Null });
 const Op = IDL.Record({ id: IDL.Nat, child: IDL.Principal, kind: OpKind, staged_by: IDL.Principal, staged_at: IDL.Int, memo: IDL.Text, payer: IDL.Principal, fee_e8s: IDL.Nat, fee_paid_e8s: IDL.Nat, refunded_e8s: IDL.Nat, approvals: IDL.Vec(IDL.Principal), oks: IDL.Vec(IDL.Principal), vetoes: IDL.Vec(IDL.Principal), state: OpState });
+// an op as the lists show it: an install's argument as size + SHA-256 (the bytes come with get_op)
+const OpKindSummary = IDL.Variant({
+    set_controllers: IDL.Vec(IDL.Principal),
+    install: IDL.Record({ hash: IDL.Vec(IDL.Nat8), arg_size: IDL.Opt(IDL.Nat), arg_sha256: IDL.Opt(IDL.Vec(IDL.Nat8)) }),
+    set_policy: Policy,
+    set_config: ConfigUpdate,
+    set_approvers: IDL.Record({ approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat }),
+});
+const OpSummary = IDL.Record({ id: IDL.Nat, child: IDL.Principal, kind: OpKindSummary, staged_by: IDL.Principal, staged_at: IDL.Int, memo: IDL.Text, payer: IDL.Principal, fee_e8s: IDL.Nat, fee_paid_e8s: IDL.Nat, refunded_e8s: IDL.Nat, approvals: IDL.Vec(IDL.Principal), oks: IDL.Vec(IDL.Principal), vetoes: IDL.Vec(IDL.Principal), state: OpState });
+const OpPageArgs = IDL.Record({ open: IDL.Bool, child: IDL.Opt(IDL.Principal), before: IDL.Opt(IDL.Nat), limit: IDL.Nat });
+const OpPage = IDL.Record({ items: IDL.Vec(OpSummary), next: IDL.Opt(IDL.Nat) });
+const RateRule = IDL.Record({ capacity: IDL.Nat, per_minute: IDL.Nat });
 const Config = IDL.Record({
     name: IDL.Text, approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat, admins: IDL.Vec(IDL.Principal), approve_function_id: IDL.Opt(IDL.Nat64), op_fee_e8s: IDL.Nat, premium_op_fee_e8s: IDL.Nat, fee_destination: Account, sneed_premium: IDL.Opt(IDL.Principal),
     icp_ledger: IDL.Principal, sns_wasm: IDL.Principal, op_ttl_ns: IDL.Nat, self_window_ns: IDL.Nat, status_interval_s: IDL.Nat, low_cycles_threshold: IDL.Nat, cycle_reserve: IDL.Nat, paused: IDL.Bool,
@@ -52,6 +64,11 @@ export const guardianIdl = ({ IDL }) => IDL.Service({
     get_op: IDL.Func([IDL.Nat], [IDL.Opt(Op)], ['query']),
     list_ops: IDL.Func([IDL.Bool, IDL.Nat], [IDL.Vec(Op)], ['query']),
     list_ops_for: IDL.Func([IDL.Principal], [IDL.Vec(Op)], ['query']),
+    list_op_summaries: IDL.Func([OpPageArgs], [OpPage], ['query']),
+    get_op_limits: IDL.Func([], [IDL.Record({ max_open_ops_per_caller: IDL.Nat, max_install_arg_bytes: IDL.Nat, max_page: IDL.Nat })], ['query']),
+    get_rate_limits: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, RateRule))], ['query']),
+    admin_set_max_open_ops: IDL.Func([IDL.Nat], [Res(IDL.Null)], []),
+    admin_set_rate_limit: IDL.Func([IDL.Text, IDL.Opt(RateRule)], [Res(IDL.Null)], []),
     get_cycles_report: IDL.Func([IDL.Opt(IDL.Nat)], [IDL.Vec(CyclesRow)], ['query']),
     list_upgradable: IDL.Func([], [IDL.Vec(Upgradable)], ['query']),
     validate_approve_op: IDL.Func([IDL.Nat], [Res(IDL.Text)], []),

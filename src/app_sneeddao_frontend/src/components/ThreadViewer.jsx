@@ -13,6 +13,7 @@ import { useTokens } from '../hooks/useTokens';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatError } from '../utils/errorUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
+import BigAvatar from './BigAvatar';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
 import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
@@ -3746,7 +3747,30 @@ function ThreadViewer({
             >
 
                 {/* Post content - simplified for now */}
-                <div className="post-content">
+                {/* Classic forum layout: the poster's column (face, name, verified check) beside the post */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: isNarrowScreen || isCollapsed ? '8px' : '12px' }}>
+                {post.created_by && (
+                    <div className="post-author-column" style={{
+                        width: isNarrowScreen || isCollapsed ? 'auto' : '84px', flexShrink: 0,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', paddingTop: '2px'
+                    }}>
+                        <BigAvatar principal={post.created_by} size={isCollapsed ? 20 : (isNarrowScreen ? 32 : 48)} verified={isCollapsed ? false : 'auto'} />
+                        {!isNarrowScreen && !isCollapsed && (
+                            <div style={{ maxWidth: '84px', overflow: 'hidden', textAlign: 'center', fontSize: '11px', lineHeight: 1.25, wordBreak: 'break-word' }}>
+                                <PrincipalDisplay
+                                    principal={post.created_by}
+                                    displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                                    showCopyButton={false}
+                                    short={true}
+                                    hideIcon
+                                    isAuthenticated={isAuthenticated}
+                                    style={{ fontSize: '11px' }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                )}
+                <div className="post-content" style={{ flex: 1, minWidth: 0 }}>
                     <div className="thread-post-header" style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -3848,14 +3872,16 @@ function ThreadViewer({
                                 UNREAD
                             </span>
                         )}
-                        <PrincipalDisplay 
+                        {/* the name sits in the author column on wide screens; on phones and collapsed posts it stays here */}
+                        {(isNarrowScreen || isCollapsed) && <PrincipalDisplay 
                             principal={post.created_by} 
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false}
                             short={true}
+                            hideIcon
                             isAuthenticated={isAuthenticated}
                             style={{ fontSize: '12px' }}
-                        />
+                        />}
                         <span 
                             style={{ color: theme.colors.mutedText, cursor: 'help', fontSize: '12px' }}
                             title={getFullDate(post.created_at)}
@@ -4446,6 +4472,7 @@ function ThreadViewer({
                             totalVotingPower={totalVotingPower}
                         />
                     )}
+                </div>
                 </div>
                 
                 {/* Replies in tree mode */}

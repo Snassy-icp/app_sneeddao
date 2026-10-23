@@ -325,7 +325,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     const [logError, setLogError] = useState('');
     const [logSuccess, setLogSuccess] = useState('');
     const [logFilter, setLogFilter] = useState({
-        minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [50n],
+        minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [50n], beforeId: [],
     });
     const [logHasMore, setLogHasMore] = useState(false);
     const [logTotalMatching, setLogTotalMatching] = useState(0);

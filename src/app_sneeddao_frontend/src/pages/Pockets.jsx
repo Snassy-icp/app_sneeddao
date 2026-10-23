@@ -15,6 +15,7 @@ import { useApprovalsMany } from '../hooks/useApprovals';
 import ApprovalsList from '../components/ApprovalsList';
 import SubaccountEditor from '../components/SubaccountEditor';
 import { ReceivePanel } from '../components/PocketRows';
+import { PocketAvatar, HostBadge, TokenAmount, PocketButton } from '../components/PocketVisuals';
 import { appConfirm, appAlert } from '../utils/appDialog';
 import { normalizeId } from '../utils/IdUtils';
 import { formatAmount, computeUsdValue } from '../utils/StringUtils';
@@ -74,7 +75,6 @@ function PocketApprovals({ pocket, tokens }) {
 function PocketCard({ pocket: p, tokens }) {
     const pk = usePockets();
     const S = useStyles();
-    const { formatValue } = useDenomination();
     const [open, setOpen] = useState(null); // 'rename' | 'receive' | 'approvals'
     const [name, setName] = useState(p.nickname || '');
     const [busy, setBusy] = useState(false);
@@ -86,58 +86,64 @@ function PocketCard({ pocket: p, tokens }) {
     const canName = Boolean(p.account); // names belong to accounts
     const wallet = p.kind === KIND.wallet;
     const hint = wallet && p.account?.subaccount && isPrincipalShaped(p.account.subaccount) ? subaccountHint(p.account.subaccount) : null;
+    const toggle = (k) => setOpen(open === k ? null : k);
     return (
-        <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, padding: '10px 12px', marginBottom: 10, opacity: p.hidden ? 0.65 : 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                    <div style={{ fontWeight: 600, color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {displayName(p)}
-                        <span style={{ fontSize: '0.7rem', fontWeight: 500, padding: '0 6px', borderRadius: 6, border: `1px solid ${c.border}`, color: c.mutedText }}>{badge(p)}</span>
-                        {p.hidden && <span style={{ fontSize: '0.7rem', color: c.mutedText }}>hidden</span>}
-                        {p.registered && <span title="Remembered in your account (syncs across devices)" style={{ color: c.success }}><FaCheck size={10} /></span>}
+        <div style={{ borderRadius: 16, padding: 14, marginBottom: 12, background: c.secondaryBg, border: `1px solid ${p.status === 'error' ? `${c.warning}80` : c.border}`, opacity: p.hidden ? 0.7 : 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <PocketAvatar pocket={p} size={44} />
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                    <div style={{ fontWeight: 700, fontSize: '1.02rem', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName(p)}</span>
+                        {p.registered && <span title="Remembered in your account (syncs across devices)" style={{ color: c.success, display: 'inline-flex' }}><FaCheck size={11} /></span>}
                     </div>
-                    {p.account && <div style={{ fontSize: '0.72rem', color: c.mutedText, wordBreak: 'break-all', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{encodeAccount(p.account)}</div>}
-                    {hint && <div style={{ fontSize: '0.72rem', color: c.warning }}>{hint}</div>}
-                    {p.status === 'error' && <div style={{ fontSize: '0.8rem', color: c.warning }}><FaExclamationTriangle size={10} /> couldn't read {p.host || p.adapterId}{p.error ? `: ${p.error}` : ''}</div>}
-                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {rows.length === 0 && p.status !== 'error' && <span style={{ fontSize: '0.8rem', color: c.mutedText }}>Empty</span>}
-                        {rows.map(([l, b]) => {
-                            const t = tokenOf(l);
-                            const usd = t?.conversion_rate ? computeUsdValue(b.total, t.decimals, t.conversion_rate) : null;
-                            return (
-                                <span key={l} style={{ fontSize: '0.85rem', color: c.secondaryText }}>
-                                    {t ? `${formatAmount(b.total, t.decimals)} ${t.symbol}` : `${b.total.toString()} (${l.slice(0, 5)}…)`}
-                                    {usd ? <span style={{ color: c.mutedText }}> · {formatValue(usd)}</span> : null}
-                                    {b.locked > 0n && t ? <span style={{ color: c.mutedText }}> · {formatAmount(b.locked, t.decimals)} locked</span> : null}
-                                </span>
-                            );
-                        })}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 3 }}>
+                        <HostBadge pocket={p} />
+                        {p.hidden && <span style={{ fontSize: '0.7rem', color: c.mutedText }}>{p.quietHidden ? 'escrow' : 'hidden'}</span>}
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {canName && <button type="button" style={S.btn} onClick={() => setOpen(open === 'rename' ? null : 'rename')}><FaPen size={10} /> Rename</button>}
-                    {(wallet || p.caps?.receive) && <button type="button" style={S.btn} onClick={() => setOpen(open === 'receive' ? null : 'receive')}><FaQrcode size={10} /> Receive</button>}
-                    {wallet && <button type="button" style={S.btn} onClick={() => setOpen(open === 'approvals' ? null : 'approvals')}><FaHandshake size={10} /> Approvals</button>}
-                    {p.id !== MAIN_ID && canName && (
-                        <button type="button" style={S.btn} disabled={busy} onClick={() => run(() => pk.hide(p, !p.hidden))}>{p.hidden ? <><FaEye size={10} /> Unhide</> : <><FaEyeSlash size={10} /> Hide</>}</button>
-                    )}
-                    {p.id !== MAIN_ID && wallet && p.registered && (
-                        <button type="button" style={S.btn} disabled={busy} onClick={() => run(async () => {
-                            const has = rows.length > 0;
-                            const ok = await appConfirm(has
-                                ? `Forget ${displayName(p)}? It still holds tokens, so the wallet will find it again; nothing moves.`
-                                : `Forget ${displayName(p)}? It leaves your pocket list; its name stays. Nothing moves.`, { type: 'warning', confirmText: 'Forget' });
-                            if (ok) await pk.forget(p);
-                        })}><FaTrash size={10} /> Forget</button>
-                    )}
-                </div>
+            </div>
+            {p.account && <div style={{ fontSize: '0.7rem', color: c.mutedText, wordBreak: 'break-all', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', marginTop: 8 }}>{encodeAccount(p.account)}</div>}
+            {hint && <div style={{ fontSize: '0.72rem', color: c.warning, marginTop: 4 }}>{hint}</div>}
+            {p.status === 'error' && <div style={{ fontSize: '0.8rem', color: c.warning, marginTop: 6 }}><FaExclamationTriangle size={10} /> couldn't read {p.host || p.adapterId}{p.error ? `: ${p.error}` : ''}</div>}
+
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {rows.length === 0 && p.status !== 'error' && <span style={{ fontSize: '0.82rem', color: c.mutedText }}>Empty</span>}
+                {rows.map(([l, b]) => {
+                    const t = tokenOf(l) || { symbol: `${l.slice(0, 5)}…`, decimals: 8 };
+                    const reserved = b.available != null && b.total > b.available && !b.locked ? b.total - b.available : 0n;
+                    const sub = b.locked > 0n ? `locked ${formatAmount(b.locked, t.decimals)} / free ${formatAmount(b.available ?? 0n, t.decimals)}` : reserved > 0n ? `${formatAmount(reserved, t.decimals)} in escrow` : null;
+                    return (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, background: c.primaryBg, border: `1px solid ${c.border}` }}>
+                            <span style={{ fontSize: '0.8rem', color: c.secondaryText, fontWeight: 600 }}>{t.symbol}</span>
+                            <TokenAmount token={t} amount={b.total} sub={sub} />
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+                {(wallet || p.caps?.receive) && <PocketButton icon={FaQrcode} onClick={() => toggle('receive')}>Receive</PocketButton>}
+                {canName && <PocketButton icon={FaPen} onClick={() => toggle('rename')}>Rename</PocketButton>}
+                {wallet && <PocketButton icon={FaHandshake} onClick={() => toggle('approvals')}>Approvals</PocketButton>}
+                {p.id !== MAIN_ID && canName && !p.quietHidden && (
+                    <PocketButton icon={p.hidden ? FaEye : FaEyeSlash} disabled={busy} onClick={() => run(() => pk.hide(p, !p.hidden))}>{p.hidden ? 'Unhide' : 'Hide'}</PocketButton>
+                )}
+                {p.id !== MAIN_ID && wallet && p.registered && (
+                    <PocketButton icon={FaTrash} disabled={busy} onClick={() => run(async () => {
+                        const has = rows.length > 0;
+                        const ok = await appConfirm(has
+                            ? `Forget ${displayName(p)}? It still holds tokens, so the wallet will find it again; nothing moves.`
+                            : `Forget ${displayName(p)}? It leaves your pocket list; its name stays. Nothing moves.`, { type: 'warning', confirmText: 'Forget' });
+                        if (ok) await pk.forget(p);
+                    })}>Forget</PocketButton>
+                )}
             </div>
             {err && <div style={{ color: c.error, fontSize: '0.8rem', marginTop: 6 }}>{err}</div>}
             {open === 'rename' && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                     <input value={name} onChange={(e) => setName(e.target.value)} maxLength={32} placeholder="Name (private to you)" style={{ ...S.input, flex: '1 1 180px' }} />
-                    <button type="button" style={S.primary} disabled={busy} onClick={() => run(async () => { await pk.rename(p, name); setOpen(null); })}>Save</button>
-                    {p.nickname && <button type="button" style={S.btn} disabled={busy} onClick={() => run(async () => { await pk.rename(p, ''); setName(''); setOpen(null); })}>Clear</button>}
+                    <PocketButton primary disabled={busy} onClick={() => run(async () => { await pk.rename(p, name); setOpen(null); })}>Save</PocketButton>
+                    {p.nickname && <PocketButton disabled={busy} onClick={() => run(async () => { await pk.rename(p, ''); setName(''); setOpen(null); })}>Clear</PocketButton>}
                     <div style={{ width: '100%', fontSize: '0.72rem', color: c.mutedText }}>Names are unpublished, not secret: they are stored unencrypted on a public network.</div>
                 </div>
             )}
@@ -263,9 +269,11 @@ export default function Pockets() {
     const pk = usePockets();
     const S = useStyles();
     const [showHidden, setShowHidden] = useState(false);
-    const all = sortPockets(pk.pockets.filter((p) => p.hostKey !== '*'));
-    const shown = all.filter((p) => showHidden || !p.hidden);
-    const hiddenCount = all.filter((p) => p.hidden).length;
+    // empty, unnamed hosted pockets (an ICPSwap pool with nothing left) stay out of this list too
+    const all = sortPockets(pk.pockets.filter((p) => p.hostKey !== '*' && !(p.kind === KIND.hosted && !p.nickname && p.status !== 'error' && ![...p.balances.values()].some((b) => b.total > 0n))));
+    const shown = all.filter((p) => (p.quietHidden ? pk.showQuiet : showHidden || !p.hidden));
+    const hiddenCount = all.filter((p) => p.hidden && !p.quietHidden).length;
+    const escrowCount = pk.pockets.filter((p) => p.caps?.quiet && p.hostKey !== '*' && [...p.balances.values()].some((b) => b.total > 0n)).length;
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
@@ -284,7 +292,8 @@ export default function Pockets() {
                     <>
                         <Section title="New pocket" icon={FaPlus}><CreatePocket pockets={pk.pockets} /></Section>
                         <Section title="Your pockets" icon={FaLayerGroup} right={(
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                {escrowCount > 0 && <label title="Sneedex bid and offer-payment escrows. They show by themselves when something in them can be withdrawn." style={{ fontSize: '0.8rem', color: c.mutedText, display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={pk.showQuiet} onChange={(e) => pk.setShowQuiet(e.target.checked)} /> Show Sneedex escrows ({escrowCount})</label>}
                                 {hiddenCount > 0 && <label style={{ fontSize: '0.8rem', color: c.mutedText, display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Show hidden ({hiddenCount})</label>}
                                 <button type="button" style={S.btn} onClick={() => pk.refresh()} disabled={pk.loading}><FaSync size={10} /> {pk.loading ? 'Reading…' : 'Refresh'}</button>
                             </div>

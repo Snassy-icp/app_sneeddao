@@ -12,6 +12,8 @@ import { HttpAgent } from '@dfinity/agent';
 import { uint8ArrayToHex, safePrincipalString, formatNeuronDisplayWithContext } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 import ProposerPrincipals from '../components/ProposerPrincipals';
+import ProposerAvatar from '../components/ProposerAvatar';
+import { LogoAvatar } from '../components/BigAvatar';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import {
@@ -1136,6 +1138,9 @@ function ActiveProposals() {
 
                                                     {/* Proposer */}
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.82rem', color: theme.colors.secondaryText, margin: '-0.4rem 0 0.75rem' }}>
+                                                        {isNns || !proposal.proposer?.[0]?.id
+                                                            ? <LogoAvatar src={logo} alt={snsInfo.name} size={26} />
+                                                            : <ProposerAvatar snsRoot={snsInfo.rootCanisterId} neuronId={proposal.proposer[0].id} logo={logo} snsName={snsInfo.name} size={26} cutout={theme.colors.tertiaryBg} />}
                                                         <span>Proposer:</span>
                                                         {isNns
                                                             ? (proposal.proposer?.[0]?.id !== undefined

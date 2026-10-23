@@ -100,7 +100,7 @@ function logLevelStr(level) {
 }
 
 export async function formatBotLog(bot, limit = 50) {
-  const result = await bot.getLogs({ minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [limit] });
+  const result = await bot.getLogs({ minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [limit], beforeId: [] });
   const entries = result.entries || [];
   if (entries.length === 0) return '# Bot Log (empty)\n';
   const lines = [`# Bot Log (${entries.length} entries, newest first)`];

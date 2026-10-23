@@ -381,6 +381,7 @@ import {
 } from '../hooks/useTokenCache';
 import { icrc1Transfer } from '../utils/icrcTx';
 import { appAlert, appConfirm } from '../utils/appDialog';
+import { BOT_PAGE, fetchNewestRows, fetchNewestSnapshots, fetchOlderLogs } from '../utils/botPaging';
 
 /** Convert shared cache shape → local shape used by getSymbol/getDecimals helpers. */
 function _toLocalMeta(cached) {
@@ -3098,6 +3099,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                     const snapResult = await bot.getPortfolioSnapshots({
                         startId: [], limit: [200], tradeLogId: [],
                         phase: [], fromTime: [minTs - pad], toTime: [maxTs + pad],
+                        offset: [], newestFirst: [],
                     });
                     // Index snapshots: after-snaps link by tradeLogId, before-snaps matched by proximity
                     const newMap = {};
@@ -3523,7 +3525,8 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
             const bot = await getReadyBotActor();
             if (!bot) return;
             const [result, st] = await Promise.all([
-                bot.getPortfolioSnapshots({ startId: [], limit: [100], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
+                // the newest 100 (bots before the paging fixes ignore newestFirst and send the oldest)
+                bot.getPortfolioSnapshots({ startId: [], limit: [100], tradeLogId: [], phase: [], fromTime: [], toTime: [], offset: [], newestFirst: [true] }),
                 bot.getPortfolioSnapshotStats(),
             ]);
             setSnapshots(result.entries);
@@ -5515,23 +5518,39 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, purseAllocs] = await Promise.all([
-                bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
+            // The newest rows of each series (the bots page these; fetchNewest* also serve bots from
+            // before the paging fixes, which answered oldest first and so went stale)
+            const [snapRows, flows, registry, prices, historyRows, dailyPortfolioRows, dailyPriceRows, purseAllocs] = await Promise.all([
+                fetchNewestSnapshots({
+                    call: (q) => bot.getPortfolioSnapshots(q),
+                    base: { startId: [], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] },
+                    want: 500,
+                    getNextId: async () => (await bot.getPortfolioSnapshotStats()).nextId,
+                }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
                 bot.getLastKnownPrices ? bot.getLastKnownPrices() : Promise.resolve([]),
-                bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
-                bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
-                bot.getDailyPriceCandles ? bot.getDailyPriceCandles({ pairKey: [], fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.getPriceHistory ? fetchNewestRows({
+                    call: (q) => bot.getPriceHistory(q), base: { pairKey: [] }, want: 5000,
+                    pageSize: BOT_PAGE.priceHistory, order: (e) => BigInt(e.fetchedAt),
+                }) : Promise.resolve([]),
+                bot.getDailyPortfolioSummaries ? fetchNewestRows({
+                    call: (q) => bot.getDailyPortfolioSummaries(q), base: { fromDate: [], toDate: [] }, want: 1000,
+                    pageSize: BOT_PAGE.daily, order: (s) => BigInt(s.date),
+                }) : Promise.resolve([]),
+                bot.getDailyPriceCandles ? fetchNewestRows({
+                    call: (q) => bot.getDailyPriceCandles(q), base: { pairKey: [], fromDate: [], toDate: [] }, want: 1000,
+                    pageSize: BOT_PAGE.daily, order: (c) => BigInt(c.date),
+                }) : Promise.resolve([]),
                 bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : Promise.resolve([]),
             ]);
-            setSnapshots(snapResult.entries);
+            setSnapshots(snapRows);
             setCapitalFlows(flows);
             setTokenRegistry(registry);
             setLastKnownPrices(prices);
-            setPriceHistory(history.entries);
-            setDailyPortfolioSummaries(dailyPortfolio.entries || []);
-            setDailyPriceCandles(dailyPrices.entries || []);
+            setPriceHistory(historyRows);
+            setDailyPortfolioSummaries(dailyPortfolioRows || []);
+            setDailyPriceCandles(dailyPriceRows || []);
             const allocs = (purseAllocs || []).filter(p => p.enabled);
             setEnabledPurses(allocs.map(p => p.instanceId));
             setPurseAllocations(allocs);
@@ -5573,8 +5592,12 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             try {
                 const bot = await getReadyBotActor();
                 if (!bot || cancelled) return;
-                const result = await bot.getPursePortfolioSnapshots(selectedPurse, { startId: [], limit: [500], tradeLogId: [], phase: [], fromTime: [], toTime: [] });
-                if (!cancelled) setPurseSnapshots(result.entries || []);
+                const rows = await fetchNewestSnapshots({
+                    call: (q) => bot.getPursePortfolioSnapshots(selectedPurse, q),
+                    base: { startId: [], tradeLogId: [], phase: [], fromTime: [], toTime: [] },
+                    want: 500,
+                });
+                if (!cancelled) setPurseSnapshots(rows || []);
             } catch (e) { if (!cancelled) setPurseSnapshots([]); }
             finally { if (!cancelled) setPurseLoading(false); }
         })();
@@ -7733,7 +7756,7 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [logFilter, setLogFilter] = useState({
-        minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [50n],
+        minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [50n], beforeId: [],
     });
     const [hasMore, setHasMore] = useState(false);
     const [totalMatching, setTotalMatching] = useState(0);
@@ -11195,21 +11218,38 @@ function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
     const getDec = (p) => { const k = toStr(p); return tokenMeta[k]?.decimals ?? 8; };
 
     const activityLimitRef = useRef(pageSize);
+    const activityEntriesRef = useRef([]);
 
+    // "Load more" asks for the page before the oldest entry shown (beforeId; the bot caps a page
+    // at 500). Bots from before the paging fixes ignore beforeId: then the limit grows as before.
     const loadActivity = useCallback(async (more) => {
         setLoading(true);
         setError('');
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            if (more) activityLimitRef.current += pageSize;
-            else activityLimitRef.current = pageSize;
             const filter = {
                 minLevel: [], source: ['chore:' + instanceId], caller: [],
-                fromTime: [], toTime: [], startId: [],
-                limit: [BigInt(activityLimitRef.current)],
+                fromTime: [], toTime: [], startId: [], beforeId: [],
+                limit: [BigInt(pageSize)],
             };
-            const result = await bot.getLogs(filter);
+            const shown = activityEntriesRef.current;
+            if (more && shown.length > 0) {
+                const older = await fetchOlderLogs(bot, filter, shown[0].id, pageSize);
+                if (older) {
+                    const merged = [...older.entries, ...shown];
+                    activityEntriesRef.current = merged;
+                    activityLimitRef.current = merged.length;
+                    setActivityEntries(merged);
+                    setHasMore(h => ({ ...h, activity: older.hasMore }));
+                    loadedRef.current.activity = true;
+                    return;
+                }
+            }
+            if (more) activityLimitRef.current += pageSize;
+            else activityLimitRef.current = pageSize;
+            const result = await bot.getLogs({ ...filter, limit: [BigInt(activityLimitRef.current)] });
+            activityEntriesRef.current = result.entries || [];
             setActivityEntries(result.entries || []);
             setHasMore(h => ({ ...h, activity: result.hasMore }));
             loadedRef.current.activity = true;
@@ -11245,7 +11285,7 @@ function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
 
     const handleRefresh = () => {
         loadedRef.current[tab] = false;
-        if (tab === 'activity') { setActivityEntries([]); loadActivity(); }
+        if (tab === 'activity') { activityEntriesRef.current = []; setActivityEntries([]); loadActivity(); }
         else { setTradeEntries([]); loadTrades(0); }
     };
 

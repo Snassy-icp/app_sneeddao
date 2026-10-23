@@ -3705,6 +3705,10 @@ function Wallet() {
         else if (kind === 'move') openSendModal(token, { fromPocketId: pocket.id, mode: 'move' });
         else if (kind === 'withdraw') openSendModal(token, { fromPocketId: pocket.id, toPocketId: MAIN_ID, mode: 'move' });
         else if (kind === 'topup') openSendModal(token, { fromPocketId: MAIN_ID, toPocketId: pocket.id, mode: 'move' });
+        else if (kind === 'wrap') openWrapModal(token);
+        else if (kind === 'unwrap') openUnwrapModal(token);
+        else if (kind === 'tomain') openSendModal(token, { fromPocketId: pocket.id, toPocketId: MAIN_ID, mode: 'move' });
+        else if (kind === 'moveto') openSendModal(token, { fromPocketId: MAIN_ID, toPocketId: pocket.id, mode: 'move' }); // a pocket just created from the card
     };
 
     const openTokenDetailModal = (token) => {

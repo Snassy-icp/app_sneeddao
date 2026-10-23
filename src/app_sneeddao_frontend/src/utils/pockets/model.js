@@ -101,6 +101,7 @@ export function defaultCaps(adapter) {
         approve: false,
         readOnly,
         withdrawTo: adapter.withdrawTo || 'any',
+        quiet: Boolean(adapter.quiet), // escrows that clutter: shown only when something can be withdrawn
         ...(adapter.caps || {}),
     };
 }
@@ -257,13 +258,37 @@ function mergeOne(a, b) {
 /// A token's total over every pocket (hidden ones too), or over the selected pocket.
 export function total(pockets, ledger, selected = ALL) {
     let t = 0n;
-    for (const p of pockets) if (selected === ALL || selected == null || p.id === selected) t += totalIn(p, ledger);
+    for (const p of pockets) if (selected === ALL || selected == null || p.id === selected) t += countedIn(p, ledger);
     return t;
+}
+
+// ---- quiet hosts (Sneedex escrows) ----
+
+/// Escrows a host keeps for a pending action (Sneedex bids and the offer-creation payment): the
+/// user's to take only in part, so they count with what can be withdrawn now (`available`).
+export const isQuiet = (p) => Boolean(p.caps?.quiet);
+
+/// What a pocket adds to a token's total: everything, or for quiet pockets what can leave now.
+export const countedIn = (p, ledger) => (isQuiet(p) ? balanceOf(p, ledger)?.available ?? 0n : totalIn(p, ledger));
+
+/// Something in any ledger the user can withdraw now.
+export function hasWithdrawable(p) {
+    for (const b of p.balances.values()) if ((b.available ?? b.total) > 0n) return true;
+    return false;
+}
+
+/// Quiet pockets stay out of lists, pickers and the switcher (marked hidden + quietHidden) unless
+/// they hold something withdrawable, carry a name, or the user turned "Show Sneedex escrows" on.
+export function applyQuiet(pockets, { showQuiet = false } = {}) {
+    return pockets.map((p) => {
+        if (!isQuiet(p) || showQuiet || hasWithdrawable(p) || (p.nickname || '').trim()) return p.quietHidden ? { ...p, hidden: p.hiddenByUser ?? false, quietHidden: false } : p;
+        return { ...p, hiddenByUser: p.hiddenByUser ?? p.hidden, hidden: true, quietHidden: true };
+    });
 }
 
 /// The pockets holding `ledger` (balance > 0), visible ones only unless includeHidden.
 export function holders(pockets, ledger, { includeHidden = false } = {}) {
-    return pockets.filter((p) => totalIn(p, ledger) > 0n && (includeHidden || !p.hidden));
+    return pockets.filter((p) => countedIn(p, ledger) > 0n && (includeHidden || !p.hidden));
 }
 
 /// The "in N pockets" disclosure shows only when more than one pocket holds the token.
@@ -379,7 +404,7 @@ export function withWalletTokens(pockets, tokens) {
 
 /// What the wallet's token list does not count: every pocket but Main and the Sneed Lock wallet
 /// (hidden ones too), so a token card's total is Main + Sneed Lock + this.
-export const otherPocketsTotal = (pockets, ledger) => pockets.filter((p) => p.id !== MAIN_ID && p.id !== LOCK_POCKET_ID).reduce((t, p) => t + totalIn(p, ledger), 0n);
+export const otherPocketsTotal = (pockets, ledger) => pockets.filter((p) => p.id !== MAIN_ID && p.id !== LOCK_POCKET_ID).reduce((t, p) => t + countedIn(p, ledger), 0n);
 
 /// Casual and pro (§4.3): pockets stay out of sight while the user has nothing but Main and the
 /// Sneed Lock wallet (the wallet showed those before pockets existed).

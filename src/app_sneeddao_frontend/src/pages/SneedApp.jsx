@@ -10,7 +10,7 @@ import { getCanisterInfo } from '../utils/BackendUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { FaDatabase, FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
 import BotIcon from '../components/BotIcon';
-import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+import { padIdl, PAD_CANISTER_ID, launchSummaries } from '../tokensafety/padIdl.js';
 import { ComingSoonRibbon } from '../components/LaunchGate';
 
 const studioPrimary = '#10b981';
@@ -134,7 +134,7 @@ export default function SneedApp() {
         (async () => {
             try {
                 const pad = Actor.createActor(padIdl, { agent: new HttpAgent({ host: 'https://icp-api.io' }), canisterId: PAD_CANISTER_ID });
-                const [cfg, launches] = await Promise.all([pad.get_config(), pad.list_launches(0n, 1n)]);
+                const [cfg, launches] = await Promise.all([pad.get_config(), launchSummaries(pad, { limit: 1 })]); // just the count
                 if (live) setPadInfo({ fee: cfg.creation_fee_e8s, premiumFee: cfg.premium_creation_fee_e8s, indexFee: cfg.index_creation_fee_e8s, premiumIndexFee: cfg.premium_index_creation_fee_e8s, launches: Number(launches.total), paused: cfg.paused });
             } catch (e) { console.warn('launchpad info unavailable', e); }
         })();

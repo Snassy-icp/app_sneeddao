@@ -13,6 +13,7 @@ import {
     calculateUsdValue
 } from '../utils/SneedexUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import BigAvatar from './BigAvatar';
 
 // Accent colors
 const sneedexPrimary = '#8b5cf6';
@@ -1036,8 +1037,10 @@ function OfferCard({
                         border: `1px solid ${theme.colors.border}`,
                     }}>
                         <span style={{ fontWeight: '500' }}>Seller:</span>
+                        <BigAvatar principal={offer.creator} size={24} verified="auto" cutout={theme.colors.primaryBg} />
                         <span onClick={(e) => e.preventDefault()}>
                             <PrincipalDisplay 
+                                hideIcon
                                 principal={offer.creator}
                                 short={true}
                                 showCopyButton={false}

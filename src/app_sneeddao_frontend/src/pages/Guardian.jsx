@@ -59,6 +59,7 @@ function Guardian() {
     const [busy, setBusy] = useState('');
     const [notice, setNotice] = useState('');
     const [showAllOps, setShowAllOps] = useState(false);
+    const [opsNext, setOpsNext] = useState(null); // the `before` of the next page of older ops (null: none)
     const [stage, setStage] = useState(null); // { child, kind: 'policy'|'controllers'|'install', ... }
     const [neurons, setNeurons] = useState(null);
     const [payFor, setPayFor] = useState(null); // op id whose payment panel is open
@@ -72,11 +73,22 @@ function Guardian() {
         const a = actor(false); if (!a) return;
         setError('');
         try {
-            const [c, ch, o, u] = await Promise.all([a.get_config(), a.list_children(), a.list_ops(false, 200n), a.list_upgradable()]);
-            setCfg(c); setChildren(ch); setOps(o); setUpgradable(u);
+            // ops come as summaries, newest first, a page at a time (an install's argument as size + hash);
+            // deployments from before list_op_summaries get the newest ops whole
+            const opsPage = a.list_op_summaries({ open: false, child: [], before: [], limit: 100n })
+                .catch(() => a.list_ops(false, 100n).then((items) => ({ items, next: [] })));
+            const [c, ch, o, u] = await Promise.all([a.get_config(), a.list_children(), opsPage, a.list_upgradable()]);
+            setCfg(c); setChildren(ch); setOps(o.items); setOpsNext(o.next.length ? o.next[0] : null); setUpgradable(u);
         } catch (e) { setError(`Could not read ${dep?.name}: ${e?.message || e}`); }
     }, [actor, dep]);
     useEffect(() => { load(); }, [load]);
+    const loadOlderOps = async () => {
+        const a = actor(false); if (!a || opsNext === null) return;
+        try {
+            const p = await a.list_op_summaries({ open: false, child: [], before: [opsNext], limit: 100n });
+            setOps((prev) => [...prev, ...p.items]); setOpsNext(p.next.length ? p.next[0] : null);
+        } catch (e) { setError(`Could not read older ops: ${e?.message || e}`); }
+    };
 
     // the payment panel: below `actor`, which its dependency list reads during render
     useEffect(() => {
@@ -385,6 +397,7 @@ function Guardian() {
                             );
                         })}
                     </div>
+                    {opsNext !== null && <button type="button" style={{ ...btn(), marginTop: 8 }} onClick={loadOlderOps}>Load older ops</button>}
                 </div>
             </div>
         </>

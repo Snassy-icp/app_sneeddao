@@ -19,6 +19,16 @@ const Launch = IDL.Record({
     ledger: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
     controllers: IDL.Vec(IDL.Principal), registration_proposal: IDL.Opt(IDL.Nat64), status: IDL.Variant({ created: IDL.Null, failed: IDL.Text }), steps: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Int)),
 });
+// a launch as the lists show it: no logo (get_launch_logo) and no allocation list (get_launch)
+const LaunchSummary = IDL.Record({
+    id: IDL.Nat, creator: IDL.Principal, created_at: IDL.Int, name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, transfer_fee: IDL.Nat,
+    logo_bytes: IDL.Nat, allocations: IDL.Nat, allocated: IDL.Nat, minting: MintingPolicy, fee_collector: IDL.Opt(Account), control: ControlChoice, with_index: IDL.Bool,
+    quote: Quote, paid_e8s: IDL.Nat, ledger: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
+    controllers: IDL.Vec(IDL.Principal), registration_proposal: IDL.Opt(IDL.Nat64), status: IDL.Variant({ created: IDL.Null, failed: IDL.Text }), steps: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Int)),
+});
+const LaunchPageArgs = IDL.Record({ creator: IDL.Opt(IDL.Principal), before: IDL.Opt(IDL.Nat), limit: IDL.Nat });
+const LaunchPage = IDL.Record({ total: IDL.Nat, items: IDL.Vec(LaunchSummary), next: IDL.Opt(IDL.Nat) });
+const RateRule = IDL.Record({ capacity: IDL.Nat, per_minute: IDL.Nat });
 const PadConfig = IDL.Record({
     ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), ledger_wasm_bytes: IDL.Nat, index_wasm_bytes: IDL.Nat,
     creation_fee_e8s: IDL.Nat, premium_creation_fee_e8s: IDL.Nat, sneed_dao_control_fee_e8s: IDL.Nat, index_creation_fee_e8s: IDL.Nat, premium_index_creation_fee_e8s: IDL.Nat, sneed_premium: IDL.Opt(IDL.Principal), ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
@@ -51,6 +61,10 @@ export const padIdl = ({ IDL }) => IDL.Service({
     get_launch: IDL.Func([IDL.Nat], [IDL.Opt(Launch)], ['query']),
     list_launches: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({ total: IDL.Nat, launches: IDL.Vec(Launch) })], ['query']),
     get_launches_by_creator: IDL.Func([IDL.Principal], [IDL.Vec(Launch)], ['query']),
+    list_launch_summaries: IDL.Func([LaunchPageArgs], [LaunchPage], ['query']),
+    get_launch_logo: IDL.Func([IDL.Nat], [IDL.Opt(IDL.Text)], ['query']),
+    get_rate_limits: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, RateRule))], ['query']),
+    admin_set_rate_limit: IDL.Func([IDL.Text, IDL.Opt(RateRule)], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
     get_launch_by_ledger: IDL.Func([IDL.Principal], [IDL.Opt(Launch)], ['query']),
     get_config: IDL.Func([], [PadConfig], ['query']),
     get_cycle_balance: IDL.Func([], [IDL.Nat], ['query']),
@@ -65,3 +79,24 @@ export const padIdl = ({ IDL }) => IDL.Service({
     admin_remove_admin: IDL.Func([IDL.Principal], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
 });
 export const PAD_CANISTER_ID = process.env.CANISTER_ID_SNEED_PAD || null;
+
+/// A whole launch in the shape of a summary (for a pad from before list_launch_summaries).
+const summaryOf = (l) => ({
+    ...l, name: l.config.name, symbol: l.config.symbol, decimals: l.config.decimals, transfer_fee: l.config.transfer_fee,
+    logo_bytes: BigInt(l.config.logo[0]?.length || 0), allocations: BigInt(l.config.allocations.length),
+    allocated: l.config.allocations.reduce((a, x) => a + x.amount, 0n), minting: l.config.minting, fee_collector: l.config.fee_collector,
+    control: l.config.control, with_index: l.config.with_index,
+});
+/// A page of launch summaries, newest first (all, or one creator's): `{ total, items, next }`, where
+/// `next` (or null) is the `before` of the next page. Falls back to the whole-launch methods on a pad
+/// that does not page yet.
+export async function launchSummaries(pad, { creator = null, before = null, limit = 50 } = {}) {
+    try {
+        const r = await pad.list_launch_summaries({ creator: creator ? [creator] : [], before: before === null ? [] : [before], limit: BigInt(limit) });
+        return { total: r.total, items: r.items, next: r.next.length ? r.next[0] : null };
+    } catch (e) {
+        if (!/list_launch_summaries/.test(String(e?.message || e))) throw e;
+        const all = creator ? await pad.get_launches_by_creator(creator) : (await pad.list_launches(0n, 200n)).launches;
+        return { total: BigInt(all.length), items: [...all].reverse().map(summaryOf), next: null };
+    }
+}

@@ -11,7 +11,8 @@ import { useDenomination } from '../contexts/DenominationContext';
 import { useNaming, useAvatar } from '../NamingContext';
 import { useStoreVersion } from '../utils/revenueStore';
 import { loadTokenMeta, tokenMeta, loadPrice, priceOf } from '../utils/revenueData';
-import { PrincipalDisplay, AvatarImage, getPrincipalDisplayInfoFromContext, getPrincipalColor } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import BigAvatar from '../components/BigAvatar';
 import { getDonations, getDonationTotals } from '../utils/donations';
 
 const PAGE = 48;
@@ -30,11 +31,9 @@ function DonorCard({ d, theme, isAuthenticated }) {
     return (
         <article style={{ background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                {avatar ? <AvatarImage url={avatar} size={44} /> : (
-                    <div aria-hidden style={{ width: 44, height: 44, flexShrink: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 800, color: '#fff', background: getPrincipalColor(d.donor.toText()) || ROSE }}>{(info.name || d.donor.toText()).slice(0, 1).toUpperCase()}</div>
-                )}
+                <BigAvatar principal={d.donor} url={avatar} size={52} name={info.name || d.donor.toText()} verified={Boolean(info.name && info.isVerified)} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                    <PrincipalDisplay principal={d.donor} displayInfo={info} short showCopyButton={false} isAuthenticated={isAuthenticated} style={{ fontWeight: 600 }} />
+                    <PrincipalDisplay principal={d.donor} displayInfo={info} short hideIcon showCopyButton={false} isAuthenticated={isAuthenticated} style={{ fontWeight: 600 }} />
                     <div style={{ fontSize: 12, color: c.mutedText, marginTop: 2 }}>{dateOf(d.created_at || d.registered_at)}</div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>

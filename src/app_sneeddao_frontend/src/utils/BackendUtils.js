@@ -594,9 +594,32 @@ export const getTipsByThread = async (forumActor, threadId) => {
     }
 };
 
+// The forum's paged per-user lists (get_*_by_user_page: newest first, `next` is the `before` of the
+// next page). Reads every page, so a busy user's list never has to fit in one reply; falls back to the
+// unpaged method on a forum (or declarations) without the paged one.
+const isMissingForumMethod = (e) => /has no (query|update) method|method not found|IC0536|IC0302|is not a function/i.test(String(e?.message || e));
+const readUserPages = async (forumActor, pageMethod, fullMethod, userPrincipal) => {
+    if (typeof forumActor[pageMethod] === 'function') {
+        try {
+            const items = [];
+            let before = [];
+            for (let i = 0; i < 1000; i++) {
+                const page = await forumActor[pageMethod](userPrincipal, before, 100n);
+                items.push(...page.items);
+                if (!page.next || page.next.length === 0) return items;
+                before = page.next;
+            }
+            return items;
+        } catch (e) {
+            if (!isMissingForumMethod(e)) throw e;
+        }
+    }
+    return forumActor[fullMethod](userPrincipal);
+};
+
 export const getPostsByUser = async (forumActor, userPrincipal) => {
     try {
-        const result = await forumActor.get_posts_by_user(userPrincipal);
+        const result = await readUserPages(forumActor, 'get_posts_by_user_page', 'get_posts_by_user', userPrincipal);
         return result;
     } catch (error) {
         console.error('Error getting posts by user:', error);
@@ -606,7 +629,7 @@ export const getPostsByUser = async (forumActor, userPrincipal) => {
 
 export const getRepliesToUser = async (forumActor, userPrincipal) => {
     try {
-        const result = await forumActor.get_replies_to_user(userPrincipal);
+        const result = await readUserPages(forumActor, 'get_replies_to_user_page', 'get_replies_to_user', userPrincipal);
         return result;
     } catch (error) {
         console.error('Error getting replies to user:', error);
@@ -616,7 +639,7 @@ export const getRepliesToUser = async (forumActor, userPrincipal) => {
 
 export const getThreadsByUser = async (forumActor, userPrincipal) => {
     try {
-        const result = await forumActor.get_threads_by_user(userPrincipal);
+        const result = await readUserPages(forumActor, 'get_threads_by_user_page', 'get_threads_by_user', userPrincipal);
         return result;
     } catch (error) {
         console.error('Error getting threads by user:', error);
@@ -636,7 +659,7 @@ export const getPostsByThread = async (forumActor, threadId) => {
 
 export const getTipsGivenByUser = async (forumActor, userPrincipal) => {
     try {
-        const result = await forumActor.get_tips_given_by_user(userPrincipal);
+        const result = await readUserPages(forumActor, 'get_tips_given_by_user_page', 'get_tips_given_by_user', userPrincipal);
         return result;
     } catch (error) {
         console.error('Error getting tips given by user:', error);
@@ -646,7 +669,7 @@ export const getTipsGivenByUser = async (forumActor, userPrincipal) => {
 
 export const getTipsReceivedByUser = async (forumActor, userPrincipal) => {
     try {
-        const result = await forumActor.get_tips_received_by_user(userPrincipal);
+        const result = await readUserPages(forumActor, 'get_tips_received_by_user_page', 'get_tips_received_by_user', userPrincipal);
         return result;
     } catch (error) {
         console.error('Error getting tips received by user:', error);

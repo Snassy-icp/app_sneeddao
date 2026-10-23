@@ -1029,7 +1029,7 @@ function Feed() {
                         };
                         
                         const response = await forumActor.get_feed(input);
-                        if (response.items.length === 0) break;
+                        // a page may be empty while more remain (the canister bounds each page): follow next_start_id
                         
                         // Count items that are newer than lastSeen
                         const relevantItems = response.items.filter(item => {
@@ -1479,15 +1479,17 @@ function Feed() {
             } else if (direction === 'older') {
                 if (filteredItems.length > 0) {
                     setFeedItems(prev => [...prev, ...filteredItems]);
-                    setHasMore(response.has_more);
-                    setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                     
                     // Fetch polls for new items (async, non-blocking)
                     fetchPollsForItems(filteredItems, forumActor);
-                } else {
+                }
+                // The canister bounds each page (at most 500 items, about 1.5 MB, a scan budget), so a
+                // page can come back short or empty while older items remain: keep the cursor.
+                setHasMore(response.has_more);
+                setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
+                if (!response.has_more) {
                     // No more older items available, disable auto-loading
                     setCanAutoLoadOlder(false);
-                    setHasMore(false);
                 }
             } else if (direction === 'newer') {
                 if (filteredItems.length > 0) {

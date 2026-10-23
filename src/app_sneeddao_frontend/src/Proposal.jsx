@@ -26,6 +26,7 @@ import { getRelativeTime, getFullDate } from './utils/DateUtils';
 import { getOrFetchNeuron } from './hooks/useNeuronsCache';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import ProxyPayloadView from './components/ProxyPayloadView';
+import ProposerAvatar from './components/ProposerAvatar';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1182,7 +1183,10 @@ function Proposal() {
                                                 marginBottom: '1.5rem'
                                             }}>
                                                 <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Proposed by</div>
-                                                <div style={{ marginBottom: proposerPermissions?.length > 0 ? '0.75rem' : 0 }}>
+                                                <div style={{ marginBottom: proposerPermissions?.length > 0 ? '0.75rem' : 0, display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                                    <ProposerAvatar snsRoot={selectedSnsRoot} neuronId={proposalData.proposer[0].id} permissions={proposerPermissions || []}
+                                                        logo={selectedSns?.logo || (selectedSnsRoot === SNEED_SNS_ROOT ? '/sneed_logo.png' : null)} snsName={selectedSns?.name || ''} size={44} cutout={theme.colors.primaryBg} />
+                                                    <div style={{ minWidth: 0 }}>
                                                     {formatNeuronDisplayWithContext(
                                                         proposalData.proposer[0].id, 
                                                         selectedSnsRoot, 
@@ -1192,6 +1196,7 @@ function Proposal() {
                                                             isAuthenticated: isAuthenticated
                                                         }
                                                     )}
+                                                    </div>
                                                 </div>
                                                 
                                                 {/* Principals (show all) */}

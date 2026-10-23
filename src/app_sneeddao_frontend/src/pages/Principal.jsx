@@ -19,6 +19,7 @@ import TransactionList from '../components/TransactionList';
 import TokenIcon from '../components/TokenIcon';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { useNaming, useAvatar } from '../NamingContext';
+import { VerifiedCheck } from '../components/BigAvatar';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
@@ -1942,11 +1943,15 @@ export default function PrincipalPage() {
                                             ? '#f59e0b50'
                                             : `${principalPrimary}50`;
                                         
+                                        const heroVerified = !isCanister && Boolean(principalInfo?.name
+                                            ? principalInfo.isVerified
+                                            : (principalNames?.get(principalStr) && verifiedNames?.get(principalStr)));
                                         return (
                                             <div style={{
-                                                width: '88px',
-                                                height: '88px',
-                                                borderRadius: isCanister ? '16px' : '20px',
+                                                position: 'relative',
+                                                width: '112px',
+                                                height: '112px',
+                                                borderRadius: isCanister ? '20px' : '28px',
                                                 background: bgGradient,
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -1957,8 +1962,9 @@ export default function PrincipalPage() {
                                             }}>
                                                 {!isCanister && viewedAvatarUrl && !viewedAvatarBroken ? (
                                                     <img src={viewedAvatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setViewedAvatarBroken(true)}
-                                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px', padding: isPremium ? '3px' : 0, boxSizing: 'border-box' }} />
-                                                ) : isCanister ? <FaCube size={36} color="white" /> : (isPremium ? <FaCrown size={36} color="white" /> : <FaUser size={36} color="white" />)}
+                                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '24px', padding: isPremium ? '3px' : 0, boxSizing: 'border-box' }} />
+                                                ) : isCanister ? <FaCube size={44} color="white" /> : (isPremium ? <FaCrown size={44} color="white" /> : <FaUser size={44} color="white" />)}
+                                                {heroVerified && <VerifiedCheck size={30} cutout={theme.colors.secondaryBg} style={{ right: -8, bottom: -8 }} />}
                                             </div>
                                         );
                                     })()}

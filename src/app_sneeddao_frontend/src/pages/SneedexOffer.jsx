@@ -55,6 +55,7 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { normalizeId } from '../utils/IdUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import BigAvatar from '../components/BigAvatar';
 import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
 import InfoModal from '../components/InfoModal';
 import ConfirmationModal from '../ConfirmationModal';
@@ -2709,7 +2710,8 @@ function SneedexOffer() {
                                         gap: '6px',
                                         marginTop: '4px'
                                     }}>
-                                        <FaUser /> Seller: <PrincipalDisplay 
+                                        <BigAvatar principal={offer.creator} size={32} verified="auto" /> Seller: <PrincipalDisplay 
+                                            hideIcon
                                             principal={offer.creator} 
                                             short={true}
                                             showCopyButton={false}

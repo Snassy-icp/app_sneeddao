@@ -11,7 +11,8 @@ import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
-import { padIdl, PAD_CANISTER_ID } from '../../tokensafety/padIdl.js';
+import { padIdl, PAD_CANISTER_ID, launchSummaries } from '../../tokensafety/padIdl.js';
+import LaunchLogo from '../../tokensafety/LaunchLogo.jsx';
 import { customStyles } from '../../health/TreeView.jsx';
 import { FaSpinner, FaSync, FaLifeRing } from 'react-icons/fa';
 
@@ -31,7 +32,9 @@ export default function SneedPadAdmin() {
     const me = identity?.getPrincipal?.().toText?.() || '';
     const [config, setConfig] = useState(null);
     const [cycles, setCycles] = useState(null);
-    const [launches, setLaunches] = useState([]);
+    const [launches, setLaunches] = useState([]); // summaries, newest first
+    const [launchTotal, setLaunchTotal] = useState(0n);
+    const [launchNext, setLaunchNext] = useState(null); // `before` of the next page of older launches
     const [log, setLog] = useState([]);
     const [admins, setAdmins] = useState([]);
     const [busy, setBusy] = useState('');
@@ -57,12 +60,19 @@ export default function SneedPadAdmin() {
     const load = useCallback(async () => {
         const a = pad(false); if (!a) return;
         try {
-            const [cfg, cyc, l, lines, adm] = await Promise.all([a.get_config(), a.get_cycle_balance(), a.list_launches(0n, 200n), a.get_text_log(60n), a.get_admins()]);
-            setConfig(cfg); setCycles(cyc); setLaunches([...l.launches].reverse()); setLog(lines); setAdmins(adm.map((p) => p.toText()));
+            const [cfg, cyc, l, lines, adm] = await Promise.all([a.get_config(), a.get_cycle_balance(), launchSummaries(a, { limit: 50 }), a.get_text_log(60n), a.get_admins()]);
+            setConfig(cfg); setCycles(cyc); setLaunches(l.items); setLaunchTotal(l.total); setLaunchNext(l.next); setLog(lines); setAdmins(adm.map((p) => p.toText()));
             setForm({ fee: (Number(cfg.creation_fee_e8s) / 1e8).toString(), premiumFee: (Number(cfg.premium_creation_fee_e8s) / 1e8).toString(), controlFee: (Number(cfg.sneed_dao_control_fee_e8s) / 1e8).toString(), ledgerT: (Number(cfg.ledger_cycles) / 1e12).toString(), indexT: (Number(cfg.index_cycles) / 1e12).toString(), reserveT: (Number(cfg.cycle_reserve) / 1e12).toString(), feeOwner: cfg.fee_destination.owner.toText(), paused: cfg.paused, indexFee: (Number(cfg.index_creation_fee_e8s) / 1e8).toString(), premiumIndexFee: (Number(cfg.premium_index_creation_fee_e8s) / 1e8).toString(), followNns: cfg.follow_nns, guardians: (cfg.guardians || []).map((p) => p.toText()).join('\n') });
         } catch (e) { setError(`Could not read the pad: ${e?.message || e}`); }
     }, [pad]);
     useEffect(() => { load(); }, [load]);
+    const loadOlderLaunches = async () => {
+        const a = pad(false); if (!a || launchNext === null) return;
+        try {
+            const p = await launchSummaries(a, { before: launchNext, limit: 50 });
+            setLaunches((prev) => [...prev, ...p.items]); setLaunchNext(p.next);
+        } catch (e) { setError(`Could not read older launches: ${e?.message || e}`); }
+    };
 
     const call = async (label, fn) => {
         setBusy(label); setError(''); setSuccess('');
@@ -178,13 +188,14 @@ export default function SneedPadAdmin() {
                 </div>
 
                 <div style={card}>
-                    <h2 style={h2}>Launches ({launches.length}{failed.length ? `, ${failed.length} failed` : ''})</h2>
+                    <h2 style={h2}>Launches ({String(launchTotal)}{failed.length ? `, ${failed.length} failed among the ${launches.length} shown` : ''})</h2>
                     <div style={{ display: 'grid', gap: 6 }}>
                         {launches.map((l) => {
                             const isFailed = 'failed' in l.status;
                             return (
                                 <div key={String(l.id)} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${theme.colors.border}`, fontSize: '0.85rem', color: theme.colors.primaryText }}>
-                                    <span style={{ fontWeight: 700 }}>#{String(l.id)} {l.config.name} ({l.config.symbol})</span>
+                                    <LaunchLogo pad={pad(false)} padId={PAD_CANISTER_ID} launch={l} size={20} />
+                                    <span style={{ fontWeight: 700 }}>#{String(l.id)} {l.name} ({l.symbol})</span>
                                     <span style={{ ...mono, color: theme.colors.mutedText }}>{l.creator.toText()}</span>
                                     <span style={{ color: theme.colors.mutedText }}>{new Date(Number(l.created_at / 1_000_000n)).toLocaleString()}</span>
                                     <span style={{ color: theme.colors.mutedText }}>{l.steps.map(([s]) => s).join(' → ') || 'no steps'}</span>
@@ -197,6 +208,7 @@ export default function SneedPadAdmin() {
                             );
                         })}
                         {launches.length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>No launches yet.</div>}
+                        {launchNext !== null && <button type="button" style={btn(false)} onClick={loadOlderLaunches}>Load older launches</button>}
                     </div>
                 </div>
 

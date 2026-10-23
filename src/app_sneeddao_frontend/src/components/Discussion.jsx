@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import BigAvatar from './BigAvatar';
 import { useNaming } from '../NamingContext';
 import { useSnsDetailsReady } from '../contexts/SnsContext';
 import { useWalletOptional } from '../contexts/WalletContext';
@@ -909,10 +910,12 @@ function Discussion({
                                 gap: '0.5rem',
                                 flexWrap: 'wrap'
                             }}>
+                                {post.created_by && <BigAvatar principal={post.created_by} size={32} verified="auto" cutout={isNegative ? undefined : theme.colors.primaryBg} />}
                                 <PrincipalDisplay 
                                     principal={post.created_by} 
                                     displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                                     showCopyButton={false}
+                                    hideIcon
                                     isAuthenticated={isAuthenticated}
                                 />
                                 <span>•</span>

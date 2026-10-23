@@ -768,7 +768,8 @@ function HelpTradingBot() {
                     </div>
                     <p style={styles.paragraph}>
                         The Performance tab gives you a comprehensive view of how your bot and individual purses are performing
-                        over time. All data is built from periodic snapshots taken by the Snapshot chore.
+                        over time. All data is built from periodic snapshots taken by the Snapshot chore. The charts show the
+                        most recent data: the newest 500 snapshots, 5,000 price quotes and 1,000 days of daily summaries.
                     </p>
 
                     <div style={styles.featureCard}>
@@ -1105,6 +1106,7 @@ function HelpTradingBot() {
                             <li style={styles.listItem}><strong style={styles.strong}>Filter by source:</strong> api, permissions, chore, system, or log</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Auto-refresh:</strong> Toggle auto-refresh to see new entries as they appear</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Configurable logging level:</strong> Set how much detail to capture (Info is the default)</li>
+                            <li style={styles.listItem}>The bot keeps the newest 10,000 entries; a page shows at most 500, and <strong style={styles.strong}>Load more</strong> fetches the next older page</li>
                         </ul>
                     </div>
 
@@ -1116,6 +1118,7 @@ function HelpTradingBot() {
                             <li style={styles.listItem}>Skipped entries include the reason: cumulative limit reached, frequency limit, purse locked, token frozen, balance/price out of range, trailing stop not triggered, no viable route, and more</li>
                             <li style={styles.listItem}>Includes: tokens, amounts, price, price impact, slippage, DEX used, error messages</li>
                             <li style={styles.listItem}>Filterable by chore, action type, token pair, status, and time range</li>
+                            <li style={styles.listItem}>Keeps up to 50,000 entries (10,000 by default) and up to 20,000 portfolio snapshots (5,000 by default); when full, the oldest make room for new ones. Daily summaries are kept for good, so the Performance tab's daily charts go back further than the snapshot log</li>
                             <li style={styles.listItem}>Tokens sent to or taken from the bot outside its own actions show up as <strong style={styles.strong}>Detected Inflow</strong> / <strong style={styles.strong}>Detected Outflow</strong> entries, which count towards capital deployed. If one is wrong (for example counted twice), remove it with the remove button on the entry, which also reverses its capital impact</li>
                             <li style={styles.listItem}>Live swap progress cards show real-time status of in-flight trades</li>
                         </ul>

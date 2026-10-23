@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import BigAvatar from '../components/BigAvatar';
 import { useNaming } from '../NamingContext';
 import { useSmsInbox } from '../contexts/SmsContext';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
@@ -957,6 +958,8 @@ const SMS = () => {
                                             flexWrap: 'wrap',
                                             gap: '0.5rem'
                                         }}>
+                                            {/* the other party: the sender, or for a sent message its first recipient */}
+                                            <BigAvatar principal={isReceivedMessage || !message.recipients?.[0] ? message.sender : message.recipients[0]} size={44} verified="auto" cutout={isNew ? theme.colors.primaryBg : theme.colors.secondaryBg} style={{ marginRight: '0.25rem' }} />
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ 
                                                     display: 'flex',
@@ -1004,6 +1007,7 @@ const SMS = () => {
                                                         From:
                                                     </span>
                                                     <PrincipalDisplay 
+                                                        hideIcon={Boolean(isReceivedMessage)}
                                                         principal={message.sender}
                                                         displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                                         showCopyButton={false}
@@ -1761,13 +1765,17 @@ const SMS = () => {
                                             }}>
                                                 From
                                             </div>
-                                            <PrincipalDisplay 
-                                                principal={selectedMessage.sender}
-                                                displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
-                                                showCopyButton={true}
-                                                short={true}
-                                                style={{ color: smsPrimary, fontSize: '0.9rem' }}
-                                            />
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                                                <BigAvatar principal={selectedMessage.sender} size={56} verified="auto" />
+                                                <PrincipalDisplay 
+                                                    hideIcon
+                                                    principal={selectedMessage.sender}
+                                                    displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
+                                                    showCopyButton={true}
+                                                    short={true}
+                                                    style={{ color: smsPrimary, fontSize: '0.9rem' }}
+                                                />
+                                            </div>
                                         </div>
 
                                         <div style={{ marginBottom: '1rem' }}>

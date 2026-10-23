@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { extractPrincipalString, uint8ArrayToHex } from '../utils/NeuronUtils';
-import { getOrFetchNeuron } from '../hooks/useNeuronsCache';
+import { fetchProposerNeuron } from './ProposerAvatar';
 
 const PERM = { MANAGE_PRINCIPALS: 2, SUBMIT_PROPOSAL: 3, VOTE: 4, DISBURSE: 5, DISBURSE_MATURITY: 8 };
 
@@ -31,7 +31,7 @@ export default function ProposerPrincipals({ snsRoot, neuronId, theme }) {
     useEffect(() => {
         if (!snsRoot || !neuronIdHex) return;
         let cancelled = false;
-        getOrFetchNeuron({ snsRoot, neuronIdHex, identity })
+        fetchProposerNeuron(snsRoot, neuronIdHex, identity)
             .then((n) => { if (!cancelled) setPermissions(n?.permissions || []); })
             .catch((e) => console.warn(`Failed to load the proposer neuron ${neuronIdHex}:`, e));
         return () => { cancelled = true; };

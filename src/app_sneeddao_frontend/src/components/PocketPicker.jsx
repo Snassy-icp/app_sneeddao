@@ -7,16 +7,22 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePockets } from '../hooks/usePockets';
-import { pickable, displayName, badge, totalIn, sortPockets, ALL, KIND } from '../utils/pockets/model';
+import { pickable, displayName, badge, totalIn, balanceOf, sortPockets, ALL, KIND } from '../utils/pockets/model';
 import { formatAmount } from '../utils/StringUtils';
 
 const NEW = '__new__';
 
 export function pocketOptionLabel(p, ledger, { decimals, symbol } = {}) {
-    const bal = ledger != null && decimals != null ? ` · ${formatAmount(totalIn(p, ledger), decimals)}${symbol ? ` ${symbol}` : ''}` : '';
+    const b = ledger != null ? balanceOf(p, ledger) : null;
+    let bal = '';
+    if (ledger != null && decimals != null) {
+        const free = b ? (b.available ?? b.total) : totalIn(p, ledger);
+        bal = ` · ${b?.locked > 0n ? 'free ' : ''}${formatAmount(free, decimals)}${symbol ? ` ${symbol}` : ''}${b?.locked > 0n ? ` (locked ${formatAmount(b.locked, decimals)})` : ''}`;
+    }
     const shield = p.grants ? ` · 🛡${p.grants}` : '';
-    const b = p.kind === KIND.wallet ? '' : ` (${badge(p)})`;
-    return `${displayName(p)}${b}${bal}${shield}`;
+    const name = displayName(p);
+    const b2 = p.kind === KIND.wallet || badge(p) === name || name.endsWith(` · ${badge(p)}`) ? '' : ` (${badge(p)})`;
+    return `${name}${b2}${bal}${shield}`;
 }
 
 export default function PocketPicker({ ledger, value, onChange, filter = 'from', allowNew = false, decimals, symbol, allLabel = null, exclude = [], pockets: given, style, disabled }) {

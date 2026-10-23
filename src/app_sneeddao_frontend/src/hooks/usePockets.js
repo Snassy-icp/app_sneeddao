@@ -12,7 +12,7 @@ import { ALL, displayName } from '../utils/pockets/model';
 const none = async () => { throw new Error('Pockets are not available here'); };
 const EMPTY = Object.freeze({
     active: false, pockets: [], loading: false, error: null, discoveryNotes: [], ctx: null,
-    selected: ALL, setSelected: () => {}, hideEmpty: true, setHideEmpty: () => {},
+    selected: ALL, setSelected: () => {}, hideEmpty: true, setHideEmpty: () => {}, showQuiet: false, setShowQuiet: () => {},
     pocketsFor: () => [], total: () => 0n, balanceFor: () => 0n, holders: () => [], showDisclosure: () => false,
     displayName, create: none, rename: none, hide: none, forget: none, refresh: async () => {}, checkNumber: none, deepScan: none,
     rules: none, transfer: none, pocketById: () => null, registryEntries: () => [],

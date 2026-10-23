@@ -38,6 +38,7 @@ import { appAlert, appConfirm } from './utils/appDialog';
 import { usePockets } from './hooks/usePockets';
 import PocketRows from './components/PocketRows';
 import { otherPocketsTotal, holders as pocketHolders } from './utils/pockets/model';
+import { wrapAction } from './utils/wrapActions';
 import { journalStake, updateStake, removeStake } from './utils/stakeJournal';
 
 // Amount text to base units by string parsing (commas ignored, no float math, extra
@@ -121,7 +122,7 @@ const LockCountdown = ({ expiry }) => {
 
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal, showPockets = false, onPocketAction }) => {
     // Pockets (spec/programmable_accounts.md §4.3): the card's total counts every pocket; Main and
-    // the Sneed Lock wallet are the Wallet / Deposited rows below, other pockets are rows of their
+    // the Sneed Lock wallet are the Wallet / Sneed Lock rows below, other pockets are rows of their
     // own, and "in N pockets" shows only when more than one pocket holds the token.
     const pockets = usePockets({ enabled: showPockets });
     const pocketLedger = normalizeId(token.ledger_canister_id);
@@ -245,8 +246,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         available: token.available?.toString(),
         GLDT_CANISTER_ID,
         SGLDT_CANISTER_ID,
-        isGLDT: token.ledger_canister_id === GLDT_CANISTER_ID,
-        isSGLDT: token.ledger_canister_id === SGLDT_CANISTER_ID,
+        isGLDT: normalizeId(token.ledger_canister_id) === GLDT_CANISTER_ID,
+        isSGLDT: normalizeId(token.ledger_canister_id) === SGLDT_CANISTER_ID,
         hasAvailable: token.available > 0n,
         hideButtons,
         openWrapModal: typeof openWrapModal,
@@ -839,9 +840,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
             // Step 2: Transfer tokens to the neuron's subaccount
             setCreateNeuronProgress('Transferring tokens to neuron subaccount...');
-            const ledgerIdString = typeof token.ledger_canister_id === 'string' 
-                ? token.ledger_canister_id 
-                : token.ledger_canister_id?.toString();
+            const ledgerIdString = normalizeId(token.ledger_canister_id);
             
             const ledgerActor = createLedgerActor(ledgerIdString, {
                 agentOptions: { identity }
@@ -986,9 +985,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         
         try {
             // Step 1: Transfer tokens to the neuron's subaccount
-            const ledgerIdString = typeof token.ledger_canister_id === 'string' 
-                ? token.ledger_canister_id 
-                : token.ledger_canister_id?.toString();
+            const ledgerIdString = normalizeId(token.ledger_canister_id);
             
             const ledgerActor = createLedgerActor(ledgerIdString, {
                 agentOptions: { identity }
@@ -2185,7 +2182,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 alignItems: 'flex-start',
                                                 paddingTop: '12px'
                                             }}>
-                                                <div>
+                                                <div title="Tokens you hold in Sneed Lock; locked ones can't move until they unlock">
                                                     <div style={{ 
                                                         fontSize: '0.75rem', 
                                                         color: theme.colors.mutedText,
@@ -2194,16 +2191,21 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                         alignItems: 'center',
                                                         gap: '6px'
                                                     }}>
-                                                        <FaLock size={10} />
-                                                        Deposited
+                                                        <img src="/sneedlock-logo-cropped.png" alt="" style={{ width: 12, height: 12, objectFit: 'contain' }} />
+                                                        Sneed Lock
                                                     </div>
                                                     <div style={{ 
                                                         fontSize: '0.9rem', 
                                                         fontWeight: '600', 
                                                         color: theme.colors.primaryText 
                                                     }}>
-                                                        {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
+                                                        {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}{(token.locked || 0n) > 0n ? <span style={{ fontWeight: 400, color: theme.colors.mutedText, fontSize: '0.75rem' }}> free</span> : null}
                                                     </div>
+                                                    {(token.locked || 0n) > 0n && (
+                                                        <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, marginTop: 2 }}>
+                                                            <FaLock size={8} /> locked {formatAmount(token.locked, token.decimals)} / free {formatAmount(token.available_backend || 0n, token.decimals)}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {token.available_backend > 0n && !hideButtons && (
                                                     <button
@@ -3947,13 +3949,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     fontFamily: 'monospace',
                                     wordBreak: 'break-all'
                                 }}>
-                                    {token.ledger_canister_id?.toString?.() || token.ledger_canister_id || 'N/A'}
+                                    {normalizeId(token.ledger_canister_id) || 'N/A'}
                                 </span>
                                 {token.ledger_canister_id && (
                                     <button
                                         onClick={() => {
                                             navigator.clipboard.writeText(
-                                                token.ledger_canister_id?.toString?.() || token.ledger_canister_id
+                                                normalizeId(token.ledger_canister_id)
                                             );
                                         }}
                                         style={{
@@ -4096,7 +4098,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
-                const ledgerIdText = token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                const ledgerIdText = normalizeId(token.ledger_canister_id);
                 const isGLDT = ledgerIdText === GLDT_CANISTER_ID;
                 const isSGLDT = ledgerIdText === SGLDT_CANISTER_ID;
                 
@@ -4108,7 +4110,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     hasAvailable: token.available > 0n
                 });*/
                 
-                if ((isGLDT || isSGLDT) && token.available > 0n && !hideButtons) {
+                // with pockets: Main's balance wraps; tokens only elsewhere get "Move to Main to wrap" (utils/wrapActions.js)
+                const wa = (isGLDT || isSGLDT) ? wrapAction(token, { pockets: showPockets ? pockets.pockets : [] }) : null;
+                if (wa && !hideButtons) {
                     const wrapPrimary = '#8b5cf6';
                     const wrapSecondary = '#7c3aed';
                     return (
@@ -4125,7 +4129,16 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             paddingRight: '16px',
                             paddingBottom: '16px'
                         }}>
-                            {isGLDT && (
+                            {wa.needsMove && (
+                                <button
+                                    onClick={() => (wa.source && onPocketAction ? onPocketAction('withdraw', wa.source, token) : handleWithdrawFromBackend?.(token))}
+                                    style={{ width: '100%', padding: '12px 20px', background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`, color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                                >
+                                    <FaExchangeAlt size={10} /> Move to Main to {isGLDT ? 'wrap' : 'unwrap'}
+                                </button>
+                            )}
+                            {wa.note && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: wa.needsMove ? 8 : 0, marginBottom: wa.needsMove ? 0 : 8, textAlign: 'center' }}>{wa.note}</div>}
+                            {isGLDT && !wa.needsMove && (
                                 <button 
                                     onClick={() => openWrapModal(token)}
                                     style={{
@@ -4148,7 +4161,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     <FaExchangeAlt size={10} style={{ marginRight: '4px' }} /> Wrap to sGLDT
                                 </button>
                             )}
-                            {isSGLDT && (
+                            {isSGLDT && !wa.needsMove && (
                                 <button 
                                     onClick={() => openUnwrapModal(token)}
                                     style={{
@@ -5140,9 +5153,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                         const principal = identity.getPrincipal();
                                                         const subaccount = await computeNeuronSubaccount(principal, nonce);
                                                         
-                                                        const ledgerIdString = typeof token.ledger_canister_id === 'string' 
-                                                            ? token.ledger_canister_id 
-                                                            : token.ledger_canister_id?.toString();
+                                                        const ledgerIdString = normalizeId(token.ledger_canister_id);
                                                         
                                                         const ledgerActor = createLedgerActor(ledgerIdString, {
                                                             agentOptions: { identity }

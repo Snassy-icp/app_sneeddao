@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaComments, FaLayerGroup, FaStream, FaReply, FaGavel, FaBrain, FaRobot, FaCube, FaClock } from 'react-icons/fa';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { useAvatar } from '../NamingContext';
 import { formatAmount, formatTimeRemaining } from '../utils/SneedexUtils';
 import TokenIcon from './TokenIcon';
 import MarkdownBody from './MarkdownBody';
@@ -201,6 +202,14 @@ function FeedItemCard({
     const creatorDisplayInfo = creatorPrincipal && getPrincipalDisplayName 
         ? getPrincipalDisplayName(creatorPrincipal) 
         : null;
+
+    // The poster's avatar (Sneed names, NFT avatars re-checked: the source PrincipalDisplay uses),
+    // asked for in the naming context's batches, never one call per card. On the full card it is the
+    // big logo, with the SNS logo as a small badge; without one the SNS logo stays the big logo.
+    const creatorText = creatorPrincipal ? creatorPrincipal.toText() : null;
+    const creatorAvatar = useAvatar(variant === 'default' && !item._isAuction ? creatorText : null);
+    const [failedAvatar, setFailedAvatar] = useState(null); // a picture that did not load: the SNS logo shows
+    const showAvatar = !!creatorAvatar && failedAvatar !== creatorAvatar && !item._isAuction;
 
     // Ids from Candid options: an empty option ([]) means none. A topic item is the topic itself
     // (its topic_id is empty), and a thread item is the thread, so they fall back to the item id.
@@ -606,6 +615,52 @@ function FeedItemCard({
                     title="View Auction on Sneedex"
                 >
                     <FaGavel size={20} style={{ color: 'white' }} />
+                </div>
+            ) : showAvatar ? (
+                <div style={{ position: 'relative', flexShrink: 0, width: styles.logoPlaceholder.width, height: styles.logoPlaceholder.height }}>
+                    <div
+                        style={{ ...styles.logoPlaceholder, borderRadius: '50%', background: theme.colors.tertiaryBg }}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/principal?id=${creatorText}`); }}
+                        title={creatorDisplayInfo?.name ? `${creatorDisplayInfo.name}'s profile` : 'Profile'}
+                    >
+                        <img
+                            src={creatorAvatar}
+                            alt=""
+                            onError={() => setFailedAvatar(creatorAvatar)}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                        />
+                    </div>
+                    {snsInfo && (
+                        <div
+                            onClick={handleSnsLogoClick}
+                            title={`Go to ${snsInfo.name} Forum`}
+                            style={{
+                                position: 'absolute',
+                                right: '-5px',
+                                bottom: '-5px',
+                                width: '22px',
+                                height: '22px',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                border: `2px solid ${theme.colors.secondaryBg}`,
+                                background: `linear-gradient(135deg, ${typeColor}30, ${typeColor}15)`,
+                                color: typeColor,
+                                fontSize: '8px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxSizing: 'border-box',
+                            }}
+                        >
+                            {snsLogo ? (
+                                <img src={snsLogo} alt={snsInfo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                                <span>{snsInfo.name?.substring(0, 2).toUpperCase()}</span>
+                            )}
+                        </div>
+                    )}
                 </div>
             ) : snsInfo && (
                 <div 

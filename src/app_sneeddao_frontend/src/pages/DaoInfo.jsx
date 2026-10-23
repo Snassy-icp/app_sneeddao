@@ -594,7 +594,23 @@ function DaoInfo() {
                 // Fetch reconciliation data
                 setLoading(prev => ({ ...prev, reconciliation: true }));
                 try {
-                    const reconciliationData = await rllActor.balance_reconciliation();
+                    // Queries only (no update call per page load): rll's known tokens, the ledger
+                    // balance of rll's main account in each, then rll's reconciliation of them
+                    const knownTokens = await rllActor.get_known_tokens();
+                    const ledgerBalances = await Promise.all(knownTokens.map(async ([ledgerId]) => {
+                        try {
+                            const ledger = createLedgerActor(ledgerId.toString(), { agentOptions: { agent } });
+                            return [ledgerId, await ledger.icrc1_balance_of({ owner: Principal.fromText(rllCanisterId), subaccount: [] })];
+                        } catch (e) {
+                            console.warn('RLL ledger balance unavailable for', ledgerId.toString(), e);
+                            return null;
+                        }
+                    }));
+                    const read = ledgerBalances.filter(Boolean);
+                    const readIds = new Set(read.map(([id]) => id.toString()));
+                    // a ledger that could not be read is left out rather than shown as 0
+                    const reconciliationData = (await rllActor.balance_reconciliation_from_balances(read))
+                        .filter(item => readIds.has(item.token_id.toString()));
                     setReconciliation(reconciliationData);
 
                     // Calculate total assets from reconciliation data

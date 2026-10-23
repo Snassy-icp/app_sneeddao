@@ -18,7 +18,8 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { getAllSnses } from '../utils/SnsUtils';
 import { setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
-import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+import { padIdl, PAD_CANISTER_ID, launchSummaries } from '../tokensafety/padIdl.js';
+import LaunchLogo from '../tokensafety/LaunchLogo.jsx';
 import { padQuoteTiers } from '../tokensafety/padPrices.js';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { GUARDIANS, policySummary } from '../tokensafety/guardianIdl.js';
@@ -71,7 +72,8 @@ export function LaunchPanel({ onLaunched }) {
     }, [padActor]);
     useEffect(() => {
         const a = padActor(false); if (!a || !me) { setMine([]); return; }
-        a.get_launches_by_creator(Principal.fromText(me)).then(setMine).catch(() => {});
+        // the newest 50, as summaries (no logos: LaunchLogo fetches each one on its own)
+        launchSummaries(a, { creator: Principal.fromText(me), limit: 50 }).then((p) => setMine(p.items)).catch(() => {});
     }, [padActor, me, result]);
 
     useEffect(() => { if (me && form.allocations.length === 1 && !form.allocations[0].owner) setForm((f) => ({ ...f, allocations: [{ owner: me, amount: f.allocations[0].amount }] })); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [me]);
@@ -449,7 +451,8 @@ export function LaunchPanel({ onLaunched }) {
                         <h2 style={{ margin: '0 0 10px', fontSize: '1.05rem', color: theme.colors.primaryText }}>Your launches</h2>
                         {mine.map((l) => (
                             <div key={String(l.id)} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${theme.colors.border}`, fontSize: '0.88rem', color: theme.colors.primaryText }}>
-                                <span style={{ fontWeight: 700 }}>{l.config.name} ({l.config.symbol})</span>
+                                <LaunchLogo pad={padActor(false)} padId={PAD_CANISTER_ID} launch={l} size={22} />
+                                <span style={{ fontWeight: 700 }}>{l.name} ({l.symbol})</span>
                                 <span className="health-mono" style={{ color: theme.colors.mutedText }}>{l.ledger[0]?.toText() || 'no ledger'}</span>
                                 <span style={{ color: 'failed' in l.status ? '#ef4444' : theme.colors.mutedText }}>{'failed' in l.status ? `failed: ${l.status.failed}` : new Date(Number(l.created_at / 1000000n)).toLocaleString()}</span>
                                 {l.ledger.length > 0 && <Link to={`/studio/${l.ledger[0].toText()}`} style={{ color: '#10b981' }}>check</Link>}

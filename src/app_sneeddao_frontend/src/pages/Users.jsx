@@ -7,6 +7,8 @@ import { useNaming } from '../NamingContext';
 import PrincipalInput from '../components/PrincipalInput';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl, isCanisterPrincipal } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
+import BigAvatar from '../components/BigAvatar';
+import { useAvatars } from '../hooks/useAvatars';
 import { FaUsers, FaFilter, FaChevronRight, FaChevronLeft, FaExternalLinkAlt } from 'react-icons/fa';
 
 const usersPrimary = '#6366f1';
@@ -90,6 +92,8 @@ function Users() {
         currentPage * itemsPerPage
     );
     const totalPages = Math.ceil(filteredPrincipals.length / itemsPerPage);
+    // the avatars of the page shown, asked for in one batch
+    const { avatarOf } = useAvatars(paginatedPrincipals);
 
     const handlePrincipalSelect = (principalStr) => {
         if (principalStr) {
@@ -292,7 +296,9 @@ function Users() {
                                         display: 'block'
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                        <BigAvatar principal={principalId} url={avatarOf(principalId)} size={48} verified={Boolean(displayInfo?.isVerified && displayInfo?.name)} />
+                                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                                         <PrincipalDisplay
                                             principal={Principal.fromText(principalId)}
                                             displayInfo={displayInfo}
@@ -300,9 +306,11 @@ function Users() {
                                             noLink={true}
                                             isAuthenticated={isAuthenticated}
                                             showViewProfile={false}
+                                            hideIcon
                                             style={{ fontSize: '1rem' }}
                                         />
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: usersPrimary, fontSize: '0.85rem', fontWeight: '500' }}>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: usersPrimary, fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
                                             View Profile
                                             <FaExternalLinkAlt size={10} />
                                         </div>

@@ -6,10 +6,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import BigAvatar from '../components/BigAvatar';
 import { useNaming } from '../NamingContext';
 import MarkdownBody from '../components/MarkdownBody';
 import { useAppRefresh } from '../hooks/useAppRefresh';
-import { useSmsInbox } from '../contexts/SmsContext';
+import { useSmsInbox, isMissingMethod } from '../contexts/SmsContext';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen } from 'react-icons/fa';
 
@@ -101,12 +102,35 @@ const Message = () => {
         return null;
     };
 
-    // get_all_messages once per load of the thread (replies and parents are looked up in it),
+    // All the caller's messages (received and sent), read in pages so a big inbox never has to fit
+    // in one reply; get_all_messages on a canister (or declarations) without the paged reads
+    const readAllMessages = async (actor) => {
+        if (typeof actor.get_received_messages_page === 'function' && typeof actor.get_sent_messages_page === 'function') {
+            try {
+                const byId = new Map();
+                for (const method of ['get_received_messages_page', 'get_sent_messages_page']) {
+                    let before = [];
+                    for (let i = 0; i < 1000; i++) {
+                        const page = await actor[method]({ before, after: [], limit: 100n });
+                        page.messages.forEach((m) => byId.set(m.id.toString(), m));
+                        if (!page.has_more || page.messages.length === 0) break;
+                        before = [page.messages[page.messages.length - 1].id];
+                    }
+                }
+                return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+            } catch (e) {
+                if (!isMissingMethod(e)) throw e;
+            }
+        }
+        return actor.get_all_messages();
+    };
+
+    // all messages once per load of the thread (replies and parents are looked up in them),
     // not once per expanded message
     const allMessagesRef = useRef(null);
     const getAllMessages = (actor) => {
         if (!allMessagesRef.current) {
-            allMessagesRef.current = actor.get_all_messages().catch((e) => { allMessagesRef.current = null; throw e; });
+            allMessagesRef.current = readAllMessages(actor).catch((e) => { allMessagesRef.current = null; throw e; });
         }
         return allMessagesRef.current;
     };
@@ -744,6 +768,9 @@ const Message = () => {
                         >
                             {isCollapsed ? <FaChevronRight size={10} /> : <FaChevronDown size={10} />}
                         </button>
+
+                        {/* The sender's face, one size on every message so nothing moves when focus does */}
+                        {message.sender && <BigAvatar principal={message.sender} size={48} verified="auto" />}
 
                         {/* Message Info */}
                         <div style={{ flex: 1, minWidth: 0 }}>

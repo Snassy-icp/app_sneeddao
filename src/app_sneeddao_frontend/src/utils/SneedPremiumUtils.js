@@ -224,6 +224,13 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         getConfig: IDL.Func([], [Config], ['query']),
         getAllMemberships: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, Membership))], ['query']),
         getActivePremiumMembers: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+        // at most 500 principals; same order as asked
+        checkMemberships: IDL.Func([IDL.Vec(IDL.Principal)], [IDL.Vec(MembershipStatus)], ['query']),
+        getActivePremiumMembersPage: IDL.Func([IDL.Record({ start: IDL.Nat, limit: IDL.Nat })], [IDL.Record({
+            items: IDL.Vec(IDL.Record({ principal: IDL.Principal, expiration: IDL.Int })),
+            next: IDL.Opt(IDL.Nat),
+            total_active: IDL.Nat,
+        })], ['query']),
         getCanisterId: IDL.Func([], [IDL.Principal], ['query']),
         isCallerAdmin: IDL.Func([], [IDL.Bool], ['query']),
         

@@ -19,6 +19,15 @@ export const normalizeId = (canisterId) => {
     if (typeof canisterId === 'object') {
         if (typeof canisterId.toText === 'function') return canisterId.toText();
 
+        // raw bytes, or a Principal that lost its prototype ({ _arr })
+        if (canisterId instanceof Uint8Array || canisterId._arr) {
+            try {
+                const raw = canisterId instanceof Uint8Array ? canisterId : canisterId._arr;
+                const bytes = raw instanceof Uint8Array ? raw : Uint8Array.from(Object.values(raw));
+                return Principal.fromUint8Array(bytes).toText();
+            } catch (e) { /* fall through */ }
+        }
+
         if (typeof canisterId.principal === 'string') return canisterId.principal;
         if (canisterId.principal && typeof canisterId.principal.toText === 'function') {
             return canisterId.principal.toText();

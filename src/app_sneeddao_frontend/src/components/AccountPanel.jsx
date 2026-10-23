@@ -1,6 +1,6 @@
 // One name for all of a person's principals (spec/sneed_names.md §4): the principals in your
-// account, the hotkeys you gave out, and the accounts others gave you a hotkey on, which you can
-// rename or merge into yours. Shown on the Me page once the naming service is live.
+// account, the hotkeys you gave out, and the accounts others gave you a hotkey on (paged), which you
+// can rename, merge into yours, or leave. Shown on the Me page once the naming service is live.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Principal } from '@dfinity/principal';
 import { FaKey, FaUsers, FaCompressArrowsAlt, FaTimes, FaCheckCircle } from 'react-icons/fa';
@@ -18,6 +18,8 @@ export default function AccountPanel({ identity, accent }) {
     const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes, fetchAllNames } = useNaming();
     const [account, setAccount] = useState(null);
     const [managed, setManaged] = useState([]);
+    const [managedNext, setManagedNext] = useState(null); // the next page's start, null: all loaded
+    const [managedTotal, setManagedTotal] = useState(0);
     const [dapps, setDapps] = useState([]);
     const [hotkeyInput, setHotkeyInput] = useState('');
     const [renames, setRenames] = useState({});
@@ -30,10 +32,20 @@ export default function AccountPanel({ identity, accent }) {
     const reload = useCallback(async () => {
         if (!identity) return;
         try {
-            const [a, m, d] = await Promise.all([NS.getMyAccount(identity), NS.myHotkeyAccounts(identity), NS.listDapps(identity).catch(() => [])]);
-            setAccount(a); setManaged(m); setDapps(d);
+            const [a, m, d] = await Promise.all([NS.getMyAccount(identity), NS.myHotkeyAccountsPage(identity), NS.listDapps(identity).catch(() => [])]);
+            setAccount(a); setManaged(m.items); setManagedNext(m.next); setManagedTotal(m.total); setDapps(d);
         } catch (e) { setError(e?.message || String(e)); }
     }, [identity]);
+    const loadMoreManaged = async () => {
+        if (managedNext == null) return;
+        setBusy('more'); setError('');
+        try {
+            const m = await NS.myHotkeyAccountsPage(identity, managedNext);
+            setManaged((prev) => [...prev, ...m.items.filter((x) => !prev.some((y) => y.id === x.id))]);
+            setManagedNext(m.next); setManagedTotal(m.total);
+        } catch (e) { setError(e?.message || String(e)); }
+        finally { setBusy(''); }
+    };
     useEffect(() => { reload(); }, [reload]);
 
     const run = async (label, fn, done) => {
@@ -140,7 +152,15 @@ export default function AccountPanel({ identity, accent }) {
                 <>
                     <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: theme.colors.primaryText, fontSize: '0.9rem' }}>
                         <FaCompressArrowsAlt color={accent} size={13} /> Accounts you hold a hotkey on
+                        {managedTotal > managed.length && <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: 400 }}>({managed.length} of {managedTotal})</span>}
+                        {managed.length > 1 && (
+                            <button type="button" style={{ ...btn(true), marginLeft: 'auto' }} disabled={!!busy}
+                                onClick={() => setConfirm({ message: `Give up your hotkey on all ${managedTotal} accounts? You can no longer rename or merge them.`, run: () => run('leaveall', () => NS.leaveHotkeyAccounts(identity), 'You left all those accounts') })}>
+                                {busy === 'leaveall' ? 'Leaving…' : 'Remove me from all'}
+                            </button>
+                        )}
                     </div>
+                    <p style={small}>Anyone can give you a hotkey on their account. If you did not ask for one, remove yourself.</p>
                     {managed.map((a) => {
                         const id = a.id.toString();
                         return (
@@ -163,6 +183,11 @@ export default function AccountPanel({ identity, accent }) {
                             </div>
                         );
                     })}
+                    {managedNext != null && (
+                        <button type="button" style={{ ...btn(false), marginTop: '0.5rem' }} disabled={!!busy} onClick={loadMoreManaged}>
+                            {busy === 'more' ? 'Loading…' : 'Show more'}
+                        </button>
+                    )}
                 </>
             )}
             {confirm && <ConfirmationModal show onClose={() => setConfirm(null)} onSubmit={confirm.run} doAwait message={confirm.message} />}

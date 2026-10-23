@@ -18,12 +18,12 @@ export const sneedLockAdapter = {
     receivesDirectly: true,
     enabled: (ctx) => Boolean(ctx.canisterIds?.sneed_lock),
     async listMyAccounts(ctx) {
-        return [{ hostKey: 'wallet', account: lockAccount(ctx), label: 'Sneed Lock wallet' }];
+        return [{ hostKey: 'wallet', account: lockAccount(ctx), label: 'Sneed Lock' }];
     },
     async balance(ctx, pocket, ledger) {
         const [total, locks] = await Promise.all([ledgerBalance(ctx, ledger, lockAccount(ctx)), summedLocks(ctx)]);
         const locked = locks.get(text(ledger)) || 0n;
-        return { total, available: minus(total, locked), locked, ...(locked > 0n ? { note: 'locked tokens stay until their locks expire' } : {}) };
+        return { total, available: minus(total, locked), locked, note: locked > 0n ? "tokens you hold in Sneed Lock; locked ones can't move until they unlock" : 'tokens you hold in Sneed Lock' };
     },
     async rules(ctx, pocket, ledger) {
         const [b, fee] = await Promise.all([sneedLockAdapter.balance(ctx, pocket, ledger), feeOf(ctx, ledger)]);

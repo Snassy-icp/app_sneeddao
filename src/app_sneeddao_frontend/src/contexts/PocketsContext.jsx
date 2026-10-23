@@ -8,6 +8,7 @@ import React, { createContext, useCallback, useEffect, useMemo, useRef, useState
 import { useAuth } from '../AuthContext';
 import { useWalletOptional } from './WalletContext';
 import { getSnsByLedgerId } from '../utils/SnsUtils';
+import { normalizeId } from '../utils/IdUtils';
 import { makeCtx } from '../utils/pockets/ctx';
 import { createRegistry } from '../utils/pockets/registry';
 import { listHosted, readBalances, okBalances, enabledAdapters, adapterFor } from '../utils/pockets/adapters/index';
@@ -20,9 +21,10 @@ export const PocketsContext = createContext(null);
 
 const SELECTED_KEY = 'sneed_pockets_selected_v1:';
 const HIDE_EMPTY_KEY = 'sneed_pockets_hide_empty_v1';
+const SHOW_QUIET_KEY = 'sneed_pockets_show_escrows_v1:';
 const readLocal = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } };
 const writeLocal = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
-const ledgerText = (t) => (t?.ledger_canister_id ? (typeof t.ledger_canister_id === 'string' ? t.ledger_canister_id : t.ledger_canister_id.toText?.() || String(t.ledger_canister_id)) : t?.principal ? String(t.principal) : null);
+const ledgerText = (t) => normalizeId(t?.ledger_canister_id) || (t?.principal ? normalizeId(t.principal) : null);
 
 export function PocketsProvider({ children }) {
     const { identity } = useAuth() || {};
@@ -31,12 +33,15 @@ export function PocketsProvider({ children }) {
     const me = identity?.getPrincipal?.()?.toText?.() || null;
 
     const [active, setActive] = useState(false);
-    const [pockets, setPockets] = useState([]);
+    const [rawPockets, setPockets] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [discoveryNotes, setDiscoveryNotes] = useState([]);
     const [selected, setSelectedState] = useState(M.ALL);
     const [hideEmpty, setHideEmptyState] = useState(() => readLocal(HIDE_EMPTY_KEY, true));
+    const [showQuiet, setShowQuietState] = useState(false);
+    // Sneedex escrows stay out of sight unless something can be withdrawn, or the user asks (Advanced)
+    const pockets = useMemo(() => M.applyQuiet(rawPockets, { showQuiet }), [rawPockets, showQuiet]);
     const run = useRef(0);
     const registryRef = useRef(null);
 
@@ -64,6 +69,7 @@ export function PocketsProvider({ children }) {
         registryRef.current = identity ? createRegistry(identity) : null;
         setPockets(identity ? M.withWalletTokens(M.mergePockets({ me: identity.getPrincipal(), registry: registryRef.current.entries() }), seedRef.current) : []);
         setSelectedState(me ? readLocal(SELECTED_KEY + me, M.ALL) : M.ALL);
+        setShowQuietState(me ? Boolean(readLocal(SHOW_QUIET_KEY + me, false)) : false);
     }, [identity, me]);
 
     const refresh = useCallback(async () => {
@@ -106,6 +112,7 @@ export function PocketsProvider({ children }) {
         setSelectedState(next);
         if (me) writeLocal(SELECTED_KEY + me, next);
     }, [me]);
+    const setShowQuiet = useCallback((v) => { setShowQuietState(Boolean(v)); if (me) writeLocal(SHOW_QUIET_KEY + me, Boolean(v)); }, [me]);
     const setHideEmpty = useCallback((v) => { setHideEmptyState(Boolean(v)); writeLocal(HIDE_EMPTY_KEY, Boolean(v)); }, []);
     const validSelected = M.validSelection(pockets, selected);
 
@@ -187,6 +194,8 @@ export function PocketsProvider({ children }) {
         setSelected,
         hideEmpty,
         setHideEmpty,
+        showQuiet,
+        setShowQuiet,
         pocketsFor: (ledger) => M.sortPockets(M.listed(pockets, ledger)),
         total: (ledger) => M.total(pockets, ledger, M.ALL),
         balanceFor: (ledger) => M.total(pockets, ledger, validSelected),
@@ -204,7 +213,7 @@ export function PocketsProvider({ children }) {
         transfer,
         pocketById: (id) => pockets.find((p) => p.id === id) || null,
         registryEntries: () => registryRef.current?.entries() || [],
-    }), [active, pockets, loading, error, discoveryNotes, ctx, validSelected, setSelected, hideEmpty, setHideEmpty, create, rename, hide, forget, refresh, checkNumber, deepScan, rules, transfer]);
+    }), [active, pockets, loading, error, discoveryNotes, ctx, validSelected, setSelected, hideEmpty, setHideEmpty, showQuiet, setShowQuiet, create, rename, hide, forget, refresh, checkNumber, deepScan, rules, transfer]);
 
     return <PocketsContext.Provider value={value}>{children}</PocketsContext.Provider>;
 }

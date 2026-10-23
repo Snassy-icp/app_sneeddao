@@ -343,7 +343,30 @@ export const unverifyNeuronName = (identity, root, neuronId) => neuronNamesActor
 export const getMyAccount = async (identity) => opt(await pidNamesActor(identity).get_account_of(identity.getPrincipal()));
 export const getAccount = async (identity, id) => opt(await pidNamesActor(identity).get_account(BigInt(id)));
 export const myHotkeyAccounts = (identity) => pidNamesActor(identity).my_hotkey_accounts();
+/// A page (by account id) of the accounts the caller holds a hotkey on: { items, next, total }.
+/// Falls back to my_hotkey_accounts on a canister that has no paged method yet.
+export async function myHotkeyAccountsPage(identity, startAfter = null, limit = 50) {
+    const actor = pidNamesActor(identity);
+    try {
+        const r = await actor.my_hotkey_accounts_page({ start_after: startAfter == null ? [] : [BigInt(startAfter)], limit: BigInt(limit) });
+        return { items: r.items, next: opt(r.next), total: Number(r.total) };
+    } catch (e) {
+        if (startAfter != null) throw e;
+        const items = await actor.my_hotkey_accounts();
+        return { items, next: null, total: items.length };
+    }
+}
 export const addHotkey = (identity, hotkey) => pidNamesActor(identity).add_hotkey(toPrincipal(hotkey));
+/// Remove yourself as a hotkey from every account that gave you one (500 a call; repeats until done).
+export async function leaveHotkeyAccounts(identity) {
+    const actor = pidNamesActor(identity);
+    let r;
+    for (let i = 0; i < 100; i++) {
+        r = await actor.leave_hotkey_accounts();
+        if ('err' in r || !/call again/.test(r.ok)) break;
+    }
+    return r;
+}
 export const removeHotkey = (identity, account, hotkey) => pidNamesActor(identity).remove_hotkey(BigInt(account), toPrincipal(hotkey));
 export const setAccountName = (identity, account, name) => pidNamesActor(identity).set_account_name(BigInt(account), name);
 export const mergeAccount = (identity, from) => pidNamesActor(identity).merge_account(BigInt(from));

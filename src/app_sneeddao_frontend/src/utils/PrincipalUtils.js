@@ -374,7 +374,8 @@ export const PrincipalDisplay = React.memo(({
     onNicknameUpdate = null,
     showSendMessage = true,
     showViewProfile = true,
-    subaccount = null // Optional subaccount for ICRC-1 account copy in context menu
+    subaccount = null, // Optional subaccount for ICRC-1 account copy in context menu
+    hideIcon = false // true where a BigAvatar beside it already shows the same person
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
@@ -595,7 +596,7 @@ export const PrincipalDisplay = React.memo(({
                             style: { display: 'inline-flex', alignItems: 'center' },
                             title: principalId 
                         },
-                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon, avatarUrl }),
+                        !hideIcon && React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon, avatarUrl }),
                         formatted
                     )
                 ),
@@ -686,7 +687,7 @@ export const PrincipalDisplay = React.memo(({
                         title: formatted.fullId
                     },
                     // Principal type icon (crown for premium, user/canister otherwise)
-                    React.createElement('span', 
+                    !hideIcon && React.createElement('span', 
                         { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginRight: '4px' } },
                         React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon, avatarUrl })
                     ),
@@ -814,6 +815,7 @@ export const PrincipalDisplay = React.memo(({
         prevProps.short === nextProps.short &&
         prevProps.noLink === nextProps.noLink &&
         prevProps.showSendMessage === nextProps.showSendMessage &&
-        prevProps.showViewProfile === nextProps.showViewProfile
+        prevProps.showViewProfile === nextProps.showViewProfile &&
+        prevProps.hideIcon === nextProps.hideIcon
     );
 }); 

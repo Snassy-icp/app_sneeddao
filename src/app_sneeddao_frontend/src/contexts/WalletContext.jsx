@@ -100,6 +100,12 @@ const serializeForDB = (obj) => {
         }
         // Detect Principal objects by various methods
         if (value && typeof value === 'object') {
+            // JSON.stringify calls Principal.toJSON() before this replacer, so a Principal arrives
+            // here as { __principal__: text }: keep it a Principal (tokens' ledger_canister_id
+            // came back from the cache as a plain object, shown as "[object Object]")
+            if (typeof value.__principal__ === 'string' && Object.keys(value).length === 1) {
+                return { __type: 'Principal', value: value.__principal__ };
+            }
             // Check for Principal-like objects (has toText method or _isPrincipal flag)
             if (value._isPrincipal || (typeof value.toText === 'function' && typeof value._arr !== 'undefined')) {
                 return { __type: 'Principal', value: value.toText?.() || value.toString() };
@@ -153,6 +159,10 @@ const deserializeFromDB = (obj) => {
                         }
                         return value.value;
                 }
+            }
+            // a Principal cached before the fix above, as { __principal__: text }
+            if (typeof value.__principal__ === 'string' && Object.keys(value).length === 1) {
+                return safePrincipalFromText(value.__principal__);
             }
             // Recursively process objects and arrays
             if (Array.isArray(value)) {

@@ -21,7 +21,7 @@ export default function PocketSwitcher({ style }) {
             <FaLayerGroup size={13} style={{ color: c.mutedText }} />
             <select value={pk.selected} onChange={(e) => pk.setSelected(e.target.value)} style={sel} aria-label="Show pocket">
                 <option value={ALL} style={opt}>All pockets</option>
-                {options.map((p) => <option key={p.id} value={p.id} style={opt}>{displayName(p)}{p.kind === KIND.wallet ? '' : ` (${badge(p)})`}</option>)}
+                {options.map((p) => <option key={p.id} value={p.id} style={opt}>{displayName(p)}{p.kind === KIND.wallet || displayName(p).includes(badge(p)) ? '' : ` (${badge(p)})`}</option>)}
             </select>
             {pk.selected !== ALL && (
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: c.mutedText, cursor: 'pointer' }}>

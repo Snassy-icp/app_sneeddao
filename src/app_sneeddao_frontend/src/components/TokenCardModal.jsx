@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FaTimes, FaSync } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import TokenCard from '../TokenCard';
+import { normalizeId } from '../utils/IdUtils';
 
 /**
  * Modal wrapper for displaying a TokenCard
@@ -65,7 +66,7 @@ const TokenCardModal = ({
             symbol: token.symbol ?? '???',
             name: token.name ?? token.symbol ?? 'Unknown Token',
             logo: token.logo ?? '',
-            principal: token.principal ?? token.ledger_canister_id?.toString?.() ?? '',
+            principal: token.principal ?? normalizeId(token.ledger_canister_id),
         };
     }, [token]);
 
@@ -77,7 +78,7 @@ const TokenCardModal = ({
             return rewardDetailsLoading;
         }
         // Return object indicating "loaded" (value >= 0) for this token
-        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        const ledgerId = normalizeId(token?.ledger_canister_id) || token?.principal;
         if (ledgerId) {
             return { [ledgerId]: 0 }; // 0 means loaded/not loading
         }
@@ -89,7 +90,7 @@ const TokenCardModal = ({
             return lockDetailsLoading;
         }
         // Return object indicating "not loading" for this token
-        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        const ledgerId = normalizeId(token?.ledger_canister_id) || token?.principal;
         if (ledgerId) {
             return { [ledgerId]: false };
         }
@@ -98,7 +99,7 @@ const TokenCardModal = ({
 
     // Convert locks array to object keyed by ledger_canister_id (format expected by TokenCard)
     const normalizedLocks = useMemo(() => {
-        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        const ledgerId = normalizeId(token?.ledger_canister_id) || token?.principal;
         
         // If locks is already an object with the right structure, use it
         if (locks && typeof locks === 'object' && !Array.isArray(locks)) {

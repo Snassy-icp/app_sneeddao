@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { FaTimes, FaSearch, FaTrash, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 import TokenIcon from './TokenIcon';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
+import { fetchAllTradeLog } from '../utils/botPaging';
 
 const ACTION_TYPE_DETECTED_INFLOW = 4;
 
@@ -71,16 +72,15 @@ const DuplicateCleanupDialog = ({ isOpen, onClose, getReadyBotActor, onComplete 
                 if (!bot || cancelled) return;
 
                 const q = {
-                    startId: [], limit: [100000], offset: [0],
-                    choreId: [], choreTypeId: [],
+                    startId: [], choreId: [], choreTypeId: [],
                     actionType: [ACTION_TYPE_DETECTED_INFLOW],
                     inputToken: [], outputToken: [],
                     status: [], fromTime: [], toTime: [],
                 };
-                const res = await bot.getTradeLog(q);
+                // every detected inflow, 500 per page (the bot's cap; one 100 000-row reply could
+                // outgrow the reply limit)
+                const entries = await fetchAllTradeLog(bot, q);
                 if (cancelled) return;
-
-                const entries = res.entries || [];
 
                 // Resolve token metadata for all unique tokens
                 const tokenIds = [...new Set(entries.map(e => toStr(e.inputToken)))];

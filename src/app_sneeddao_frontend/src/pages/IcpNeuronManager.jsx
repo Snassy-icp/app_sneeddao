@@ -349,6 +349,7 @@ function IcpNeuronManager() {
         toTime: [],     // [] = None
         startId: [],    // [] = None
         limit: [50n],   // [50n] = Some(50)
+        beforeId: [],   // [] = None (paging back from the newest; bots before 0.9.5 ignore it)
     });
     const [logHasMore, setLogHasMore] = useState(false);
     const [logTotalMatching, setLogTotalMatching] = useState(0);

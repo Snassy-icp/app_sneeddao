@@ -22,6 +22,8 @@ import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight,
 import { Principal } from '@dfinity/principal';
 import { getOrFetchNeuron } from '../hooks/useNeuronsCache';
 import { extractPrincipalString } from '../utils/NeuronUtils';
+import ProposerAvatar from '../components/ProposerAvatar';
+import { LogoAvatar } from '../components/BigAvatar';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1776,8 +1778,12 @@ function Proposals() {
                                             alignItems: 'center',
                                             gap: '0.5rem',
                                             fontSize: '0.85rem',
-                                            color: theme.colors.secondaryText
+                                            color: theme.colors.secondaryText,
+                                            flexWrap: 'wrap'
                                         }}>
+                                            {proposal.proposer?.[0]?.id
+                                                ? <ProposerAvatar snsRoot={selectedSnsRoot} neuronId={proposal.proposer[0].id} permissions={proposerPermissions[uint8ArrayToHex(proposal.proposer[0].id)] || []} logo={snsLogo} snsName={snsInfo?.name || ''} size={26} cutout={theme.colors.secondaryBg} />
+                                                : <LogoAvatar src={snsLogo} alt={snsInfo?.name || ''} size={26} />}
                                             <span>Proposer:</span>
                                             {proposal.proposer?.[0]?.id ? 
                                                 formatNeuronDisplayWithContext(

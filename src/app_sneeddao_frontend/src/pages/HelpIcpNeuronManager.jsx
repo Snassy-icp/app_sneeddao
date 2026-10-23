@@ -954,7 +954,7 @@ function HelpIcpNeuronManager() {
                         <li style={styles.listItem}><strong style={styles.strong}>Filter by level:</strong> Error, Warning, Info, Debug, or Trace (cumulative — selecting Info shows Info + Warning + Error)</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Filter by source:</strong> api, permissions, chore, system, or log</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Auto-refresh:</strong> Toggle auto-refresh to see new entries as they appear</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Configure logging:</strong> Set the log write level and max stored entries to control how much detail is captured</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Configure logging:</strong> Set the log write level and max stored entries (up to 50,000; the oldest entries make room for new ones) to control how much detail is captured</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Clear logs:</strong> Wipe all stored log entries when no longer needed</li>
                     </ul>
                     <div style={styles.tipBox}>

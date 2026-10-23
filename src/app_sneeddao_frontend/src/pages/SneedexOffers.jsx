@@ -29,6 +29,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
 import priceService from '../services/PriceService';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import BigAvatar from '../components/BigAvatar';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
@@ -371,42 +372,86 @@ function SneedexOffers() {
         }
     }, [neuronManagerInfo, identity]);
     
+    // The offer feed is paged on the canister (at most 100 offers a page, fewer when they are large):
+    // the newest page loads first, older ones on demand ("Load older offers").
+    const FEED_PAGE = 100;
+    const [feedCursor, setFeedCursor] = useState(null); // next_start_id of the last page, null = nothing older
+    const [loadingMore, setLoadingMore] = useState(false);
+
+    // Always fetch all states - filtering by state toggles is done client-side in filteredOffers
+    // For public tab: only public offers (public_only = true)
+    // For private tab: only private offers the user has access to (public_only = false, viewer = principal)
+    const feedPage = useCallback((actor, startId) => actor.getOfferFeed({
+        start_id: startId != null ? [startId] : [],
+        length: FEED_PAGE,
+        filter: [{
+            states: [[
+                { Active: null },
+                { Completed: { winning_bid_id: 0n, completion_time: 0n } },
+                { Claimed: null },
+                { Expired: null },
+                { Cancelled: null },
+                { Reclaimed: null }
+            ]],
+            asset_types: [],
+            creator: [],
+            has_bids: [],
+            public_only: offerTab === 'public' ? [true] : [false],
+            viewer: offerTab === 'private' && principal ? [principal] : []
+        }]
+    }), [offerTab, principal]);
+
+    // Token metadata (started right away for fast logos) and bid info of a batch of offers
+    const loadOfferDetails = useCallback(async (actor, list) => {
+        const uniqueTokenIds = new Set();
+        list.forEach(offer => {
+            uniqueTokenIds.add(offer.price_token_ledger.toString());
+            offer.assets.forEach(assetEntry => {
+                const details = getAssetDetails(assetEntry);
+                if (details.type === 'ICRC1Token') {
+                    uniqueTokenIds.add(details.ledger_id);
+                }
+            });
+        });
+        // Fire off all token metadata fetches in parallel (don't await)
+        uniqueTokenIds.forEach(tokenId => fetchGlobalTokenMetadata(tokenId));
+        
+        // Fetch bid info for each offer in parallel (faster than sequential)
+        const bidResults = await Promise.all(list.map(async (offer) => {
+            try {
+                const offerView = await actor.getOfferView(offer.id);
+                if (offerView && offerView.length > 0) {
+                    return [Number(offer.id), {
+                        bids: offerView[0].bids,
+                        highest_bid: offerView[0].highest_bid[0] || null,
+                    }];
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch bid info for offer ${offer.id}:`, e);
+            }
+            return null;
+        }));
+        const bidInfo = {};
+        bidResults.forEach(result => {
+            if (result) {
+                bidInfo[result[0]] = result[1];
+            }
+        });
+        return bidInfo;
+    }, [fetchGlobalTokenMetadata]);
+    
     const fetchOffers = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
             const actor = createSneedexActor(identity);
             let fetchedOffers = [];
-            
-            // Always fetch all states - filtering by state toggles is done client-side in filteredOffers
-            const allStates = [
-                { Active: null }, 
-                { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
-                { Claimed: null },
-                { Expired: null },
-                { Cancelled: null },
-                { Reclaimed: null }
-            ];
-            
-            // Use getOfferFeed to get offers
-            // For public tab: only public offers (public_only = true)
-            // For private tab: only private offers the user has access to (public_only = false, viewer = principal)
-            const feedInput = {
-                start_id: [], // Start from newest
-                length: 1000, // Get a large number
-                filter: [{
-                    states: [allStates],
-                    asset_types: [],
-                    creator: [],
-                    has_bids: [],
-                    public_only: offerTab === 'public' ? [true] : [false],
-                    viewer: offerTab === 'private' && principal ? [principal] : []
-                }]
-            };
+            let cursor = null;
             
             try {
-                const feedResult = await actor.getOfferFeed(feedInput);
+                const feedResult = await feedPage(actor, null);
                 fetchedOffers = feedResult.offers;
+                cursor = feedResult.has_more && feedResult.next_start_id.length > 0 ? feedResult.next_start_id[0] : null;
             } catch (feedError) {
                 // Fallback to old methods if getOfferFeed fails
                 console.warn('getOfferFeed failed, falling back to old methods:', feedError);
@@ -418,59 +463,45 @@ function SneedexOffers() {
             }
             
             setOffers(fetchedOffers);
+            setFeedCursor(cursor);
             bumpRanOutOffers(actor, fetchedOffers);
-            
-            // Start fetching token metadata immediately (don't wait for useEffect)
-            // This runs in parallel with bid info fetching for faster logo loading
-            const uniqueTokenIds = new Set();
-            fetchedOffers.forEach(offer => {
-                uniqueTokenIds.add(offer.price_token_ledger.toString());
-                offer.assets.forEach(assetEntry => {
-                    const details = getAssetDetails(assetEntry);
-                    if (details.type === 'ICRC1Token') {
-                        uniqueTokenIds.add(details.ledger_id);
-                    }
-                });
-            });
-            // Fire off all token metadata fetches in parallel (don't await)
-            uniqueTokenIds.forEach(tokenId => fetchGlobalTokenMetadata(tokenId));
-            
-            // Fetch bid info for each offer in parallel (faster than sequential)
-            const bidInfoPromises = fetchedOffers.map(async (offer) => {
-                try {
-                    const offerView = await actor.getOfferView(offer.id);
-                    if (offerView && offerView.length > 0) {
-                        return [Number(offer.id), {
-                            bids: offerView[0].bids,
-                            highest_bid: offerView[0].highest_bid[0] || null,
-                        }];
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch bid info for offer ${offer.id}:`, e);
-                }
-                return null;
-            });
-            
-            const bidResults = await Promise.all(bidInfoPromises);
-            const bidInfo = {};
-            bidResults.forEach(result => {
-                if (result) {
-                    bidInfo[result[0]] = result[1];
-                }
-            });
-            setOffersWithBids(bidInfo);
+            setOffersWithBids(await loadOfferDetails(actor, fetchedOffers));
         } catch (e) {
             console.error('Failed to fetch offers:', e);
             setError('Failed to load offers. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [identity, offerTab, principal, fetchGlobalTokenMetadata]);
+    }, [identity, offerTab, principal, feedPage, loadOfferDetails]);
+
+    // The next older page of the feed, appended to what is shown
+    const loadMoreOffers = useCallback(async () => {
+        if (feedCursor == null || loadingMore) return;
+        setLoadingMore(true);
+        try {
+            const actor = createSneedexActor(identity);
+            const page = await feedPage(actor, feedCursor);
+            setOffers(prev => {
+                const seen = new Set(prev.map(o => o.id.toString()));
+                return [...prev, ...page.offers.filter(o => !seen.has(o.id.toString()))];
+            });
+            setFeedCursor(page.has_more && page.next_start_id.length > 0 ? page.next_start_id[0] : null);
+            bumpRanOutOffers(actor, page.offers);
+            const bidInfo = await loadOfferDetails(actor, page.offers);
+            setOffersWithBids(prev => ({ ...prev, ...bidInfo }));
+        } catch (e) {
+            console.error('Failed to load more offers:', e);
+            setError('Failed to load older offers. Please try again.');
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [identity, feedCursor, loadingMore, feedPage, loadOfferDetails]);
     
     // Clear offers immediately when tab or filter changes (for responsive UX)
     // This shows loading state right away instead of stale data
     useEffect(() => {
         setOffers([]);
+        setFeedCursor(null);
         setLoading(true);
     }, [offerTab]);
     
@@ -2041,6 +2072,15 @@ function SneedexOffers() {
                                 <FaGavel /> Create Offer
                             </Link>
                         )}
+                        {feedCursor != null && (
+                            <button
+                                style={{ ...styles.paginationButton, margin: '1rem auto 0', opacity: loadingMore ? 0.6 : 1 }}
+                                onClick={loadMoreOffers}
+                                disabled={loadingMore}
+                            >
+                                {loadingMore ? 'Loading…' : 'Look in older offers'}
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <>
@@ -2562,8 +2602,10 @@ function SneedexOffers() {
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <span style={{ fontWeight: '500' }}>Seller:</span>
+                                        <BigAvatar principal={offer.creator} size={24} verified="auto" cutout={theme.colors.primaryBg} />
                                         <span onClick={(e) => e.stopPropagation()}>
                                             <PrincipalDisplay 
+                                                hideIcon
                                                 principal={offer.creator}
                                                 short={true}
                                                 showCopyButton={false}
@@ -2698,6 +2740,19 @@ function SneedexOffers() {
                         })}
                         </div>
                         {/* End full-width grid */}
+                        
+                        {/* Older offers are loaded a page at a time */}
+                        {feedCursor != null && (
+                            <div style={{ ...styles.centeredContent, marginTop: '1.5rem' }}>
+                                <button
+                                    style={{ ...styles.paginationButton, margin: '0 auto', opacity: loadingMore ? 0.6 : 1 }}
+                                    onClick={loadMoreOffers}
+                                    disabled={loadingMore}
+                                >
+                                    {loadingMore ? 'Loading…' : 'Load older offers'}
+                                </button>
+                            </div>
+                        )}
                         
                         {/* Bottom Pagination - centered */}
                         {filteredOffers.length > ITEMS_PER_PAGE && (

@@ -16,6 +16,7 @@ import {
 } from '../utils/BackendUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
+import { AvatarPair } from '../components/BigAvatar';
 import { Principal } from '@dfinity/principal';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { useDenomination } from '../contexts/DenominationContext';
@@ -1324,43 +1325,9 @@ const Tips = () => {
                 )}
                 {/* Token Logo & Amount */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '150px' }}>
-                    {isLoadingToken ? (
-                        <div style={{
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '50%',
-                            background: theme.colors.tertiaryBg,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}>
-                            <span className="tips-pulse">⏳</span>
-                        </div>
-                    ) : logo ? (
-                        <img 
-                            src={logo} 
-                            alt="" 
-                            style={{ 
-                                width: '44px', 
-                                height: '44px', 
-                                borderRadius: '50%',
-                                border: `2px solid ${tipsPrimary}40`
-                            }} 
-                        />
-                    ) : (
-                        <div style={{
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '50%',
-                            background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.25rem'
-                        }}>
-                            💎
-                        </div>
-                    )}
+                    {/* the token's logo with the other person's face in front, like an LP pair */}
+                    <AvatarPair logo={isLoadingToken ? null : logo} logoAlt={isLoadingToken ? '' : (getTokenSymbol(tokenId) || '')} principal={otherPrincipalStr}
+                        size={44} showFallback verified="auto" cutout={isNew ? theme.colors.primaryBg : theme.colors.secondaryBg} />
                     <div>
                         <div style={{ 
                             color: tipsPrimary, 
@@ -1422,6 +1389,7 @@ const Tips = () => {
                         {isReceived ? 'From' : 'To'}
                     </div>
                     <PrincipalDisplay 
+                        hideIcon
                         principal={otherPrincipalStr}
                         displayInfo={principalDisplayInfo.get(otherPrincipalStr)}
                         showCopyButton={true}
