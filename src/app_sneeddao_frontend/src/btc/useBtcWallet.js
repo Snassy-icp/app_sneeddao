@@ -49,10 +49,12 @@ function makeActors(identity) {
 
 export function useBtcWallet() {
     const { identity, isAuthenticated } = useAuth();
-    const status = btcNative();
-    const cfg = status.enabled ? status.config : null;
     const me = isAuthenticated && identity ? identity.getPrincipal() : null;
     const meText = me ? me.toText() : null;
+    // the network is decided once the principal is known (mainnet developer mode is per
+    // principal); while logged out it is testnet and nothing is derived or called
+    const status = btcNative(meText);
+    const cfg = status.enabled ? status.config : null;
     const address = useMemo(() => (cfg && meText ? btcAddressFor(meText, cfg.network) : null), [cfg, meText]);
     // no canister is called at all while the flag is off (prod)
     const actors = useMemo(() => (cfg && identity && isAuthenticated ? makeActors(identity) : null), [cfg, identity, isAuthenticated]);

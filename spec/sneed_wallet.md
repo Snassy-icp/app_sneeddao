@@ -576,6 +576,21 @@ support can explain and fix any case.
   - Full-RBF speed-up, and CPFP.
   - ckBTC conversions on the ckTESTBTC minter, if it is still offered for testnet4 (check
     first).
+- **Mainnet developer mode (staging only).** testnet4 faucets proved unusable, so sending is
+  tested with a small amount of real BTC on staging. `utils/btc/network.js` switches native
+  Bitcoin to mainnet only when all of these hold: the A1 triple flag is on (staging build, not
+  the prod frontend id, not a prod host); the signed-in principal is on the hard-coded allowlist
+  `MAINNET_DEV_PRINCIPALS` (Mr Sneed's test identity `tksci-…` only); and this browser opted in,
+  by the toggle "Developer: use Bitcoin mainnet (real BTC)" under Advanced on the Bitcoin row and
+  on `btc.html` (localStorage, default off), or by `btcnet=mainnet` in the URL query or hash for
+  the headless test browser (`btcnet=testnet` forces it off). The network is decided once per
+  page load per principal; logged out it is testnet, so nothing derives or reads a mainnet
+  address early. Everyone else stays on testnet4 and never sees the option, and prod builds and
+  hosts stay off whatever the principal, toggle or URL say. In the mode, everything is mainnet
+  (bc1… address, Bitcoin canister ghsi2, signer `mainnet`, mainnet mempool.space fees and links),
+  a red "MAINNET · REAL BTC · developer mode" banner and badge show on the card and on
+  `btc.html`, the review step needs an extra tick that names mainnet, and the pending, receives
+  and address-check stores stay keyed per network. Tests: `test/canisters/tests/btc-mainnet-dev.test.js`.
 - **Local regtest.**
   - `dfx` with the Bitcoin adapter and `bitcoind -regtest`, plus a locally deployed signer
     wasm from its releases (`network = regtest`). This is for mining-controlled tests: stuck,

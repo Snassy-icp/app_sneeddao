@@ -13,8 +13,9 @@ import { useBtcWallet } from './useBtcWallet';
 import BtcSend from '../components/btc/BtcSend';
 import SigningCredit from '../components/btc/SigningCredit';
 import BtcActivity from '../components/btc/BtcActivity';
-import TestnetBadge from '../components/btc/TestnetBadge';
-import { Card, Button, Notice } from '../components/convert/ConvertUi';
+import { BtcNetworkBadge, MainnetDevBanner } from '../components/btc/TestnetBadge';
+import MainnetDevToggle from '../components/btc/MainnetDevToggle';
+import { Card, Button, Notice, Advanced } from '../components/convert/ConvertUi';
 
 const TABS = [['send', 'Send'], ['credit', 'Signing credit'], ['activity', 'Activity']];
 const readTab = () => { const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', ''); return TABS.some(([k]) => k === h) ? h : 'send'; };
@@ -54,8 +55,9 @@ export default function BtcApp() {
             <header style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', flexWrap: 'wrap' }}>
                 <FaBitcoin size={28} color={w.cfg?.testnet ? c.mutedText : '#f7931a'} />
                 <h1 style={{ fontSize: 22, margin: 0 }}>Sneed Wallet · Bitcoin</h1>
-                {w.cfg?.testnet && <TestnetBadge big />}
+                <BtcNetworkBadge cfg={w.cfg} big />
             </header>
+            <MainnetDevBanner cfg={w.cfg} style={{ marginBottom: 12 }} />
             {!w.cfg && <Notice tone="warning">Native Bitcoin is not available here ({w.status.reason}).</Notice>}
             {w.cfg && !isAuthenticated && <SignIn />}
             {w.cfg && isAuthenticated && (
@@ -77,6 +79,14 @@ export default function BtcApp() {
                     {tab === 'send' && <BtcSend w={w} onGoCredit={(n) => { setNeed(n); setTab('credit'); }} onGoActivity={() => setTab('activity')} />}
                     {tab === 'credit' && <SigningCredit w={w} need={need} />}
                     {tab === 'activity' && <BtcActivity w={w} />}
+                    {w.status.devAllowed && (
+                        <div style={{ marginTop: 16 }}>
+                            <Advanced title="Advanced: network">
+                                <div style={{ fontSize: 12, color: c.mutedText }}>Network: <b style={{ color: c.primaryText }}>{w.cfg.label}</b> · Bitcoin canister {w.cfg.bitcoinCanister}</div>
+                                <MainnetDevToggle status={w.status} />
+                            </Advanced>
+                        </div>
+                    )}
                 </>
             )}
             <footer style={{ marginTop: 24, fontSize: 11, color: c.mutedText, lineHeight: 1.6 }}>

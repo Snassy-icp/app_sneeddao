@@ -4,7 +4,8 @@
 // `btc:<network>`. A1 is receive-only: caps { receive } and nothing else; sending (A2) and moves to
 // ckBTC (A3) come later.
 //
-// Behind the feature flag (utils/btc/network.js): off on prod, on staging with Bitcoin testnet4.
+// Behind the feature flag (utils/btc/network.js): off on prod, on staging with Bitcoin testnet4
+// (mainnet only in developer mode, for an allowlisted principal that opted in).
 // Tests turn it on with ctx.flags.btcNative = { network: 'testnet' | 'mainnet' }.
 //
 // Reads use the Bitcoin canister's free queries through ctx.actor('bitcoin', id); one read per
@@ -21,7 +22,8 @@ export function btcConfigFor(ctx) {
     if (f === false) return null;
     if (f && typeof f === 'object') return BTC_NETWORKS[f.network] || null;
     if (f === true) return BTC_NETWORKS.testnet;
-    const s = btcNative();
+    // the network depends on who is signed in (mainnet developer mode, utils/btc/network.js)
+    const s = btcNative(ctx?.me ?? null);
     return s.enabled ? s.config : null;
 }
 
@@ -57,9 +59,9 @@ export const btcNativeAdapter = {
         return [{
             hostKey: cfg.network,
             account: null,
-            label: cfg.testnet ? 'Bitcoin address (testnet4)' : 'Bitcoin address',
+            label: cfg.testnet ? 'Bitcoin address (testnet4)' : cfg.devMode ? 'Bitcoin address (MAINNET developer mode)' : 'Bitcoin address',
             ledgers: [cfg.pseudoLedger],
-            meta: { address, network: cfg.network, testnet: cfg.testnet, pseudoLedger: cfg.pseudoLedger },
+            meta: { address, network: cfg.network, testnet: cfg.testnet, devMode: Boolean(cfg.devMode), pseudoLedger: cfg.pseudoLedger },
         }];
     },
     /// { total, available } in sats for the pseudo-ledger; 0 for any other ledger.

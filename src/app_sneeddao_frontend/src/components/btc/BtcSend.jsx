@@ -19,7 +19,7 @@ import { newId } from '../../utils/btc/pending';
 import { outpointKey } from '../../utils/btc/utxos';
 import QrScanButton from '../QrScanButton';
 import { Card, Label, inputStyle, Button, Notice, Advanced, Row, Pill, useC } from '../convert/ConvertUi';
-import TestnetBadge from './TestnetBadge';
+import { BtcNetworkBadge } from './TestnetBadge';
 
 const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflowWrap: 'anywhere' };
 const TIER_LABEL = { slow: 'Slow', normal: 'Normal', fast: 'Fast', custom: 'Custom' };
@@ -40,6 +40,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
     const [chosen, setChosen] = useState(null); // coin control: Set of outpoint keys, or null = automatic
     const [step, setStep] = useState('edit'); // edit | review | sending | done
     const [extraOk, setExtraOk] = useState(false);
+    const [mainnetOk, setMainnetOk] = useState(false); // developer mode: real BTC must be ticked
     const [progress, setProgress] = useState('');
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
@@ -89,6 +90,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
 
     const doSend = useCallback(async () => {
         if (!plan?.ok) return;
+        if (cfg.devMode && !mainnetOk) return; // real BTC: the mainnet tick is required
         setError(null);
         setStep('sending');
         try {
@@ -135,9 +137,9 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         } finally {
             setProgress('');
         }
-    }, [plan, w, charges, verified, cfg.network, address, dest]);
+    }, [plan, w, charges, verified, cfg.network, cfg.devMode, mainnetOk, address, dest]);
 
-    const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); };
+    const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setMainnetOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); };
 
     // ---------------------------------------------------------------- done
     if (step === 'done' && result) {
@@ -176,11 +178,11 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
         const sending = step === 'sending';
         return (
             <Card>
-                <button type="button" onClick={() => { setStep('edit'); setError(null); }} disabled={sending}
+                <button type="button" onClick={() => { setStep('edit'); setError(null); setMainnetOk(false); }} disabled={sending}
                     style={{ background: 'none', border: 'none', color: c.secondaryText, cursor: 'pointer', padding: 0, fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <FaArrowLeft size={11} /> Edit
                 </button>
-                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>Review the send {cfg.testnet && <TestnetBadge />}</h2>
+                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>Review the send <BtcNetworkBadge cfg={cfg} /></h2>
                 <div style={{ fontSize: 13, color: c.mutedText }}>To</div>
                 <div style={{ ...mono, fontSize: 14, color: c.primaryText, marginBottom: 8 }}>{dest} <span style={{ color: c.mutedText }}>({btcAddressTypeLabel(parsedTo.type)})</span></div>
                 {ownAddress && <Notice tone="warning">This is your own address: the coins come back to you, minus the fee.</Notice>}
@@ -197,6 +199,12 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                         <span>Check this: {extraReasons.join(', and ')}. Tick to confirm the fee is what you want.</span>
                     </label>
                 )}
+                {cfg.devMode && (
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, fontSize: 13, color: '#d0021b', fontWeight: 700 }}>
+                        <input type="checkbox" checked={mainnetOk} onChange={(e) => setMainnetOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
+                        <span>This sends REAL bitcoin on Bitcoin MAINNET (staging developer mode). It can't be undone. Tick to confirm.</span>
+                    </label>
+                )}
                 <Advanced title="Advanced: the exact request">
                     <div style={{ fontSize: 12, color: c.mutedText }}>btc_caller_send to the Chain Fusion Signer, paid with CallerPaysIcrc2Cycles. Coins are spent in this order; the change output, if any, comes last.</div>
                     <pre style={{ ...mono, fontSize: 11, color: c.secondaryText, background: c.secondaryBg, padding: 8, borderRadius: 8, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
@@ -211,8 +219,8 @@ export default function BtcSend({ w, onGoCredit, onGoActivity }) {
                 )}
                 {sending && <Notice style={{ marginTop: 10 }}>{progress}</Notice>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk)}>
-                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `Send ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}`}
+                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (cfg.devMode && !mainnetOk)}>
+                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `Send ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${cfg.devMode ? ' on MAINNET' : ''}`}
                     </Button>
                 </div>
             </Card>

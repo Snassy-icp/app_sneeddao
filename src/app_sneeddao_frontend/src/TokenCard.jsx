@@ -38,7 +38,7 @@ import { appAlert, appConfirm } from './utils/appDialog';
 import { usePockets } from './hooks/usePockets';
 import { TokenPocketBreakdown } from './components/PocketRows';
 import { otherPocketsTotal, holders as pocketHolders, nativeBtcForCard } from './utils/pockets/model';
-import BtcNativeSection, { TestnetBadge } from './components/btc/BtcNativeSection';
+import BtcNativeSection, { BtcNetworkBadge } from './components/btc/BtcNativeSection';
 import { btcNative } from './utils/btc/network';
 import { CKBTC } from './utils/ckMinters';
 import { wrapAction } from './utils/wrapActions';
@@ -1495,7 +1495,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}
                     <div className="header-row-1" style={{ minWidth: 0 }}>
-                        <span className="token-name">{isBtcCard ? <>Bitcoin <span style={{ fontSize: '0.7rem', fontWeight: 500, color: theme.colors.mutedText }}>ckBTC + BTC</span>{btcNative().config?.testnet && <> <TestnetBadge /></>}</> : (token.name || token.symbol)}</span>
+                        <span className="token-name">{isBtcCard ? <>Bitcoin <span style={{ fontSize: '0.7rem', fontWeight: 500, color: theme.colors.mutedText }}>ckBTC + BTC</span>{(() => { const bc = btcNative(isAuthenticated && identity ? identity.getPrincipal() : null).config; return bc && (bc.testnet || bc.devMode) ? <> <BtcNetworkBadge cfg={bc} /></> : null; })()}</> : (token.name || token.symbol)}</span>
                         <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
                                 denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))

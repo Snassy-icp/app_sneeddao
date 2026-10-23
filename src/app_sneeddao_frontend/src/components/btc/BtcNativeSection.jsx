@@ -5,7 +5,8 @@
 // its own page without analytics; same origin, so the login carries over).
 // Advanced: network, derivation, the canisters involved, and every UTXO with its confirmations.
 //
-// Rendered only behind the feature flag (utils/btc/network.js): staging with Bitcoin testnet4.
+// Rendered only behind the feature flag (utils/btc/network.js): staging with Bitcoin testnet4, or
+// mainnet in developer mode (allowlisted principal + opt-in under Advanced; red banner).
 // Amounts go through formatAmount / formatValue, so privacy mode masks them. Theme colours only.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBitcoin, FaQrcode, FaSync, FaExternalLinkAlt, FaExclamationTriangle, FaPaperPlane } from 'react-icons/fa';
@@ -15,11 +16,12 @@ import { usePockets } from '../../hooks/usePockets';
 import { formatAmount, computeUsdValue } from '../../utils/StringUtils';
 import { readNative, btcConfigFor } from '../../utils/pockets/adapters/btc_native';
 import { bitcoinUri, deriveBtcAddress } from '../../utils/btc/address';
-import { SIGNER_CANISTER } from '../../utils/btc/network';
+import { SIGNER_CANISTER, btcNative } from '../../utils/btc/network';
 import { PocketLine } from '../PocketRows';
 import { PocketButton } from '../PocketVisuals';
 import { CopyValue, QrCode, Notice, Advanced } from '../convert/ConvertUi';
-import TestnetBadge from './TestnetBadge';
+import TestnetBadge, { BtcNetworkBadge, MainnetDevBanner } from './TestnetBadge';
+import MainnetDevToggle from './MainnetDevToggle';
 
 const REFRESH_MS = 60_000; // §5.2 step 5: every 60 s while visible, timers in the page only
 const QR_KEY = 'sneed_btc_native_show_qr_v1';
@@ -27,7 +29,7 @@ const readQr = () => { try { return localStorage.getItem(QR_KEY) === '1'; } catc
 const writeQr = (v) => { try { localStorage.setItem(QR_KEY, v ? '1' : '0'); } catch { /* storage blocked */ } };
 const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflowWrap: 'anywhere' };
 
-export { TestnetBadge };
+export { TestnetBadge, BtcNetworkBadge };
 
 /// The user's native Bitcoin read (cached 20 s in the adapter), refreshed every 60 s while visible.
 function useNativeBtc(ctx) {
@@ -67,11 +69,16 @@ function ReceiveBtc({ address, cfg }) {
                     <b>Testnet only.</b> This is a Bitcoin <b>testnet4</b> address for trying Sneed Wallet on staging. Send only testnet4 coins from a faucet. It is not a real Bitcoin address and real BTC can't be sent to it.
                 </Notice>
             )}
+            {cfg.devMode && (
+                <Notice tone="error">
+                    <b>Bitcoin MAINNET, real BTC (developer mode).</b> This is a real bc1… address on staging. Send only small test amounts to it.
+                </Notice>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
                 {showQr && <QrCode text={bitcoinUri(address)} size={160} />}
                 <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ fontSize: '0.75rem', color: c.mutedText, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                        Your {cfg.label} address (Native SegWit) {cfg.testnet && <TestnetBadge />}
+                        Your {cfg.label} address (Native SegWit) <BtcNetworkBadge cfg={cfg} />
                     </div>
                     <CopyValue value={address} label="Bitcoin address" />
                     <button type="button" onClick={(e) => { e.stopPropagation(); setShowQr(!showQr); }}
@@ -102,6 +109,7 @@ function AdvancedBtc({ data, cfg, me }) {
     );
     return (
         <Advanced title="Advanced">
+            <MainnetDevToggle status={btcNative(me)} />
             {row('Network', cfg.label)}
             {row('Address type', 'P2WPKH (Native SegWit)')}
             {d && row('Derivation path', `[${d.path.map((h) => `0x${h}`).join(', ')}]`)}
@@ -145,6 +153,7 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
     const { data, error, loading, reload } = useNativeBtc(cfg ? ctx : null);
     const [receiving, setReceiving] = useState(false);
     if (!ctx || !cfg) return null;
+    const status = btcNative(ctx.me);
     const address = data?.address || null;
     const s = data?.summary;
     const usd = !cfg.testnet && s && token?.conversion_rate ? computeUsdValue(s.confirmed, 8, token.conversion_rate) : null;
@@ -161,17 +170,18 @@ export default function BtcNativeSection({ token = null, hideButtons = false, fi
     const actions = hideButtons ? [] : [
         { key: 'receive', icon: FaQrcode, label: 'Receive', onClick: () => setReceiving((r) => !r), disabled: !address },
         // a full page load, not a router push: btc.html must start without the SPA's gtag.js
-        { key: 'send', icon: FaPaperPlane, label: 'Send', onClick: () => { window.location.assign('/btc.html#send'); }, disabled: !address },
+        { key: 'send', icon: FaPaperPlane, label: 'Send', onClick: () => { window.location.assign(status.devSource === 'param' ? '/btc.html?btcnet=mainnet#send' : '/btc.html#send'); }, disabled: !address },
     ];
     return (
         <PocketLine first={first}
             avatar={<div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.tertiaryBg, border: `1px solid ${c.border}` }}><FaBitcoin size={16} color={cfg.testnet ? c.mutedText : '#f7931a'} /></div>}
             name="Bitcoin address"
-            badge={cfg.testnet ? <TestnetBadge /> : null}
+            badge={cfg.testnet || cfg.devMode ? <BtcNetworkBadge cfg={cfg} /> : null}
             amount={amount}
-            sub={s && s.pending > 0n ? <>+ <Sats sats={s.pending} cfg={cfg} /> pending</> : cfg.testnet ? 'test coins, no value' : null}
+            sub={s && s.pending > 0n ? <>+ <Sats sats={s.pending} cfg={cfg} /> pending</> : cfg.testnet ? 'test coins, no value' : cfg.devMode ? 'REAL BTC · developer mode' : null}
             note={error && data ? `couldn't refresh: ${error}` : null}
             actions={actions}>
+            <MainnetDevBanner cfg={cfg} style={{ marginTop: 8 }} />
             {receiving && address && <ReceiveBtc address={address} cfg={cfg} />}
             {receiving && (
                 <div style={{ marginTop: 6 }}>
@@ -195,7 +205,7 @@ export function BitcoinCard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
                 <FaBitcoin size={28} color={cfg.testnet ? c.mutedText : '#f7931a'} />
                 <span style={{ fontWeight: 700, fontSize: '1.05rem', color: c.primaryText }}>Bitcoin</span>
-                {cfg.testnet && <TestnetBadge big />}
+                <BtcNetworkBadge cfg={cfg} big />
             </div>
             <div style={{ fontSize: '0.75rem', color: c.mutedText, marginBottom: 4 }}>Your native Bitcoin address. Add ckBTC to your wallet to see both on this card.</div>
             <BtcNativeSection first />
