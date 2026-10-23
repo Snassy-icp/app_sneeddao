@@ -8,3 +8,7 @@
   flex: 1;
   padding-top: 10px; /* Reduced from 40px */
 } 
+/* Room under the last content for the installed app's floating Back / Forward / Refresh (PwaNavBar). */
+.pwa-nav-spacer {
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+}

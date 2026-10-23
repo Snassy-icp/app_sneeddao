@@ -259,7 +259,7 @@ export function SmsProvider({ children }) {
         return () => clearInterval(t);
     }, [principal, activeCount, sync]);
 
-    useAppRefresh(() => { if (principalRef.current) sync(); }, { onVisible: true });
+    useAppRefresh(() => { if (principalRef.current) sync(); }, { onVisible: true, scope: 'app' });
 
     /// Older messages of a list (or both, for 'all'), OLDER_PAGE at a time.
     const loadOlder = useCallback(async (which) => {
