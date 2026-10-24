@@ -43,7 +43,7 @@ import './ThreadViewer.css';
 import ReactionBar from './ReactionBar';
 import { forumExtrasActor, loadReactionCounts, loadMyReactions, isMissingMethod } from '../utils/forumReactions';
 import { toggleEmoji, applyReactionChange, postTarget, threadTarget, targetKey, MAX_PER_USER } from '../utils/reactionsModel';
-import { scoreLabel, threadDisplayTitle, planReadTracking, tipExceptionMessage } from '../utils/forumModel';
+import { scoreLabel, threadDisplayTitle, planReadTracking, tipExceptionMessage, predictThreadVote } from '../utils/forumModel';
 import MentionTextarea from './MentionTextarea';
 import { smsMentioned } from '../utils/mentions';
 import { icrc1Transfer } from '../utils/icrcTx';
@@ -2366,6 +2366,13 @@ function ThreadViewer({
         const neurons = getSelectedNeurons() || [];
         if (!identity || neurons.length === 0 || threadVoting) return;
         setThreadVoting(true);
+        // show the vote at once, as post votes do; the reload below puts in the forum's numbers
+        if (threadScore !== null) {
+            const vp = neurons.reduce((sum, n) => sum + (Number(calculateVotingPower(n)) || 0), 0);
+            const predicted = predictThreadVote(threadScore, threadMyVote, direction, vp);
+            setThreadScore(predicted.score);
+            setThreadMyVote(predicted.myVote);
+        }
         try {
             const actor = await forumExtrasActor(identity);
             const ids = neurons.map((n) => ({ id: n.id[0].id }));
@@ -2376,10 +2383,11 @@ function ThreadViewer({
             await loadThreadExtras();
         } catch (e) {
             await appAlert('The vote was not recorded: ' + (e?.message || e));
+            await loadThreadExtras(); // undo the vote shown at once
         } finally {
             setThreadVoting(false);
         }
-    }, [identity, threadId, threadMyVote, threadVoting, getSelectedNeurons, loadThreadExtras]);
+    }, [identity, threadId, threadMyVote, threadScore, threadVoting, getSelectedNeurons, loadThreadExtras]);
 
     // Effect to handle read tracking when thread is loaded
     const readStashedForRef = useRef(null); // the thread whose "new since last visit" marks are stashed

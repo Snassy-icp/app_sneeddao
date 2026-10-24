@@ -86,3 +86,22 @@ export function orderTopicThreads(threads, sortBy) {
         return asc ? c : -c;
     });
 }
+
+/// The thread score and my vote to show right away when I vote on a thread, before the forum
+/// answers (posts already update at once). score: { up, down } (e8s, bigint); myVote: 'up', 'down'
+/// or null; direction: the button pressed ('up' or 'down', pressing my current vote retracts it);
+/// vp: the selected neurons' voting power (e8s). The thread's reload after the call puts the real
+/// numbers in.
+export function predictThreadVote(score, myVote, direction, vp) {
+    const power = BigInt(Math.max(0, Math.floor(Number(vp) || 0)));
+    const less = (x) => (x > power ? x - power : 0n);
+    let { up, down } = score || { up: 0n, down: 0n };
+    up = BigInt(up); down = BigInt(down);
+    if (myVote === direction) {
+        // retract
+        return { score: direction === 'up' ? { up: less(up), down } : { up, down: less(down) }, myVote: null };
+    }
+    if (myVote === 'up') up = less(up);
+    if (myVote === 'down') down = less(down);
+    return { score: direction === 'up' ? { up: up + power, down } : { up, down: down + power }, myVote: direction };
+}
