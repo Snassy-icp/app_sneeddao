@@ -12,6 +12,8 @@ import { ALL, MAIN_ID, LOCK_POCKET_ID, KIND, totalIn, displayName, hasExtraPocke
 import { planTransfer, transferProblem } from './utils/pockets/move';
 import { normalizeId } from './utils/IdUtils';
 import { useTheme } from './contexts/ThemeContext';
+import { useAuth } from './AuthContext';
+import { reportIfAuthExpired } from './utils/authExpiry';
 import PrincipalInput from './components/PrincipalInput';
 import QrScanButton from './components/QrScanButton';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
@@ -41,6 +43,7 @@ const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWOR
 // Sneed Lock, split by utils/sendPlan.js. `onPocketTransferDone(token)` refreshes after a pocket send.
 function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toPocketId = null, mode = 'send', onPocketTransferDone, fillMax = false }) {
   const { theme } = useTheme();
+  const { ensureSession } = useAuth();
   const pk = usePockets();
   const ledgerId = normalizeId(token?.ledger_canister_id || token?.principal);
   const [fromId, setFromId] = useState(ALL);
@@ -333,8 +336,11 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
     setExtendedAddressDetected(null);
   };
 
+  const SESSION_EXPIRED_TEXT = 'Your session expired. Log in again to send.';
+
   const handleReview = async () => {
     setErrorText('');
+    if (!ensureSession()) { setErrorText(SESSION_EXPIRED_TEXT); return; }
 
     if (fromPocket || moveMode) {
       if (!fromPocket) { setErrorText('Pick the pocket to move from'); return; }
@@ -430,6 +436,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
 
   const handleConfirmSend = async () => {
     if (!reviewData) return;
+    if (!ensureSession()) { setErrorText(SESSION_EXPIRED_TEXT); setShowReviewScreen(false); return; }
 
     try {
       setIsLoading(true);
@@ -445,7 +452,9 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
       onClose();
     } catch (error) {
       console.error('Error sending tokens:', error);
-      setErrorText('Error sending tokens: ' + error.message);
+      setErrorText(reportIfAuthExpired(error)
+        ? 'Your session expired during the send. Log in again, then check your balance before retrying.'
+        : 'Error sending tokens: ' + error.message);
       setShowReviewScreen(false);
     } finally {
       setIsLoading(false);

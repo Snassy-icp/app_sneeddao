@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import StagingBanner from './components/StagingBanner';
+import SessionExpiredBanner from './components/SessionExpiredBanner';
 import { PrivacyHost } from './components/PrivacyToggle';
 import PushOpenHandler from './components/PushOpenHandler';
 import Login from './Login';
@@ -221,6 +222,7 @@ function App() {
                     <PushOpenHandler />
                     <AppDialogHost />
                     <StagingBanner />
+                    <SessionExpiredBanner />
                     <PrivacyHost />
                     <Layout>
                   <Routes>

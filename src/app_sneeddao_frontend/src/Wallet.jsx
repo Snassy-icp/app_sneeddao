@@ -655,7 +655,7 @@ const DroppableWalletSection = ({ acceptTypes, onDrop, children, style }) => {
 };
 
 function Wallet() {
-    const { identity, isAuthenticated, logout } = useAuth();
+    const { identity, isAuthenticated, logout, ensureSession } = useAuth();
     const { theme } = useTheme();
     const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const { whitelistedTokens } = useWhitelistTokens();
@@ -3696,6 +3696,7 @@ function Wallet() {
     /// `opts` = { fromPocketId, toPocketId, mode: 'send' | 'move' } for a pocket's Send / Move /
     /// Withdraw / Top up; with one pocket picked in the switcher, sends default to it.
     const openSendModal = (token, opts = {}) => {
+        if (!ensureSession()) return; // the login ran out: the banner asks to log in, not a send that will fail
         setSelectedToken(token);
         const sel = walletPockets.selected;
         setSendPocketOptions({ fromPocketId: opts.fromPocketId ?? (sel && sel !== ALL_POCKETS ? sel : null), toPocketId: opts.toPocketId ?? null, mode: opts.mode || 'send', fillMax: Boolean(opts.fillMax) });
@@ -3833,11 +3834,13 @@ function Wallet() {
     }, [liquidityPositions, detailPosition, detailPositionDetails]);
 
     const openWrapModal = (token) => {
+        if (!ensureSession()) return;
         setSelectedToken(token);
         setShowWrapUnwrapModal(true);
     };
 
     const openUnwrapModal = (token) => {
+        if (!ensureSession()) return;
         setSelectedToken(token);
         setShowWrapUnwrapModal(true);
     };
@@ -4211,6 +4214,7 @@ function Wallet() {
     };
 
     const openSendLiquidityPositionModal = (liquidityPosition) => {
+        if (!ensureSession()) return;
         setSelectedLiquidityPosition(liquidityPosition);
         setShowSendLiquidityPositionModal(true);
     };
@@ -4267,11 +4271,13 @@ function Wallet() {
     };
 
     const openLockModal = async (token) => {
+        if (!ensureSession()) return;
         setSelectedToken(token);
         setShowLockModal(true);
     };
 
     const openTransferTokenLockModal = (lock, token) => {
+        if (!ensureSession()) return;
         setSelectedTokenLock({ ...lock, token });
         setShowTransferTokenLockModal(true);
     };
@@ -4462,6 +4468,7 @@ function Wallet() {
     };
 
     const openLockPositionModal = async (liquidityPosition) => {
+        if (!ensureSession()) return;
 
         setSelectedLiquidityPosition(liquidityPosition);
         setShowLockPositionModal(true);
@@ -4469,6 +4476,7 @@ function Wallet() {
     };
 
     const openAddLiquidityModal = (liquidityPosition, positionDetails) => {
+        if (!ensureSession()) return;
         setAddLiquidityTarget({ position: liquidityPosition, positionDetails });
         setShowAddLiquidityModal(true);
     };

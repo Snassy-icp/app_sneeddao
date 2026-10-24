@@ -15,6 +15,7 @@ import ProposerPrincipals from '../components/ProposerPrincipals';
 import ProposerAvatar from '../components/ProposerAvatar';
 import { LogoAvatar } from '../components/BigAvatar';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
+import { reportIfAuthExpired } from '../utils/authExpiry';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import {
     createNnsGovActor, isNnsProposalAcceptingVotes, getNnsProposalStatus,
@@ -61,7 +62,7 @@ function ActiveProposals() {
         const k = `${snsRoot}:${hex}`;
         return { name: neuronNames?.get(k), nickname: neuronNicknames?.get(k), isVerified: verifiedNames?.get(k) };
     };
-    const { identity, isAuthenticated } = useAuth();
+    const { identity, isAuthenticated, ensureSession } = useAuth();
     const { neuronCache } = useWallet();
     
     // State
@@ -107,6 +108,7 @@ function ActiveProposals() {
                 await agent.fetchRootKey();
             }
 
+            const failedSnses = [];
             const results = await Promise.all(relevantSnses.map(async ({ sns, neurons }) => {
                 try {
                     const govId = sns.canisters.governance;
@@ -156,6 +158,8 @@ function ActiveProposals() {
                     };
                 } catch (err) {
                     console.error(`Error fetching proposals for ${sns.name}:`, err);
+                    reportIfAuthExpired(err);
+                    failedSnses.push(sns.name);
                     return null;
                 }
             }));
@@ -195,6 +199,8 @@ function ActiveProposals() {
                     }
                 } catch (err) {
                     console.warn('Error fetching NNS proposals for active proposals:', err);
+                    reportIfAuthExpired(err);
+                    failedSnses.push('NNS');
                 }
             }
 
@@ -202,6 +208,10 @@ function ActiveProposals() {
             validResults.sort((a, b) => b.proposals.length - a.proposals.length);
 
             setSnsProposalsData(validResults);
+            // a load that failed is not "no active proposals": say so, so Refresh isn't read as empty
+            if (failedSnses.length > 0) {
+                setError(`Couldn't load proposals for ${failedSnses.join(', ')}. Try Refresh.`);
+            }
 
             // Expand all sections by default
             setExpandedSns(new Set(validResults.map(r => r.snsInfo.rootCanisterId)));
@@ -316,6 +326,7 @@ function ActiveProposals() {
         const key = `${snsInfo.rootCanisterId}_${proposalId}`;
 
         if (!proposalId || !identity) return;
+        if (!ensureSession()) return;
 
         setQuickVotingStates(prev => ({ ...prev, [key]: 'voting' }));
 
@@ -411,6 +422,7 @@ function ActiveProposals() {
                         successCount++;
                     } catch (e) {
                         console.error('Vote error:', e);
+                        reportIfAuthExpired(e);
                     }
                 }
 
@@ -435,9 +447,10 @@ function ActiveProposals() {
 
         } catch (err) {
             console.error('Vote error:', err);
+            reportIfAuthExpired(err);
             setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
         }
-    }, [identity]);
+    }, [identity, ensureSession]);
 
     // Format VP for display (vp is in e8s, all SNS have 8 decimals)
     const formatCompactVP = (vpE8s) => {
@@ -475,6 +488,7 @@ function ActiveProposals() {
     // Bulk vote on all eligible proposals for a DAO
     const bulkVoteAll = useCallback(async (snsInfo, proposals, neurons, nervousSystemParams, vote, isNns = false) => {
         if (!identity) return;
+        if (!ensureSession()) return;
 
         // Find votable proposals (have eligible neurons)
         const votableProposals = proposals.filter(p => {
@@ -578,6 +592,7 @@ function ActiveProposals() {
                             successCount++;
                         } catch (e) {
                             console.error('Vote error:', e);
+                            reportIfAuthExpired(e);
                         }
                     }
 
@@ -598,6 +613,7 @@ function ActiveProposals() {
                 }
             } catch (err) {
                 console.error('Bulk vote error for proposal', proposalId, ':', err);
+                reportIfAuthExpired(err);
                 setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
                 failed++;
             }
@@ -614,7 +630,7 @@ function ActiveProposals() {
         setTimeout(() => {
             setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: 'idle' } }));
         }, 4000);
-    }, [identity, proposalEligibility, votedProposals]);
+    }, [identity, proposalEligibility, votedProposals, ensureSession]);
 
     // Count total votable proposals
     const totalVotableCount = useMemo(() => {
@@ -817,7 +833,7 @@ function ActiveProposals() {
                     )}
 
                     {/* Error State */}
-                    {error && (
+                    {isAuthenticated && error && (
                         <div style={{
                             background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
                             border: `1px solid ${theme.colors.error}30`,
