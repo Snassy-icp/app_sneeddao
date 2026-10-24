@@ -1,7 +1,9 @@
 // AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { AuthClient } from '@dfinity/auth-client';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { AuthClient, IdbStorage, KEY_STORAGE_DELEGATION } from '@dfinity/auth-client';
+import { DelegationChain } from '@dfinity/identity';
 import { completePairing as storePairing } from './utils/pairing';
+import { getDelegationExpiryMs, isIdentityExpired, onAuthExpired, reportIfAuthExpired } from './utils/authExpiry';
 
 const AuthContext = createContext();
 
@@ -40,6 +42,10 @@ export function AuthProvider({ children }) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  // The login ran out while the app was open (or since the last visit): AuthClient checks the
+  // delegation only at load, so we watch its expiry and show SessionExpiredBanner until the next login.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const expiringRef = useRef(false);
 
   useEffect(() => {
     initAuthClient();
@@ -47,6 +53,14 @@ export function AuthProvider({ children }) {
 
   async function initAuthClient() {
     try {
+      // AuthClient.create silently deletes an expired stored delegation, so look at it first.
+      let storedExpired = false;
+      try {
+        const stored = await new IdbStorage().get(KEY_STORAGE_DELEGATION);
+        if (typeof stored === 'string' && stored) storedExpired = isIdentityExpired(DelegationChain.fromJSON(stored));
+      } catch {
+        // no stored login, or not readable: nothing to report
+      }
       const client = await AuthClient.create({
         idleOptions: {
           disableIdle: true,
@@ -61,6 +75,9 @@ export function AuthProvider({ children }) {
         const id = client.getIdentity();
         setIdentity(id);
         setIsAuthenticated(true);
+        setSessionExpired(false);
+      } else if (storedExpired) {
+        setSessionExpired(true);
       }
     } catch (error) {
       console.error('Failed to initialize auth client:', error);
@@ -105,6 +122,7 @@ export function AuthProvider({ children }) {
           setIsAuthenticated(true);
           setIsLoggingIn(false);
           setShowLoginModal(false);
+          setSessionExpired(false);
         },
         onError: (error) => {
           console.error('Internet Identity 1.0 login error:', error);
@@ -145,6 +163,7 @@ export function AuthProvider({ children }) {
           setIsAuthenticated(true);
           setIsLoggingIn(false);
           setShowLoginModal(false);
+          setSessionExpired(false);
         },
         onError: (error) => {
           console.error('Internet Identity 2.0 login error:', error);
@@ -172,6 +191,76 @@ export function AuthProvider({ children }) {
       }
     }
   }, [authClient]);
+
+  // The session has expired: log out the usual way, so every page reacts as to a real logout, and
+  // keep the banner up until the next login.
+  const expireSession = useCallback(async () => {
+    if (expiringRef.current) return;
+    expiringRef.current = true;
+    setSessionExpired(true);
+    setShowLoginModal(false);
+    try {
+      await logout();
+    } finally {
+      expiringRef.current = false;
+    }
+  }, [logout]);
+
+  const sessionRef = useRef({ identity: null, isAuthenticated: false, expireSession });
+  sessionRef.current = { identity, isAuthenticated, expireSession };
+
+  /// For write actions (sends, transfers): true when the login is still valid. When it has run
+  /// out, logs out, shows the banner and returns false, so the action can stop before it fails.
+  const ensureSession = useCallback(() => {
+    const { identity: id, isAuthenticated: auth, expireSession: expire } = sessionRef.current;
+    if (!auth || !id) return false;
+    if (isIdentityExpired(id)) {
+      expire();
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Watch the delegation's expiry: a timer for the moment itself, and a re-check on focus and when
+  // the tab becomes visible again (timers sleep in background tabs and on phones).
+  useEffect(() => {
+    if (!isAuthenticated || !identity) return undefined;
+    const expiryMs = getDelegationExpiryMs(identity);
+    if (expiryMs === null) return undefined;
+    let timer = null;
+    const check = () => {
+      if (isIdentityExpired(identity)) {
+        sessionRef.current.expireSession();
+        return;
+      }
+      // setTimeout holds at most 2^31-1 ms (~24.8 days); re-arm until the expiry is reached
+      clearTimeout(timer);
+      timer = setTimeout(check, Math.min(Math.max(expiryMs - Date.now(), 0) + 1000, 2147483647));
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    check();
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [identity, isAuthenticated]);
+
+  // A call the replica refused because the delegation expired (its clock can be ahead of ours):
+  // reported by pages through reportIfAuthExpired, or left unhandled.
+  useEffect(() => {
+    const off = onAuthExpired(() => {
+      if (sessionRef.current.isAuthenticated) sessionRef.current.expireSession();
+    });
+    const onRejection = (e) => { reportIfAuthExpired(e?.reason); };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      off();
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
 
   // "Pair this app" (utils/pairing.js): store the approval pasted from a logged-in browser, then
   // load it the way a normal login is loaded.
@@ -202,6 +291,8 @@ export function AuthProvider({ children }) {
       authClient,
       showLoginModal,
       closeLoginModal,
+      sessionExpired,
+      ensureSession,
     }}>
       {children}
     </AuthContext.Provider>
