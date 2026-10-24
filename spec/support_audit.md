@@ -647,7 +647,7 @@ Every case begins the same way: get the user's principal, the ledger and block i
 | "LP fees not received" | Claim request status, then the ledger at the owner's sneed_lock wallet | `get_claim_request_status`; resend via `transfer_tokens` |
 | "Can't claim my RLL rewards" | `balance_of`, the neurons and hotkeys of P, claim events, incidents | user calls `claim_full_balance_of_hotkey` from a hotkey; stranded owner needs P1-12; incidents need an rll admin |
 | "My neuron stake vanished" (staking bot) | Find the bot's ICP transfer to governance and read the 8-byte memo | `claimNeuronFromDeposit(memo)` (user or a botkey holder) |
-| "Notifications balance / not delivered" | `get_receipts`, `admin_get_user` (P1), relay logs | refund is automatic on `#failed`; balance cannot be withdrawn by design, so explain |
+| "Notifications balance / not delivered" | `get_receipts`, `admin_get_user` (P1), relay logs | refund is automatic on `#failed`; the user withdraws unused balance with `withdraw` (once deployed); a withdrawal stuck `#pending` is retried by the timer, and one stuck `too_old` is settled with `admin_resolve_withdraw(p, opt block)` after reading the ledger |
 | "Premium not recognised" | `getMembershipDetails`; the PremiumClient cache in the calling canister | `extendMembershipAdmin` if paid; wait out the cache |
 | "Name / avatar gone" | ICRC-3 `sneednames_*` for P (merge, admin clear, NFT no longer owned) | `refresh_nft_avatar`, `admin_set_name`; a merged name is irreversible, so explain |
 | "Canister rejected the message" | Explain the IngressGuard causes: query sent as update, admin-only method, argument too large | — |

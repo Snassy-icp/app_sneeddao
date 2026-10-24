@@ -185,6 +185,70 @@ module {
     via : { #top_up; #app_top_up; #admin_credit };
   };
 
+  // ---- Withdrawals (spec/micropayments.md §3.3, §11, §15a: the common withdraw API) ----
+
+  /// `withdraw`: `amount_e8s` comes off the caller's balance and `to` receives it less one ledger
+  /// fee. `created_at_time` (ns, optional) makes a retry of the same request idempotent: the same
+  /// amount, `to` and time answer the first result instead of withdrawing again.
+  public type WithdrawArgs = { amount_e8s : Nat; to : Account; created_at_time : ?Nat64 };
+
+  /// A withdrawal the ledger confirmed.
+  public type Withdrawal = {
+    amount_e8s : Nat; // off the balance
+    fee_e8s : Nat; // the ledger fee, out of the amount
+    sent_e8s : Nat; // what `to` received: amount − fee
+    to : Account;
+    ledger_block : Nat;
+    created_at_time : Nat64;
+    at : Int;
+  };
+
+  /// A withdrawal debited from the balance whose transfer is under way (`#sending`) or whose
+  /// outcome is not known (`#unknown`: the call to the ledger failed in flight). It is retried with
+  /// the same arguments (memo and created_at_time), which the ledger deduplicates, so it goes out at
+  /// most once: by the timer, by the user's next `withdraw`, or by support. `#too_old`: the ledger's
+  /// deduplication window passed before a retry got an answer; support settles it from the ledger
+  /// (`admin_resolve_withdraw`). The amount is counted as owed until it is settled.
+  public type PendingWithdrawal = {
+    amount_e8s : Nat;
+    fee_e8s : Nat;
+    to : Account;
+    memo : Blob;
+    created_at_time : Nat64;
+    started_at : Int;
+    attempts : Nat;
+    state : { #sending; #unknown : Text; #too_old };
+  };
+
+  public type WithdrawOk = { ledger_block : Nat; amount_e8s : Nat; fee_e8s : Nat; sent_e8s : Nat; balance_e8s : Nat };
+
+  public type WithdrawError = {
+    #not_signed_in;
+    #rate_limited;
+    #busy; // another withdrawal of yours is under way
+    #invalid : Text; // e.g. a subaccount that is not 32 bytes, or this canister as `to`
+    #amount_too_small : { min_e8s : Nat }; // the amount must be more than one ledger fee
+    #insufficient_balance : { balance_e8s : Nat };
+    #duplicate : { ledger_block : Nat }; // the ledger already made this exact transfer: nothing more moved
+    #refused : Text; // the ledger refused, or could not be reached: nothing moved, the balance is back
+    #pending : PendingWithdrawal; // an earlier withdrawal's outcome is not known yet; it is retried
+  };
+
+  public type WithdrawResult = { #ok : WithdrawOk; #err : WithdrawError };
+
+  /// The caller's prepaid balance (`get_my_prepaid`): what is spendable, what is held for
+  /// deliveries not final yet, and the money in and out.
+  public type PrepaidView = {
+    balance_e8s : Nat; // spendable and withdrawable
+    reserved_e8s : Nat; // charged for deliveries not final yet: refunded here if they fail
+    ledger_fee_e8s : Nat;
+    min_withdraw_e8s : Nat; // one more than the ledger fee
+    withdrawn_e8s : Nat; // in all, since withdrawals exist
+    withdraw_pending : ?PendingWithdrawal;
+    withdrawals : [Withdrawal]; // newest first, at most 50
+    top_ups : [TopUp]; // newest first, at most 100
+  };
+
   /// What support sees of one user (admin_get_user).
   public type AdminUserView = {
     balance_e8s : Nat;
@@ -197,6 +261,8 @@ module {
     history : [HistoryItem]; // newest first
     pending_jobs : Nat; // deliveries to this user not final yet
     reserved_e8s : Nat; // their prices (refunded to the payer if they fail)
+    withdrawals : [Withdrawal]; // newest first, at most 50
+    withdraw_pending : ?PendingWithdrawal;
   };
 
   public type Result = { #ok : Text; #err : Text };

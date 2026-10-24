@@ -269,18 +269,24 @@ describe('service balances', () => {
     expect((await A.sneedMonAdapter.balance(ctx, pocket, icpId.toText())).total).toBe(b.total - 1_000_000n - ICP_FEE);
   });
 
-  it('sneed_notifications: top-up from Main by approval, no withdraw', async () => {
+  it('sneed_notifications: top-up from Main by approval, withdraw to a pocket (the amount delivered, the fee on top)', async () => {
     const ctx = ctxFor(carol);
     const [item] = await A.sneedNotificationsAdapter.listMyAccounts(ctx);
     const pocket = M.adapterPocket(A.sneedNotificationsAdapter, item);
-    expect(pocket.caps).toMatchObject({ deposit: true, withdraw: false, readOnly: true });
+    expect(pocket.caps).toMatchObject({ deposit: true, withdraw: true, readOnly: false });
     expect((await A.sneedNotificationsAdapter.balance(ctx, pocket, icpId.toText())).total).toBe(0n);
     await expect(A.sneedNotificationsAdapter.deposit(ctx, pocket, icpId.toText(), 500_000n, numbered(1))).rejects.toThrow(/from Main only/);
     await A.sneedNotificationsAdapter.deposit(ctx, pocket, icpId.toText(), 500_000n, null);
     const b = await A.sneedNotificationsAdapter.balance(ctx, pocket, icpId.toText());
     expect(b.total).toBe(500_000n);
-    expect(b.note).toMatch(/cannot be withdrawn/);
-    expect((await A.sneedNotificationsAdapter.rules(ctx, pocket, icpId.toText())).withdrawable).toBe(0n);
+    expect(b.note).toMatch(/withdraw what you don't use/);
+    const rules = await A.sneedNotificationsAdapter.rules(ctx, pocket, icpId.toText());
+    expect(rules.withdrawable).toBe(500_000n - ICP_FEE);
+    const before = await bal(icpId, carol, numbered(3));
+    expect(typeof (await A.sneedNotificationsAdapter.withdraw(ctx, pocket, icpId.toText(), 200_000n, { owner: carol, subaccount: numbered(3) }))).toBe('bigint');
+    expect(await bal(icpId, carol, numbered(3))).toBe(before + 200_000n);
+    expect((await A.sneedNotificationsAdapter.balance(ctx, pocket, icpId.toText())).total).toBe(500_000n - 200_000n - ICP_FEE);
+    await expect(A.sneedNotificationsAdapter.withdraw(ctx, pocket, icpId.toText(), 500_000n, { owner: carol, subaccount: null })).rejects.toThrow(/refused the withdrawal: Your message balance is/);
   });
 });
 

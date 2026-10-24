@@ -62,6 +62,11 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public type FeeForwarding = T.FeeForwarding;
   public type TopUp = T.TopUp;
   public type AdminUserView = T.AdminUserView;
+  public type WithdrawArgs = T.WithdrawArgs;
+  public type WithdrawResult = T.WithdrawResult;
+  public type Withdrawal = T.Withdrawal;
+  public type PendingWithdrawal = T.PendingWithdrawal;
+  public type PrepaidView = T.PrepaidView;
 
   type Notification = {
     id : Nat;
@@ -149,6 +154,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     ("notify_batch", { capacity = 100; per_minute = 60 }),
     ("settings", { capacity = 60; per_minute = 30 }), // set_settings, set_permission, allow_app, channels, alerts
     ("top_up", { capacity = 20; per_minute = 10 }), // top_up and top_up_app (each one ledger call)
+    ("withdraw", { capacity = 10; per_minute = 5 }), // withdraw (two ledger calls)
   ];
 
   // One-time bootstrap (2026-10-20): since #417 made SNS root the only controller, nobody could make
@@ -239,6 +245,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   transient let MAX_TOP_UPS : Nat = 100;
   // apps admins removed, kept so their owners can still claim the app balance
   let removed_apps = Map.new<Nat, App>();
+
+  // Withdrawals (added 2026-10-24; spec/micropayments.md §3.3, §11): a user takes unused balance
+  // out. Debited before the ledger call; put back only when the transfer definitely did not happen.
+  // A withdrawal whose outcome is unknown stays in `withdraw_pending` (owed, counted as a
+  // liability) and is retried with the same arguments, which the ledger deduplicates.
+  let withdraw_pending = Map.new<Principal, PendingWithdrawal>();
+  let withdrawals = Map.new<Principal, [Withdrawal]>(); // newest last, at most MAX_WITHDRAWALS kept
+  let withdrawn_totals = Map.new<Principal, Nat>();
+  let withdrawn_blocks = Map.new<Text, Principal>(); // "ledger/block" of every confirmed withdrawal
+  var withdrawn_e8s : Nat = 0;
+  transient let withdrawing = Map.new<Principal, ()>(); // one withdrawal per user at a time
+  transient let MAX_WITHDRAWALS : Nat = 50;
+  transient let WITHDRAW_MEMO : Blob = "sneednotif:withdraw";
   // when the delivery timer last ran (shown by stats)
   var last_tick_at : Int = 0;
 
@@ -273,6 +292,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       "sneednotif_config_update",
       "sneednotif_admin_credit",
       "sneednotif_app_balance_claim",
+      "sneednotif_withdraw",
+      "sneednotif_withdraw_restore",
     ];
   };
 
@@ -932,6 +953,241 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     r;
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // Withdraw (spec/micropayments.md §3.3, §11, §15a): users can always take their unused balance
+  // out. The same method and types as the shared prepaid module will have.
+  // ---------------------------------------------------------------------------------------------
+
+  func selfAccount() : Account = { owner = Principal.fromActor(this); subaccount = null };
+  /// "ledger/block": the key of credited top-ups and confirmed withdrawals.
+  func blockKey(ledger_block : Nat) : Text = Principal.toText(config.icp_ledger) # "/" # Nat.toText(ledger_block);
+  func withdrawalsOf(user : Principal) : [Withdrawal] = switch (Map.get(withdrawals, Map.phash, user)) { case (?l) Array.reverse(l); case null [] };
+  func withdrawnBy(user : Principal) : Nat = switch (Map.get(withdrawn_totals, Map.phash, user)) { case (?n) n; case null 0 };
+
+  /// Support log (get_log): one line per withdrawal event, with a correlation id.
+  func withdrawLog(level : { #info; #error }, user : Principal, m : Text) {
+    TextLog.add(icrc3_textlog, level, TextLog.correlationId(icrc3_textlog), user, "withdraw: " # m);
+  };
+
+  func okOf(w : Withdrawal, user : Principal) : T.WithdrawOk = { ledger_block = w.ledger_block; amount_e8s = w.amount_e8s; fee_e8s = w.fee_e8s; sent_e8s = w.sent_e8s; balance_e8s = balanceOf(user) };
+
+  /// Whether a failed call surely did not reach the ledger, or the ledger's message was rolled back
+  /// (it trapped): then nothing moved. Anything else (a reject by the ledger itself, a fatal or an
+  /// unknown error) is an unknown outcome.
+  func notExecuted(e : Error.Error) : Bool = switch (Error.code(e)) {
+    case (#call_error _ or #destination_invalid or #canister_error) true;
+    case _ false;
+  };
+
+  /// The ledger confirmed `p` in `ledger_block`: the pending record becomes a withdrawal.
+  func withdrawSent(user : Principal, p : PendingWithdrawal, ledger_block : Nat, by : By) : Withdrawal {
+    Map.delete(withdraw_pending, Map.phash, user);
+    let w : Withdrawal = { amount_e8s = p.amount_e8s; fee_e8s = p.fee_e8s; sent_e8s = p.amount_e8s - p.fee_e8s : Nat; to = p.to; ledger_block; created_at_time = p.created_at_time; at = now() };
+    let l = switch (Map.get(withdrawals, Map.phash, user)) { case (?l) l; case null [] };
+    let kept = if (l.size() >= MAX_WITHDRAWALS) Array.subArray(l, l.size() + 1 - MAX_WITHDRAWALS, MAX_WITHDRAWALS - 1) else l;
+    Map.set(withdrawals, Map.phash, user, Array.append(kept, [w]));
+    Map.set(withdrawn_totals, Map.phash, user, withdrawnBy(user) + p.amount_e8s);
+    Map.set(withdrawn_blocks, Map.thash, blockKey(ledger_block), user);
+    withdrawn_e8s += p.amount_e8s;
+    block("withdraw", by, [("principal", pv(user)), ("amount_e8s", #Nat(p.amount_e8s)), ("fee_e8s", #Nat(p.fee_e8s)), ("to", accountV(p.to)), ("ledger_block", #Nat(ledger_block)), ("balance_e8s", #Nat(balanceOf(user)))]);
+    withdrawLog(#info, user, "sent " # e8sText(w.sent_e8s) # " ICP (" # e8sText(p.amount_e8s) # " off the balance) to " # Principal.toText(p.to.owner) # ", ledger block " # Nat.toText(ledger_block));
+    w;
+  };
+
+  /// The transfer definitely did not happen: the amount goes back to the balance.
+  func withdrawUndo(user : Principal, p : PendingWithdrawal, why : Text) {
+    Map.delete(withdraw_pending, Map.phash, user);
+    Map.set(user_balances, Map.phash, user, balanceOf(user) + p.amount_e8s);
+    withdrawLog(#error, user, "nothing moved, " # e8sText(p.amount_e8s) # " ICP back on the balance: " # why);
+  };
+
+  func withdrawTransfer(p : PendingWithdrawal) : async { #Ok : Nat; #Err : TransferError } {
+    let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
+    await ledger.icrc1_transfer({ from_subaccount = null; to = p.to; amount = p.amount_e8s - p.fee_e8s : Nat; fee = ?p.fee_e8s; memo = ?p.memo; created_at_time = ?p.created_at_time });
+  };
+
+  /// Sends a pending withdrawal whose outcome is unknown again, with the same arguments: the ledger
+  /// either makes it now or answers Duplicate, so it goes out at most once. Only a ledger answer
+  /// settles it; a failed call leaves it pending. Under the user's lock.
+  func retryWithdrawal(user : Principal, p : PendingWithdrawal, by : By) : async* { #sent : Withdrawal; #still : PendingWithdrawal } {
+    let r = try { await withdrawTransfer(p) } catch (e) {
+      let q = { p with attempts = p.attempts + 1; state = #unknown("The ledger did not answer: " # Error.message(e)) };
+      Map.set(withdraw_pending, Map.phash, user, q);
+      withdrawLog(#error, user, "retry " # Nat.toText(q.attempts) # ": the ledger did not answer (" # Error.message(e) # "); still pending");
+      return #still(q);
+    };
+    switch r {
+      case (#Ok(b)) #sent(withdrawSent(user, p, b, by));
+      case (#Err(#Duplicate(d))) #sent(withdrawSent(user, p, d.duplicate_of, by));
+      case (#Err(e)) {
+        // too old to deduplicate, or refused: the first attempt may still have gone through, so the
+        // balance is not put back blindly; support settles it from the ledger
+        let state = switch e { case (#TooOld) #too_old; case _ #unknown("retry refused: " # debug_show e) };
+        let q = { p with attempts = p.attempts + 1; state };
+        Map.set(withdraw_pending, Map.phash, user, q);
+        withdrawLog(#error, user, "retry " # Nat.toText(q.attempts) # " answered " # debug_show e # "; still pending, support settles it from the ledger");
+        #still(q);
+      };
+    };
+  };
+
+  func withdrawLock(user : Principal) : Bool {
+    if (Map.has(withdrawing, Map.phash, user)) return false;
+    Map.set(withdrawing, Map.phash, user, ());
+    true;
+  };
+
+  /// Withdraw unused balance: `amount_e8s` comes off your balance and `to` receives it less one
+  /// ledger fee (so the amount must be more than the fee). Returns the ledger block. The balance is
+  /// debited before the ledger call and put back if the ledger refuses; if the call's outcome is
+  /// unknown the withdrawal stays pending and is retried with the same arguments (never twice).
+  public shared ({ caller }) func withdraw(args : WithdrawArgs) : async WithdrawResult {
+    if (Principal.isAnonymous(caller)) return #err(#not_signed_in);
+    if (not rateTake(caller, "withdraw")) return #err(#rate_limited);
+    switch (args.to.subaccount) { case (?s) if (s.size() != 32) return #err(#invalid("A subaccount is 32 bytes")); case null {} };
+    if (args.to.owner == Principal.fromActor(this)) return #err(#invalid("Not to this canister itself"));
+    if (not withdrawLock(caller)) return #err(#busy);
+    try { await* withdrawLocked(caller, args) } finally { Map.delete(withdrawing, Map.phash, caller) };
+  };
+
+  func withdrawLocked(user : Principal, args : WithdrawArgs) : async* WithdrawResult {
+    let same = func(t : Nat64, amount : Nat, to : Account) : Bool = args.created_at_time == ?t and args.amount_e8s == amount and args.to == to;
+    // an earlier withdrawal whose outcome is unknown is settled first
+    switch (Map.get(withdraw_pending, Map.phash, user)) {
+      case (?p) switch (await* retryWithdrawal(user, p, #caller(user))) {
+        case (#sent(w)) if (same(p.created_at_time, p.amount_e8s, p.to)) return #ok(okOf(w, user));
+        case (#still(q)) return #err(#pending(q));
+      };
+      case null {};
+    };
+    // the same request again (same created_at_time, amount and account): its first answer
+    switch (args.created_at_time) {
+      case (?_) for (w in withdrawalsOf(user).vals()) if (same(w.created_at_time, w.amount_e8s, w.to)) return #ok(okOf(w, user));
+      case null {};
+    };
+    let fee = fee_ledger_fee_e8s;
+    let balance = balanceOf(user);
+    if (args.amount_e8s <= fee) return #err(#amount_too_small({ min_e8s = fee + 1 }));
+    if (args.amount_e8s > balance) return #err(#insufficient_balance({ balance_e8s = balance }));
+
+    // debit before the first await: nothing else can spend it meanwhile; it is owed while pending
+    Map.set(user_balances, Map.phash, user, balance - args.amount_e8s : Nat);
+    let p : PendingWithdrawal = {
+      amount_e8s = args.amount_e8s; fee_e8s = fee; to = args.to; memo = WITHDRAW_MEMO;
+      created_at_time = switch (args.created_at_time) { case (?t) t; case null Nat64.fromNat(Int.abs(now())) };
+      started_at = now(); attempts = 1; state = #sending;
+    };
+    Map.set(withdraw_pending, Map.phash, user, p);
+
+    // the books against the ledger: what the canister holds must cover this withdrawal and
+    // everything else it owes (balances, deliveries not final, other withdrawals, a fee forward
+    // in flight), so a withdrawal can never be paid out of someone else's money
+    let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
+    let held = try { await ledger.icrc1_balance_of(selfAccount()) } catch (e) {
+      withdrawUndo(user, p, "balance check: " # Error.message(e));
+      return #err(#refused("The ledger did not answer; nothing moved, try again"));
+    };
+    let owed = liabilitiesE8s() - pulling_e8s + (switch (fee_pending) { case (?f) f.amount + f.fee; case null 0 }) : Nat;
+    if (held < owed) {
+      withdrawUndo(user, p, "the ledger holds " # e8sText(held) # " ICP, less than the " # e8sText(owed) # " owed");
+      return #err(#refused("This canister's ICP does not cover what it owes; nothing moved. Please tell support (the case is logged)"));
+    };
+
+    let r = try { await withdrawTransfer(p) } catch (e) {
+      if (notExecuted(e)) {
+        withdrawUndo(user, p, "the call did not reach the ledger: " # Error.message(e));
+        return #err(#refused("The ledger could not be reached; nothing moved, try again"));
+      };
+      let q = { p with state = #unknown("The ledger did not answer: " # Error.message(e)) };
+      Map.set(withdraw_pending, Map.phash, user, q);
+      withdrawLog(#error, user, "outcome unknown (" # Error.message(e) # "): pending, retried with the same arguments");
+      return #err(#pending(q));
+    };
+    switch r {
+      case (#Ok(b)) #ok(okOf(withdrawSent(user, p, b, #caller(user)), user));
+      case (#Err(#Duplicate(d))) {
+        // this exact transfer (same account, amount, memo and time) was made before and debited then
+        withdrawUndo(user, p, "duplicate of ledger block " # Nat.toText(d.duplicate_of));
+        #err(#duplicate({ ledger_block = d.duplicate_of }));
+      };
+      case (#Err(#BadFee(x))) {
+        fee_ledger_fee_e8s := x.expected_fee;
+        withdrawUndo(user, p, "the ledger fee is now " # Nat.toText(x.expected_fee) # " e8s");
+        #err(#refused("The ledger fee changed to " # Nat.toText(x.expected_fee) # " e8s; nothing moved, try again"));
+      };
+      case (#Err(e)) {
+        withdrawUndo(user, p, "the ledger refused: " # debug_show e);
+        #err(#refused("The ledger refused the transfer (" # debug_show e # "); nothing moved"));
+      };
+    };
+  };
+
+  /// The timer retries withdrawals whose outcome is unknown (at most 10 a run, one ledger call each).
+  func withdrawRetryTick() : async () {
+    let due = Buffer.Buffer<(Principal, PendingWithdrawal)>(10);
+    label pick for ((u, p) in Map.entries(withdraw_pending)) {
+      if (due.size() >= 10) break pick;
+      // a #sending record nobody holds the lock for was left by a call that trapped after sending
+      switch (p.state) { case (#unknown _ or #sending) if (not Map.has(withdrawing, Map.phash, u)) due.add((u, p)); case (#too_old) {} };
+    };
+    for ((u, p) in due.vals()) if (withdrawLock(u)) {
+      try { ignore await* retryWithdrawal(u, p, #timer) } catch (_) {} finally { Map.delete(withdrawing, Map.phash, u) };
+    };
+  };
+
+  /// Your prepaid balance: spendable, held for deliveries not final yet, and the money in and out.
+  public query ({ caller }) func get_my_prepaid() : async PrepaidView {
+    var reserved = 0;
+    for (jid in Map.keys(pending)) switch (Map.get(jobs, Map.nhash, jid)) {
+      case (?j) if (j.user == caller and not j.paid_by_app) reserved += j.price_e8s;
+      case null {};
+    };
+    {
+      balance_e8s = balanceOf(caller);
+      reserved_e8s = reserved;
+      ledger_fee_e8s = fee_ledger_fee_e8s;
+      min_withdraw_e8s = fee_ledger_fee_e8s + 1;
+      withdrawn_e8s = withdrawnBy(caller);
+      withdraw_pending = Map.get(withdraw_pending, Map.phash, caller);
+      withdrawals = withdrawalsOf(caller);
+      top_ups = switch (Map.get(top_ups, Map.phash, caller)) { case (?l) Array.reverse(l); case null [] };
+    };
+  };
+
+  /// Support settles a withdrawal still pending (the user's lock must be free): with the ledger
+  /// block that made it (checked on the ledger: from this canister to the recorded account, the
+  /// recorded amount, not used for another withdrawal) it is recorded as sent; with no block, only
+  /// once a retry answered TooOld (the ledger can no longer deduplicate it), the amount goes back to
+  /// the user's balance. A wrong put-back cannot reach anyone else's money: every withdrawal first
+  /// checks that the ledger holds everything owed.
+  public shared ({ caller }) func admin_resolve_withdraw(user : Principal, ledger_block : ?Nat) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    let p = switch (Map.get(withdraw_pending, Map.phash, user)) { case (?p) p; case null return #err("No pending withdrawal") };
+    if (not withdrawLock(user)) return #err("A withdrawal of this user is under way");
+    try {
+      switch (ledger_block) {
+        case (?b) {
+          if (Map.has(withdrawn_blocks, Map.thash, blockKey(b))) return #err("Block " # Nat.toText(b) # " is already recorded as a withdrawal");
+          switch (await* LedgerBlock.verifyTransfer(config.icp_ledger, b, selfAccount(), p.to)) {
+            case (#err(e)) return #err(e);
+            case (#ok(t)) {
+              if (t.amount != (p.amount_e8s - p.fee_e8s : Nat)) return #err("Block " # Nat.toText(b) # " moved " # Nat.toText(t.amount) # " e8s, not " # Nat.toText(p.amount_e8s - p.fee_e8s : Nat));
+              // the lock kept the record as it was
+              ignore withdrawSent(user, p, b, #caller(caller));
+              #ok("Recorded as sent in block " # Nat.toText(b));
+            };
+          };
+        };
+        case null {
+          if (p.state != #too_old) return #err("Retry first: only a withdrawal the ledger can no longer deduplicate (TooOld) is put back without a block");
+          withdrawUndo(user, p, "put back by support " # Principal.toText(caller) # " (TooOld)");
+          block("withdraw_restore", #caller(caller), [("principal", pv(user)), ("amount_e8s", #Nat(p.amount_e8s)), ("created_at_time", #Nat(Nat64.toNat(p.created_at_time))), ("balance_e8s", #Nat(balanceOf(user)))]);
+          #ok("Put back on the balance");
+        };
+      };
+    } finally { Map.delete(withdrawing, Map.phash, user) };
+  };
+
   public query ({ caller }) func get_my_settings() : async { settings : Settings; channels : [Channel]; balance_e8s : Nat } {
     { settings = settingsOf(caller); channels = userChannels(caller); balance_e8s = balanceOf(caller) };
   };
@@ -1079,9 +1335,16 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// What this canister owes: every user and app balance, the paid deliveries that may still be
   /// refunded, and top-ups the ledger may have moved but that are not credited yet.
   func liabilitiesE8s() : Nat {
-    var l = reservedE8s() + pulling_e8s;
+    var l = reservedE8s() + pulling_e8s + pendingWithdrawalsE8s();
     for (b in Map.vals(user_balances)) l += b;
     for (b in Map.vals(app_balances)) l += b;
+    l;
+  };
+
+  /// Withdrawals debited but not confirmed by the ledger: owed until they are settled.
+  func pendingWithdrawalsE8s() : Nat {
+    var l = 0;
+    for (p in Map.vals(withdraw_pending)) l += p.amount_e8s;
     l;
   };
 
@@ -1278,6 +1541,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     if (t >= fee_next_check) {
       fee_next_check := t + FEE_CHECK_NS;
       ignore feeTick(); // its own message: deliveries don't wait for the ledger
+      if (Map.size(withdraw_pending) > 0) ignore withdrawRetryTick();
     };
     let due = Buffer.Buffer<Job>(20);
     let lapsed = Buffer.Buffer<Job>(4);
@@ -1425,8 +1689,6 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   // Support (spec/support_audit.md): top-up records, admin credit, a user's state
   // ---------------------------------------------------------------------------------------------
 
-  func blockKey(ledger_block : Nat) : Text = Principal.toText(config.icp_ledger) # "/" # Nat.toText(ledger_block);
-
   func recordTopUp(payer : Principal, t : TopUp) {
     Map.set(credited_blocks, Map.thash, blockKey(t.ledger_block), payer);
     let l = switch (Map.get(top_ups, Map.phash, payer)) { case (?l) l; case null [] };
@@ -1528,6 +1790,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       history = historyOf(user, history_limit);
       pending_jobs = pendingJobs;
       reserved_e8s = reserved;
+      withdrawals = withdrawalsOf(user);
+      withdraw_pending = Map.get(withdraw_pending, Map.phash, user);
     });
   };
 
@@ -1656,16 +1920,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #claim_removed_app_balance : Any;
     #get_rate_limits : Any;
     #admin_set_rate_limit : Any;
+    #withdraw : Any;
+    #get_my_prepaid : Any;
+    #admin_resolve_withdraw : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
-      case (#admin_get_user _ or #admin_get_removed_app _) false;
+      case (#admin_get_user _ or #admin_get_removed_app _ or #get_my_prepaid _) false;
       case (#get_rate_limits _) false;
       case (#admin_set_rate_limit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
-      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _ or #admin_resolve_withdraw _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "register_app");
       case (#update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "update_app");
@@ -1674,6 +1941,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       case (#add_channel _ or #set_settings _ or #set_permission _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(MAX_ADDRESS + 256) and rateAllows(caller, "settings");
       case (#allow_app _ or #resend_code _ or #set_low_balance_alert _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "settings");
       case (#top_up _ or #top_up_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "top_up");
+      case (#withdraw _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "withdraw");
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

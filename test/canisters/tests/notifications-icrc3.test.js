@@ -26,7 +26,7 @@ const BLOCK_TYPES_URL = 'https://app.sneeddao.com/api/sneed_notifications#block-
 const CATALOGUE = [
   'top_up', 'app_top_up', 'refund', 'fee_forward', 'fee_backlog', 'fee_remeasure',
   'app_register', 'app_update', 'app_remove', 'app_verify', 'admin_add', 'admin_remove', 'config_update',
-  'admin_credit', 'app_balance_claim',
+  'admin_credit', 'app_balance_claim', 'withdraw', 'withdraw_restore',
 ].map((t) => `sneednotif_${t}`);
 const KEEP = { skip_pre_upgrade: [], wasm_memory_persistence: [{ keep: null }] };
 const SPLITTER = Principal.fromText('6jvpj-sqaaa-aaaaj-azwnq-cai');

@@ -15,7 +15,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Authentication
 - `notify`, `notify_batch` and `request_permission` are accepted only as inter-canister calls from a canister listed in a registered app; ingress calls are refused.
 - `register_app` needs control of each listed canister (a controller, the governance canister of an SNS whose root controls it, or the canister itself); `update_app` needs the owner or an admin (a canister new to the app needs the same control, except for admins).
-- User methods (`allow_app`, `set_permission`, `set_settings`, `add_channel`, `verify_channel`, `remove_channel`, `top_up`) refuse the anonymous principal.
+- User methods (`allow_app`, `set_permission`, `set_settings`, `add_channel`, `verify_channel`, `remove_channel`, `top_up`, `withdraw`) refuse the anonymous principal.
 - `relay_pull` / `relay_ack` only from registered relays; `admin_*` only from admins.
 - Nothing is anonymous: senders (app canisters) and receivers are public principals.
 - Consent first: `notify` reaches only users who allowed the app; otherwise `#not_allowed`.
@@ -23,8 +23,9 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Fees, transfers and irreversible actions
 - **Per-delivery prices in ICP e8s per channel kind**, plus a per-call price (`get_config().prices_e8s`, `notify_price_e8s`; read at run time). Sneed SMS deliveries are free.
 - User pays (`sponsored = false`): charged per delivery to the user's balance; deliveries the balance or the per-app daily spending cap cannot cover are suppressed. App pays (`sponsored = true`): the whole message is charged to the app balance, all or nothing (`#no_funds` otherwise). Finally failed deliveries are refunded; suppressed ones cost nothing.
-- **`top_up(amount)` and `top_up_app(id, amount)` pull ICP through ICRC-2** (approve amount + 10,000 e8s ledger fee first), with memo `sneednotif:top_up` / `sneednotif:app_top_up` and a `created_at_time`. **Balances cannot be withdrawn.** Anyone may fund any app.
-- If an admin removes an app, its balance stays: the app's owner moves it to their own notification balance with `claim_removed_app_balance(id)`.
+- **`top_up(amount)` and `top_up_app(id, amount)` pull ICP through ICRC-2** (approve amount + 10,000 e8s ledger fee first), with memo `sneednotif:top_up` / `sneednotif:app_top_up` and a `created_at_time`. Anyone may fund any app.
+- **`withdraw({ amount_e8s; to; created_at_time })` returns unused user balance** (always available): `to` gets the amount less the ledger fee; returns the ledger block. Refused: put back (`#refused`); unknown outcome: `#pending`, retried with the same arguments (deduplicated, at most once). App balances can't be withdrawn yet.
+- A removed app's balance goes to its owner's balance with `claim_removed_app_balance(id)`.
 - **Sending a notification is irreversible.** Titles, bodies and links are stored as plain text, read by the delivering relay, and land in the user's Sneed SMS inbox (not encrypted, readable by Sneed SMS admins). Never send secrets. Channel addresses are encrypted in the client to the relay key (`get_relay_keys`).
 - Notifications are deleted after the retention period (`retention_ns`).
 - What is charged (less refunds) is Sneed DAO revenue, forwarded to the RLL ICP splitter once 0.1 ICP has accumulated, never touching balances; public counters in `get_fee_forwarding()`.
@@ -38,9 +39,9 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Errors, retries and Busy
 - `notify` has no awaits: a rejected call recorded nothing. It is not idempotent: give messages a `dedupe` key so a retry inside the window is folded (`deduplicated = true`). The dedupe key is recorded before the balance check, so after `#no_funds` top up and retry with a different key or after the window.
 - `#rate_limited`: the user's daily message cap for the app is reached, or (unverified apps) the app canister's per-minute rate limit; don't retry in a loop.
-- Rate limits per caller (`get_rate_limits()`: each action with `{ capacity; per_minute }`): registering and updating apps, permission requests and notifications from unverified apps, user settings and top-ups. Over the limit an ingress call is refused at ingress and a canister call answers `Rate limited: ...`; wait a minute. Admins and verified apps are exempt; admins set rules with `admin_set_rate_limit(action, opt rule)`. `#not_allowed` is normal, not an error to retry.
-- Top-ups credit the balance in the same message that gets the ledger's confirmation. After a timeout read `get_my_settings().balance_e8s` (or `get_app_balance`) and the remaining allowance before calling again: a second call pulls again.
-- A top-up whose ICP left your account but was never credited (`The ledger did not answer`): ask support with the ledger block. Admins check the block on the ledger and credit it with `admin_credit(principal, amount, block)`, at most once per block.
+- Rate limits per caller (`get_rate_limits()`: each action with `{ capacity; per_minute }`): registering and updating apps, permission requests and notifications from unverified apps, user settings, top-ups and withdrawals. Over the limit: refused at ingress (a canister call answers `Rate limited: ...`); wait a minute. Admins and verified apps are exempt. `#not_allowed` is normal, not an error to retry.
+- After a top-up timeout, read the balance (`get_my_prepaid`, `get_app_balance`) and the allowance before calling again: a second call pulls again.
+- A top-up that left your account but was never credited (`The ledger did not answer`): support checks the ledger block and credits it once (`admin_credit`).
 
 ## Common pitfalls
 - Query methods sent as update calls are refused by the ingress guard (`inspect`).
@@ -49,10 +50,10 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - No echoes: a notification from the Sneed SMS canister itself (`get_config().sneed_sms`, e.g. Sneed Hub's `direct_message` notices) is never delivered to `sneed_sms` channels, not even the always-copy one, so it may have no delivery at all.
 
 ## Start with these methods
-Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats` (incl. `last_tick_at`, when the delivery timer last ran), `get_fee_forwarding`. Support (admins): `admin_get_user`, `admin_credit`, `admin_get_removed_app`.
+Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `withdraw`, `get_my_prepaid`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats` (incl. `last_tick_at`, when the delivery timer last ran), `get_fee_forwarding`. Support (admins): `admin_get_user`, `admin_credit`, `admin_get_removed_app`, `admin_resolve_withdraw`.
 
 ## Activity log (ICRC-3)
-- Money and governance are blocks of a certified, hash-chained ICRC-3 log: top-ups (with the ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, the fee books' measurements, apps registered, changed, verified or removed (with the balance left), removed apps' balances claimed by their owners, admin credits of unconfirmed top-ups, admins and configuration changes. Read it with `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneednotif_*`): https://app.sneeddao.com/api/sneed_notifications#block-types
+- Money and governance are blocks of a certified, hash-chained ICRC-3 log: top-ups and withdrawals (with the ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, the fee books' measurements, apps and their changes, removed apps' balances claimed, admin credits, admins and configuration. Read it with `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneednotif_*`): https://app.sneeddao.com/api/sneed_notifications#block-types
 - Never logged: what was sent to whom (no titles, bodies, channels, addresses or deliveries).
 
 ## Full reference

@@ -10,7 +10,10 @@ the first service, then the backend's BTC reservation store, then the forum.
 Generalises what is already built:
 - `src/sneed_notifications` has user balances by ICRC-2 `top_up`, app balances for `sponsored`
   messages, refunds of failed deliveries, revenue forwarding with books checked against the
-  ledger, and no withdraw.
+  ledger, and (since 2026-10-24, in the source) a user `withdraw` shaped as §3.3: `withdraw({
+  amount_e8s; to; created_at_time })` returning the ledger block, `get_my_prepaid()`, a pending
+  record for unknown outcomes retried with the same arguments, and a books-vs-ledger check before
+  every transfer. Prepaid.mo should keep these names and types.
 - `src/sneed_mon` has a per-user balance, a deposit subaccount plus `credit_deposit`,
   `withdraw_balance`, auto top-up by ICRC-2 pull, a charge statement and special prices.
 - `src/RateLimit.mo` and `src/RateRules.mo` (token buckets, `allows` in inspect, `take` in the
@@ -488,8 +491,8 @@ Each step is its own proposal, staging first (memory: Sneed DAO release process)
    - Paid overflow serves bots that summarise or bridge. The bridge may also be the first DAO
      grant: the DAO funds its own bridge principal.
 5. **Sneed Notifications onto the module.** Balances, app balances (grants with `#any`) and
-   forwarding move over. It gains `withdraw`, and the "service balance cannot be withdrawn"
-   rule ends.
+   forwarding move over. Its `withdraw` and `get_my_prepaid` (added 2026-10-24) keep their shape;
+   app-balance withdrawal is still open.
 6. **sneed_mon onto the module.** It already matches. The tier billing becomes "reserve per
    round, settle per check".
 

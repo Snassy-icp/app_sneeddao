@@ -1,13 +1,18 @@
 // /notifications: the notification centre (sneed_notifications, spec/sneed_notifications.md).
 // Which apps may notify you, how each level reaches you, quiet hours, channels, your balance for
-// paid channels, and what you were sent; and Sneed Monitor (components/SneedMonitorSection.jsx).
+// paid channels (top up, withdraw), and what you were sent; and Sneed Monitor
+// (components/SneedMonitorSection.jsx).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaBell, FaCheckCircle, FaChevronDown, FaChevronRight, FaMoon, FaWallet, FaHistory, FaPlug, FaInbox } from 'react-icons/fa';
+import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, formatIcp, relayKeys, addDiscordChannel, addPushChannel, pushSupported } from '../utils/NotificationsService';
+import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, withdraw, formatIcp, relayKeys, addDiscordChannel, addPushChannel, pushSupported } from '../utils/NotificationsService';
+import { useDenomination } from '../contexts/DenominationContext';
+import priceService from '../services/PriceService';
+import PrincipalInput from '../components/PrincipalInput';
 import { isStandaloneApp, isIOS } from '../utils/pairing';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import SneedMonitorSection from '../components/SneedMonitorSection';
@@ -23,6 +28,12 @@ export default function Notifications() {
     const { theme } = useTheme();
     const c = theme.colors;
     const { identity, isAuthenticated, login } = useAuth();
+    const { formatValue } = useDenomination();
+    const [icpUsd, setIcpUsd] = useState(null);
+    const [prepaid, setPrepaid] = useState(null); // get_my_prepaid(): fee, pending and past withdrawals (null on an older canister)
+    const [wdOpen, setWdOpen] = useState(false); // Advanced: amount, account, history
+    const [wdAmount, setWdAmount] = useState('');
+    const [wdTo, setWdTo] = useState('');
     const [data, setData] = useState(null); // { settings, channels, balance_e8s }
     const [apps, setApps] = useState([]); // [[App, Permission]]
     const [requests, setRequests] = useState([]);
@@ -50,9 +61,12 @@ export default function Notifications() {
         setLive(kinds);
         const la = await actor.get_low_balance_alert().catch(() => null); // an older canister has no alert
         if (la) setLowAlert(String(Number(la.threshold_e8s) / 1e8));
+        setPrepaid(await actor.get_my_prepaid().catch(() => null)); // an older canister has no withdraw
         if (smsActor) setSmsPreview(await smsActor.get_notification_preview().catch(() => null)); // an older SMS canister has no setting
     }, [actor, identity, smsActor]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
+    useEffect(() => { priceService.getICPUSDPrice().then((p) => setIcpUsd(Number(p) || null)).catch(() => {}); }, []);
+    useEffect(() => { if (identity && !wdTo) setWdTo(identity.getPrincipal().toText()); }, [identity, wdTo]);
     // a tapped notification for this page: load it again (not on visibility, it would reset unsaved settings)
     useAppRefresh(() => load().catch((e) => setMsg({ err: e.message || String(e) })));
     // a link to a section (/notifications#message-balance, from the low-balance alert) scrolls there once it is drawn
@@ -316,12 +330,54 @@ export default function Notifications() {
 
             <div style={card}>
                 <h2 style={h2} id="message-balance"><FaWallet color={accent} /> Message balance</h2>
-                <p style={{ ...muted, marginTop: 0 }}>You pay for your own deliveries on paid channels (phone push, Discord, email…); Sneed SMS is free. An app may pay for a message itself. Your message balance: <strong style={{ color: c.primaryText }}>{formatIcp(data.balance_e8s)}</strong>. Top-ups can't be withdrawn. This is separate from your <a href="#sneed-monitor" style={{ color: accent }}>Sneed Monitor balance</a>, which pays for proposal checks.</p>
+                <p style={{ ...muted, marginTop: 0 }}>You pay for your own deliveries on paid channels (phone push, Discord, email…); Sneed SMS is free. An app may pay for a message itself. Your message balance: <strong style={{ color: c.primaryText }}>{formatIcp(data.balance_e8s)}</strong>{icpUsd && <span> (≈ {formatValue((Number(data.balance_e8s) / 1e8) * icpUsd)})</span>}.{prepaid ? ' What you don\'t use stays yours: withdraw it any time.' : ' Top-ups can\'t be withdrawn yet.'} This is separate from your <a href="#sneed-monitor" style={{ color: accent }}>Sneed Monitor balance</a>, which pays for proposal checks.</p>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input type="number" min="0.0001" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...select, width: 120 }} /> <span style={muted}>ICP</span>
                     <button type="button" style={btn(true)} disabled={busy || !(Number(amount) > 0)} onClick={() => run(async () => { await topUp(identity, BigInt(Math.round(Number(amount) * 1e8))); }, 'Topped up')}>Top up</button>
                     <span style={muted}>from your Sneed Hub wallet (plus the 0.0001 ICP ledger fee)</span>
                 </div>
+                {prepaid && (() => {
+                    const fee = prepaid.ledger_fee_e8s;
+                    const bal = data.balance_e8s;
+                    const pending = opt(prepaid.withdraw_pending);
+                    const toIcp = (t) => { const n = Number(t); return Number.isFinite(n) && n > 0 ? BigInt(Math.round(n * 1e8)) : 0n; };
+                    const send = (amountE8s, toText) => run(async () => {
+                        let owner;
+                        try { owner = Principal.fromText((toText || '').trim()); } catch { throw new Error('Enter a valid principal to receive it'); }
+                        const r = await withdraw(identity, amountE8s, { owner });
+                        setWdAmount('');
+                        setMsg({ ok: `Withdrawn: ${formatIcp(r.sent_e8s)} sent to ${owner.toText() === identity.getPrincipal().toText() ? 'your wallet' : owner.toText()} (ledger block ${r.ledger_block}).` });
+                    });
+                    return (
+                        <div style={{ marginTop: 10 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <button type="button" style={btn(false)} disabled={busy || bal <= fee || !!pending} onClick={() => send(bal, identity.getPrincipal().toText())}>Withdraw all to my wallet</button>
+                                <span style={muted}>{bal > fee ? `You receive ${formatIcp(bal - fee)} (the ${formatIcp(fee)} ledger fee comes off).` : bal > 0n ? `Below the ${formatIcp(fee)} ledger fee: too little to withdraw, still spendable.` : 'Nothing to withdraw.'}</span>
+                                <button type="button" onClick={() => setWdOpen(!wdOpen)} style={{ background: 'none', border: 'none', color: c.primaryText, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.82rem', fontWeight: 600, padding: 0 }}>
+                                    {wdOpen ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />} Advanced
+                                </button>
+                            </div>
+                            {pending && <p style={{ ...muted, color: accent, margin: '6px 0 0' }}>A withdrawal of {formatIcp(pending.amount_e8s)} is waiting for the ledger's answer. It is retried automatically and goes out at most once; until then it stays off your balance.</p>}
+                            {wdOpen && (
+                                <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <input type="number" min="0" step="0.0001" value={wdAmount} onChange={(e) => setWdAmount(e.target.value)} placeholder="ICP" style={{ ...select, width: 120 }} aria-label="Amount to withdraw in ICP" /> <span style={muted}>ICP</span>
+                                        <button type="button" style={btn(false)} disabled={busy} onClick={() => setWdAmount(String(Number(bal) / 1e8))}>All</button>
+                                        <button type="button" style={btn(true)} disabled={busy || !!pending || toIcp(wdAmount) <= fee || toIcp(wdAmount) > bal} onClick={() => send(toIcp(wdAmount), wdTo)}>Withdraw</button>
+                                    </div>
+                                    <div style={{ ...muted, fontSize: '0.75rem' }}>To (your own wallet unless you change it); the ledger fee ({formatIcp(fee)}) comes off the amount. Withdrawals are public ICRC-3 records tied to your principal.</div>
+                                    <PrincipalInput value={wdTo} onChange={setWdTo} isAuthenticated defaultPrincipalType="users" />
+                                    <div style={{ ...muted, fontSize: '0.78rem' }}>Withdrawn in all: {formatIcp(prepaid.withdrawn_e8s)}{prepaid.reserved_e8s > 0n ? ` · ${formatIcp(prepaid.reserved_e8s)} held for deliveries not final yet (refunded here if they fail)` : ''}</div>
+                                    {prepaid.withdrawals.slice(0, 10).map((x) => (
+                                        <div key={String(x.ledger_block)} style={{ ...muted, fontSize: '0.78rem', borderTop: `1px solid ${c.border}`, paddingTop: 4 }}>
+                                            {new Date(Number(x.at / 1_000_000n)).toLocaleString()} · {formatIcp(x.sent_e8s)} to {x.to.owner.toText()}{x.to.subaccount.length ? ' (subaccount)' : ''} · block {String(x.ledger_block)}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
                 {lowAlert !== '' && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
                         <span style={muted}>Warn me when my message balance falls below</span>

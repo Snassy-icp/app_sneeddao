@@ -9,6 +9,8 @@
 ///                              caller) and move nothing
 ///   set_hold_to(owners)        transfers TO any of these owners wait (a
 ///                              self-call per round) until the rule is lifted
+///   burn(account, amount)      removes tokens with no transfer (books that
+///                              no longer match the ledger)
 /// Failed transfers answer GenericError and move nothing. Used by the
 /// sneedapp tests at the real ICP ledger id.
 import Array "mo:base/Array";
@@ -151,6 +153,11 @@ shared ({ caller = deployer }) persistent actor class MockLedgerFaulty(init : { 
     let index = txs.size();
     txs.add({ index; from = { owner = Principal.fromActor(this); subaccount = null }; to; amount; fee = 0 });
     index;
+  };
+  /// takes tokens out of an account with no transfer (a books-vs-ledger mismatch, for the tests)
+  public shared func burn(from : Account, amount : Nat) : async () {
+    let b = balance(from);
+    balances.put(key(from), if (b > amount) b - amount else 0);
   };
   public shared func set_fee(f : Nat) : async () { fee := f };
   public shared func set_paused(p : Bool) : async () { paused := p };

@@ -5,6 +5,9 @@ import { createActor, canisterId as notificationsEnv } from 'declarations/sneed_
 import { createActor as createLedger } from 'external/icrc1_ledger';
 import { approveAndRecord } from './approvals';
 import { expiresInMs } from './icrcTx';
+import { withdrawErrorText } from './notificationsWithdraw';
+
+export { withdrawErrorText };
 
 const realCanisterId = (text) => {
     try { const b = Principal.fromText(text).toUint8Array(); return b.length === 10 && b[9] === 1 ? text : null; } catch { return null; }
@@ -41,6 +44,14 @@ export async function topUp(identity, amountE8s) {
     if ('Err' in approve) throw new Error(`The ledger refused the approval: ${JSON.stringify(approve.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
     const r = await notificationsActor(identity).top_up(amountE8s);
     if ('err' in r) throw new Error(r.err);
+    return r.ok;
+}
+
+/// Withdraw `amountE8s` of the caller's message balance to `to` ({ owner: Principal, subaccount?:
+/// Uint8Array }); `to` receives the amount less the ledger fee. Returns { ledger_block, sent_e8s, ... }.
+export async function withdraw(identity, amountE8s, to) {
+    const r = await notificationsActor(identity).withdraw({ amount_e8s: amountE8s, to: { owner: to.owner, subaccount: to.subaccount ? [to.subaccount] : [] }, created_at_time: [] });
+    if ('err' in r) throw new Error(withdrawErrorText(r.err));
     return r.ok;
 }
 

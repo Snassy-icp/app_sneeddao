@@ -60,7 +60,8 @@ Prices are per delivery, in ICP e8s, per channel kind (`get_config().prices_e8s`
 - **User pays** (`sponsored = false`): each delivery is charged to the user's balance, channel by channel. A delivery the balance cannot cover is **suppressed** with reason `not enough balance`; one that would exceed the permission's `daily_spend_cap_e8s` for this app today is suppressed with `daily spending cap for this app`. Free channels (Sneed SMS) always go out. The per-call price is taken only if the balance and cap allow it.
 - **App pays** (`sponsored = true`): the whole message (every chosen delivery plus the per-call price) is charged to the app's balance, all or nothing. If the app's balance is short, `notify` fails with `#no_funds`. The user's spending cap does not apply; the daily message cap does.
 - **Refunds:** a delivery that finally fails is refunded to whoever paid. Suppressed deliveries cost nothing.
-- **Balances** are topped up with ICP through ICRC-2: `top_up` for the caller, `top_up_app` for any app (anyone may fund any app). The transfer carries the memo `sneednotif:top_up` or `sneednotif:app_top_up` and a `created_at_time`; each top-up is recorded per payer with its ledger block. There is no method to withdraw a balance.
+- **Balances** are topped up with ICP through ICRC-2: `top_up` for the caller, `top_up_app` for any app (anyone may fund any app). The transfer carries the memo `sneednotif:top_up` or `sneednotif:app_top_up` and a `created_at_time`; each top-up is recorded per payer with its ledger block.
+- **Withdrawals:** a user takes unused balance out at any time with `withdraw({ amount_e8s; to; created_at_time })` (4, 5.2): `amount_e8s` comes off the balance and the account `to` receives it less the ICP ledger fee (10,000 e8s), so the amount must be more than the fee. The transfer carries the memo `sneednotif:withdraw`. App balances cannot be withdrawn yet (open question: the app's owner, or the funders?); a removed app's balance goes to its owner as below.
 - **A removed app's balance** stays where it is when an admin removes the app: its recorded owner (or an admin for the owner) moves it to the owner's own notification balance with `claim_removed_app_balance(id)`.
 - **Old notifications** are deleted after `retention_ns`; a paid delivery that never became final by then is refunded to whoever paid for it.
 - **Where the money goes:** what is charged (deliveries and the per-call price, less refunds) is Sneed DAO revenue. The canister forwards it in one ICRC-1 transfer to `fee_destination` (by default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount `01 00 00 00 00 06` + 26 zero bytes, where Sneed Premium, Sneedex and Sneed Lock pay too) once `fee_sweep_threshold_e8s` (0.1 ICP) has accumulated; the ledger fee comes off the amount. A check runs from the delivery timer at most every 5 minutes. Balances are never touched: before every transfer the canister reads its ledger balance, and the transfer must leave at least every user and app balance, every paid delivery that may still be refunded, and top-ups in flight. The ICP spent before forwarding existed (the backlog) was measured once, at the first check after the upgrade, as the ledger balance minus all of that. Read it all with `get_fee_forwarding()` (5.3).
@@ -308,6 +309,14 @@ A job not acknowledged within `relay_lease_ns` (10 minutes) goes back to the que
 
 **A top-up whose outcome the canister never learned** (`The ledger did not answer: ...`) may still have moved the ICP. Support finds the block on the ledger (memo `sneednotif:top_up`, from the user's default account to this canister) and an admin credits it with `admin_credit(principal, amount_e8s, ledger_block)`: the canister reads the block and credits only a transfer of exactly that amount from that principal's default account to its own, at most once per block (blocks already credited by a top-up included). A block older than the canister's top-up records (they begin with the first block of the activity log) is refused, since it may have been credited without a record.
 
+**Withdrawals** (`withdraw`, spec/micropayments.md §3.3 and §11). One withdrawal per user at a time: a second one while the first is at the ledger answers `#busy`. The amount comes off the balance before the ledger call, so nothing else can spend it meanwhile. Before the transfer the canister reads its ledger balance: it must hold everything it owes (every user and app balance, deliveries not final yet, other withdrawals not settled, a fee forward in flight); if not, `#refused` and nothing moves, so a withdrawal is never paid out of someone else's balance. Then:
+- the ledger confirms: `#ok({ ledger_block; amount_e8s; fee_e8s; sent_e8s; balance_e8s })`, a `sneednotif_withdraw` block;
+- the ledger answers an error (or the call surely did not reach it): `#refused(text)`, the amount is back on the balance;
+- the ledger already made this exact transfer (same `to`, amount, memo and `created_at_time`): `#duplicate({ ledger_block })`, the amount is back and nothing more moved;
+- the call fails in flight (unknown outcome): `#pending(PendingWithdrawal)`. The amount stays off the balance and is counted as owed. The canister sends the same transfer again (same memo and `created_at_time`, which the ICP ledger deduplicates for 24 hours) from its timer every 5 minutes and on the user's next `withdraw`, so it goes out at most once. If no retry got an answer within the ledger's window (`state = too_old`), support settles it from the ledger with `admin_resolve_withdraw`.
+
+Pass your own `created_at_time` (nanoseconds, within the last 24 hours) to make a retry after a timeout idempotent: the same amount, `to` and time answer the first withdrawal's result instead of withdrawing again. Without it, read `get_my_prepaid()` before calling again.
+
 **ICP top-up errors:** `Nothing to top up`, `Approve this canister for the amount first (allowance N)`, `Not enough ICP (balance N)`, `The ledger refused the transfer`, `The ledger did not answer: ...`. The approval must cover the amount plus the ICP ledger fee (10,000 e8s), both taken from the caller's default account.
 
 ---
@@ -344,6 +353,8 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_low_balance_alert()` | query | `record { threshold_e8s : nat; default_e8s : nat }` | 3.4. |
 | `remove_channel(id)` | update | `Result` | 3.4. |
 | `top_up(amount_e8s)` | update | `ResultNat` | The caller's new balance. |
+| `withdraw(WithdrawArgs)` | update | `WithdrawResult` | 1.4, 4. `to` receives `amount_e8s` less the ledger fee; errors `not_signed_in`, `rate_limited`, `busy`, `invalid` (a subaccount not 32 bytes, this canister as `to`), `amount_too_small { min_e8s }`, `insufficient_balance { balance_e8s }`, `duplicate { ledger_block }`, `refused : text` (nothing moved), `pending : PendingWithdrawal` (outcome unknown, retried). |
+| `get_my_prepaid()` | query | `PrepaidView` | The caller's balance, what is held for deliveries not final yet, the ledger fee and the smallest withdrawal, a pending withdrawal, the last 50 withdrawals and the last 100 top-ups (newest first), and the total withdrawn. |
 | `claim_removed_app_balance(id)` | update | `ResultNat` | The owner of an app an admin removed (or an admin for them) moves its balance to the owner's notification balance; returns the owner's new balance. Errors `No removed app N`, `Only the app's owner`, `Nothing to claim`. |
 | `get_my_settings()` | query | `{ settings; channels; balance_e8s }` | A user who never made an update call gets default settings whose `always_copy` id is not stored yet; call `add_channel({ sneed_sms: null }, '', [])` or `set_settings` once to fix it. |
 | `get_my_apps()` | query | `vec (App, Permission)` | Apps the caller allowed or blocked. |
@@ -386,7 +397,8 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_remove_app(id)` | Removes an abusive app; its canisters can no longer notify. Its balance stays for the owner (`claim_removed_app_balance`). |
 | `admin_get_removed_app(id)` (query) | A removed app's record (owner, canisters); its balance: `get_app_balance(id)`. |
 | `admin_credit(principal, amount_e8s, ledger_block)` | Credits a top-up the canister never confirmed, after reading the block on the ledger (4). Returns the user's new balance. Errors: `... is already credited`, `... is being credited`, `... moved N e8s, not M`, `... was not sent from that principal's account`, `... was not sent to this canister`, `... is older than the top-up records ...`, `The ledger has no block N`, `Could not read the ledger: ...`. |
-| `admin_get_user(principal, history_limit)` (query) | `variant { ok : AdminUserView; err : text }`: the user's balance, low-balance alert, settings, channels (addresses as stored: encrypted), apps and permissions, open requests, top-ups (newest first, at most 100, each with `ledger_block`, `amount_e8s`, `at`, `app`, `via` = `top_up`, `app_top_up` or `admin_credit`), recent history (at most `history_limit`, 200 at most; verification codes hidden as in `get_my_history`), and the deliveries not final yet with their prices. |
+| `admin_resolve_withdraw(principal, opt ledger_block)` | Settles a withdrawal that is still pending (4). With a block: reads it on the ledger and records the withdrawal as sent if it moved exactly the amount less the fee from this canister to the recorded account and is not recorded for another withdrawal. With `null`: only when the retries answered `TooOld` (the ledger can no longer deduplicate it), puts the amount back on the user's balance (a `sneednotif_withdraw_restore` block). Errors `No pending withdrawal`, `A withdrawal of this user is under way`, `Retry first: ...`, and the block errors of `admin_credit`. |
+| `admin_get_user(principal, history_limit)` (query) | `variant { ok : AdminUserView; err : text }`: the user's balance, low-balance alert, settings, channels (addresses as stored: encrypted), apps and permissions, open requests, top-ups (newest first, at most 100, each with `ledger_block`, `amount_e8s`, `at`, `app`, `via` = `top_up`, `app_top_up` or `admin_credit`), recent history (at most `history_limit`, 200 at most; verification codes hidden as in `get_my_history`), and the deliveries not final yet with their prices; its withdrawals (newest first, at most 50) and a pending withdrawal. |
 | `admin_add_admin(p)`, `admin_remove_admin(p)` | Edit the admin list. |
 | `admin_set_rate_limit(action, opt record { capacity; per_minute })` | Sets an action's rate limit (1.5); `null` restores the default, capacity 0 turns it off. Errors: `Unknown action ...`, `per_minute must be at least 1 ...`, values above 100,000. |
 | `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
@@ -522,6 +534,41 @@ type AdminUserView = record {
   history : vec HistoryItem;      // newest first
   pending_jobs : nat;             // deliveries to this user not final yet
   reserved_e8s : nat;             // their prices
+  withdrawals : vec Withdrawal;   // newest first, at most 50
+  withdraw_pending : opt PendingWithdrawal;
+};
+
+type WithdrawArgs = record { amount_e8s : nat; to : Account; created_at_time : opt nat64 };
+type Withdrawal = record {
+  amount_e8s : nat;               // off the balance
+  fee_e8s : nat;                  // the ledger fee, out of the amount
+  sent_e8s : nat;                 // what `to` received
+  to : Account;
+  ledger_block : nat;
+  created_at_time : nat64;
+  at : int;
+};
+type PendingWithdrawal = record {
+  amount_e8s : nat; fee_e8s : nat; to : Account; memo : blob; created_at_time : nat64;
+  started_at : int; attempts : nat;
+  state : variant { sending; unknown : text; too_old };
+};
+type WithdrawResult = variant {
+  ok : record { ledger_block : nat; amount_e8s : nat; fee_e8s : nat; sent_e8s : nat; balance_e8s : nat };
+  err : variant {
+    not_signed_in; rate_limited; busy; invalid : text;
+    amount_too_small : record { min_e8s : nat };
+    insufficient_balance : record { balance_e8s : nat };
+    duplicate : record { ledger_block : nat };
+    refused : text;
+    pending : PendingWithdrawal;
+  };
+};
+type PrepaidView = record {
+  balance_e8s : nat; reserved_e8s : nat; ledger_fee_e8s : nat; min_withdraw_e8s : nat; withdrawn_e8s : nat;
+  withdraw_pending : opt PendingWithdrawal;
+  withdrawals : vec Withdrawal;   // newest first, at most 50
+  top_ups : vec TopUp;            // newest first, at most 100
 };
 
 type Result = variant { ok : text; err : text };
@@ -546,7 +593,7 @@ Default permission (from `allow_app`): allowed, no demote, not copy-only, not mu
 **Front ends for users**
 - Show open requests (`get_my_requests`) and let users allow, block and set caps per app.
 - Encrypt every address to the relay key in the client; never send it in clear.
-- Show the balance and the prices from `get_config()`; tell users balances cannot be withdrawn.
+- Show the balance and the prices from `get_config()`, and offer `withdraw` for what the user doesn't use (the ledger fee comes off the amount).
 - Make sure the user's Sneed SMS channel exists (any update call creates it) before saving its id in settings.
 
 ---
@@ -555,7 +602,7 @@ Default permission (from `allow_app`): allowed, no demote, not copy-only, not mu
 
 **Status: in the source on `main`, not deployed yet.** Until the upgrade, the methods below do not exist on production or staging.
 
-What concerns money and governance is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: top-ups of user and app balances (with the ICP ledger block), refunds of failed paid deliveries, the forwarding of the earned fees to the RLL splitter (with the ledger block), the measurement of the fee books, apps registered, changed, verified and removed, the admin list and every configuration value. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered. Old blocks move to archive canisters that the canister creates.
+What concerns money and governance is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: top-ups of user and app balances and withdrawals of user balances (with the ICP ledger block), refunds of failed paid deliveries, the forwarding of the earned fees to the RLL splitter (with the ledger block), the measurement of the fee books, apps registered, changed, verified and removed, the admin list and every configuration value. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered. Old blocks move to archive canisters that the canister creates.
 
 **What was sent to whom is never logged.** No block carries a notification's title, body or link, a channel's name, kind or address, a verification code, a delivery or the user a message was for. A refund block says how much went back and whether a user or an app had paid, not who.
 
@@ -595,6 +642,8 @@ All types carry the `sneednotif_` prefix. A block is appended once its action is
 | `sneednotif_app_verify` | `admin_set_app_verified` changed the checkmark. | `caller`, `app_id`, `name`, `verified` |
 | `sneednotif_app_remove` | `admin_remove_app` | `caller`, `app_id`, `name`, `owner`, `canisters`, `app_balance_e8s` (left for the owner) |
 | `sneednotif_app_balance_claim` | `claim_removed_app_balance` moved a removed app's balance to its owner. | `caller`, `app_id`, `owner`, `amount_e8s`, `balance_e8s` (the owner's, after) |
+| `sneednotif_withdraw` | `withdraw` (or its retry by the timer or `admin_resolve_withdraw`) sent unused balance out; the ledger confirmed it. | `caller` (the user or admin) or `via` = `"timer"`, `principal` (whose balance), `amount_e8s` (off the balance), `fee_e8s`, `to`, `ledger_block`, `balance_e8s` (after) |
+| `sneednotif_withdraw_restore` | `admin_resolve_withdraw` put a withdrawal the ledger could no longer deduplicate back on the balance. | `caller` (the admin), `principal`, `amount_e8s`, `created_at_time`, `balance_e8s` (after) |
 | `sneednotif_admin_credit` | `admin_credit` credited a checked ledger block. | `caller` (the admin), `principal` (credited), `amount_e8s`, `ledger_block`, `balance_e8s` (after) |
 | `sneednotif_admin_add` / `sneednotif_admin_remove` | The admin list changed. | `caller` (or `via` = `"upgrade"`), `principal` |
 | `sneednotif_config_update` | A setting changed: one block per value. | `caller`, `key`, `old_value`, `value` |

@@ -165,9 +165,16 @@ export default function HelpNotifications() {
                     <Li>On the <B>Balance</B> card, type an amount in ICP and press <B>Top up</B>.</Li>
                     <Li>The site approves the notification canister to take that amount on the ICP ledger and then moves it to your balance. The 0.0001 ICP ledger fee comes on top.</Li>
                 </Steps>
-                <Warning title="Top-ups can't be withdrawn">
-                    Your notification balance can only be spent on deliveries. Top up small amounts, and only if you use paid channels.
-                </Warning>
+                <P>
+                    <B>What you don't use stays yours.</B> On the same card, <B>Withdraw all to my wallet</B> sends your whole balance back to
+                    your Sneed Hub wallet, less the 0.0001 ICP ledger fee. Under <B>Advanced</B> you can withdraw part of it, or send it to
+                    another principal. If the ledger doesn't answer, the withdrawal waits and is retried automatically; it goes out at most
+                    once. Top-ups and withdrawals are public records tied to your principal.
+                </P>
+                <Tip title="Top up small amounts">
+                    Your balance only pays for deliveries on paid channels. A balance at or below the ledger fee is too small to withdraw,
+                    but you can still spend it.
+                </Tip>
             </Section>
 
             <Section icon={FaHistory} title="Recent: your history" id="history">

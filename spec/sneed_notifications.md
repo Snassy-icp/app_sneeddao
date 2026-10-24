@@ -237,8 +237,10 @@ pays for every member getting a real SMS whenever a canister runs low.
   approval). Each delivery is charged to it at the channel's price. Prices on 2026-10-20 (e8s per
   delivery, set in the config): Sneed SMS 0; push, Discord and Telegram 100; email 1,000; real SMS
   1,000,000 (0.01 ICP).
-  Changed from the original plan: balances are in ICP, not cycles. There is no withdraw method:
-  what is topped up can only be spent on notifications.
+  Changed from the original plan: balances are in ICP, not cycles. Since 2026-10-24 (in the source,
+  not deployed yet) unused user balance can be withdrawn: `withdraw({ amount_e8s; to;
+  created_at_time })`, the common withdraw API of spec/micropayments.md §3.3 and §15a. App balances
+  cannot be withdrawn yet (open question: by the app's owner, or back to the funders?).
 - **Even the `notify` call is charged to the user**, not the dapp: the cost of queueing and
   delivering lands on the account of the person who chose to receive it. A dapp may *sponsor*
   a message instead: `notify` with `sponsored = true` charges the dapp's own balance (§3).

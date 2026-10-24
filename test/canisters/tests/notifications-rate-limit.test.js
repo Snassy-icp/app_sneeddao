@@ -55,7 +55,7 @@ describe('sneed_notifications: rate limits', () => {
 
   it('lists generous default rules, and only admins change them', async () => {
     const rules = Object.fromEntries(await as(bob).get_rate_limits());
-    expect(Object.keys(rules).sort()).toEqual(['notify', 'notify_batch', 'register_app', 'request_permission', 'settings', 'top_up', 'update_app']);
+    expect(Object.keys(rules).sort()).toEqual(['notify', 'notify_batch', 'register_app', 'request_permission', 'settings', 'top_up', 'update_app', 'withdraw']);
     expect(rules.notify).toEqual({ capacity: 1000n, per_minute: 600n });
     expect(rules.register_app).toEqual({ capacity: 5n, per_minute: 1n });
     expect(await refusedAtIngress(as(bob).admin_set_rate_limit('notify', [{ capacity: 1n, per_minute: 1n }]))).toBe(true);
