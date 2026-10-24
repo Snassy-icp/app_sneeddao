@@ -16,6 +16,7 @@ import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUti
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import { createTip, getTipsByPost, verifiedTips, tipErrorMessage } from '../utils/BackendUtils';
+import { tipExceptionMessage } from '../utils/forumModel';
 import { useTokens } from '../hooks/useTokens';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -1458,6 +1459,7 @@ function Discussion({
         }
 
         setTippingState(true);
+        let stage = 'transfer'; // 'register' once the tokens are sent
         try {
             const ledgerActor = createLedgerActor(tokenPrincipal, {
                 agentOptions: { identity }
@@ -1479,7 +1481,8 @@ function Discussion({
 
             let transactionBlockIndex = null;
             if ('Ok' in transferResult) {
-                transactionBlockIndex = Number(transferResult.Ok);
+                transactionBlockIndex = transferResult.Ok; // BigInt; block 0 is a block
+                stage = 'register';
             } else {
                 const errorMsg = 'Err' in transferResult ? JSON.stringify(transferResult.Err) : 'Unknown transfer error';
                 throw new Error(`ICRC1 transfer failed: ${errorMsg}`);
@@ -1487,9 +1490,9 @@ function Discussion({
 
             const tipResult = await createTip(forumActor, {
                 to_principal: recipientPrincipal,
-                post_id: Number(postId),
+                post_id: postId,
                 token_ledger_principal: Principal.fromText(tokenPrincipal),
-                amount: Number(amount),
+                amount, // exact: createTipArgs keeps BigInt
                 transaction_block_index: transactionBlockIndex
             });
 
@@ -1520,6 +1523,8 @@ function Discussion({
                 userMessage = 'Transaction expired. Please try again.';
             } else if (error.message.includes('Duplicate')) {
                 userMessage = 'Duplicate transaction detected. Please wait and try again.';
+            } else if (stage === 'register' && !/tokens were sent/i.test(error.message)) {
+                userMessage = tipExceptionMessage('register', error); // never let them send twice
             }
             
             throw new Error(userMessage);

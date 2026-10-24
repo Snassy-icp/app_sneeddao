@@ -250,6 +250,18 @@ for pair in "$PREV_SRC:sneed_sns_forum_prepaging_seed" "$SEED_SRC:sneed_sns_foru
   test -s "$OUT/$out.wasm"
 done
 rm -rf "$PREV_SRC" "$SEED_SRC"
+# sneed_sns_forum as production runs it since proposal #469 (per-user paged reads, rate limits; the
+# source of d1784166, unchanged since), for the fail-before runs of the forum bug pass
+# (FORUM_WASM=sneed_sns_forum_p469) and the upgrade test of reactions, thread tips and thread votes;
+# its .most is what `moc --stable-compatible` checks the current build against
+FORUM_P469_COMMIT=d1784166
+echo "== sneed_sns_forum at $FORUM_P469_COMMIT (moc, EOP, sneed_sns_forum_p469)"
+PREV_SRC="$(mktemp -d)"
+git archive "$FORUM_P469_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence --stable-types "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_p469.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_sns_forum_p469.wasm"
 # sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
 # upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
 MON_STAGING_COMMIT=1bbee49a

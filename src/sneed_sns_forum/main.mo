@@ -10,6 +10,7 @@ import Int "mo:base/Int";
 import Text "mo:base/Text";
 import Iter "mo:base/Iter";
 import Debug "mo:base/Debug";
+import Blob "mo:base/Blob";
 import Sha256 "mo:sha2/Sha256";
 
 import T "Types";
@@ -19,6 +20,8 @@ import IngressGuard "../IngressGuard";
 import RateLimit "../RateLimit";
 import RateRules "../RateRules";
 import Mentions "Mentions";
+import Reactions "Reactions";
+import SnsUtil "../SnsUtil";
 import TipVerify "TipVerify";
 import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
@@ -200,6 +203,9 @@ persistent actor SneedSNSForum {
             "sneedforum_admin_add",
             "sneedforum_admin_remove",
             "sneedforum_config_update",
+            "sneedforum_thread_tip",
+            "sneedforum_thread_tip_verified",
+            "sneedforum_thread_tip_rejected",
         ];
     };
 
@@ -278,7 +284,9 @@ persistent actor SneedSNSForum {
     // What each action covers, and its default: generous for a person, a wall for a script.
     //   thread: create_thread, create_proposal_thread(_with_auto_setup), create_special_topic, create_sns_forum_setup
     //   post: create_post (posts and replies); edit: update_post, update_thread; poll: create_poll
-    //   tip: create_tip, verify_tip; vote: vote_on_post(_with_neurons), retract_vote(_with_neurons), vote_on_poll_with_neurons
+    //   tip: create_tip, verify_tip, create_thread_tip, verify_thread_tip
+    //   vote: vote_on_post(_with_neurons), retract_vote(_with_neurons), vote_on_poll_with_neurons, vote_on_thread(_with_neurons), retract_thread_vote(_with_neurons)
+    //   react: react, set_reactions
     transient let RATE_DEFAULTS : [(Text, T.RateRule)] = [
         ("thread", { capacity = 10; per_minute = 2 }),
         ("post", { capacity = 10; per_minute = 4 }),
@@ -286,6 +294,7 @@ persistent actor SneedSNSForum {
         ("poll", { capacity = 5; per_minute = 1 }),
         ("tip", { capacity = 10; per_minute = 3 }),
         ("vote", { capacity = 30; per_minute = 10 }),
+        ("react", { capacity = 30; per_minute = 20 }),
     ];
 
     func rateRule(action : Text) : T.RateRule = RateRules.rule(stable_rate_rules, RATE_DEFAULTS, action);
@@ -699,6 +708,10 @@ persistent actor SneedSNSForum {
         let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?p) p;
             case null return #err(#NotFound("Post not found"));
+        };
+        // no tips on deleted posts, or posts of deleted threads (nobody can see them)
+        if (post.deleted or (switch (Map.get(state.threads, Map.nhash, post.thread_id)) { case (?t) t.deleted; case null false })) {
+            return #err(#NotFound("Post not found"));
         };
         if (authorOf(post.created_by) != ?to_principal) {
             return #err(#InvalidInput("A tip goes to the post's author: to_principal must be the author of post " # Nat.toText(post_id)));
@@ -1504,6 +1517,457 @@ persistent actor SneedSNSForum {
         };
     };
 
+    // ---- Reactions, thread tips and thread votes (spec/pipeline.md "Forum reactions, thread tips
+    // and votes"; Reactions.mo) ----
+    //
+    // A thread's own title and opening text is not a post (posts are the replies in it), so it has
+    // its own reactions, votes and tips, separate from those of any post in it. Everything here is
+    // new state and new methods: the post methods and records are unchanged.
+    //
+    // Like posts and votes, reactions and thread votes are not logged in the ICRC-3 log (public in
+    // the canister already, and the bulk of all calls); thread tips are logged like post tips
+    // (sneedforum_thread_tip, _thread_tip_verified, _thread_tip_rejected).
+
+    transient let MAX_TARGETS : Nat = 200; // targets per batch query
+    transient let key_utils = (T.vote_key_hash, T.vote_key_equal);
+
+    // (post or thread id, member index) -> the emojis that member gave; id -> running counts
+    let stable_post_reactions = Map.new<T.VoteKey, [Text]>();
+    let stable_thread_reactions = Map.new<T.VoteKey, [Text]>();
+    let stable_post_reaction_counts = Map.new<Nat, Reactions.Counts>();
+    let stable_thread_reaction_counts = Map.new<Nat, Reactions.Counts>();
+
+    // thread id -> (neuron index -> its vote on the thread itself); thread id -> scores
+    let stable_thread_votes = Map.new<Nat, Map.Map<Nat32, T.ThreadVote>>();
+    let stable_thread_scores = Map.new<Nat, T.ThreadScore>();
+
+    // tips on threads themselves (their checks and blocks share stable_tip_checks and stable_tip_blocks
+    // with post tips, so one transfer backs one tip of either kind)
+    let stable_thread_level_tips = Map.new<Nat, T.ThreadTip>();
+    let stable_tips_on_thread = Map.new<Nat, Vector.Vector<Nat>>(); // thread id -> tip ids
+    let stable_thread_tips_given = Map.new<Nat32, Vector.Vector<Nat>>(); // tipper index -> tip ids
+    let stable_thread_tips_received = Map.new<Nat32, Vector.Vector<Nat>>(); // author index -> tip ids
+
+    func liveThread(id : Nat) : ?T.Thread = switch (Map.get(state.threads, Map.nhash, id)) {
+        case (?t) if (t.deleted) null else ?t;
+        case null null;
+    };
+
+    /// The post, when it and its thread are not deleted.
+    func livePost(id : Nat) : ?T.Post = switch (Map.get(state.posts, Map.nhash, id)) {
+        case (?p) if (p.deleted or liveThread(p.thread_id) == null) null else ?p;
+        case null null;
+    };
+
+    func targetLive(target : T.ReactionTarget) : Bool = switch target {
+        case (#post id) livePost(id) != null;
+        case (#thread id) liveThread(id) != null;
+    };
+
+    func reactionMaps(target : T.ReactionTarget) : (Map.Map<T.VoteKey, [Text]>, Map.Map<Nat, Reactions.Counts>, Nat) = switch target {
+        case (#post id) (stable_post_reactions, stable_post_reaction_counts, id);
+        case (#thread id) (stable_thread_reactions, stable_thread_reaction_counts, id);
+    };
+
+    func countsView(c : Reactions.Counts) : [T.ReactionCount] = Array.map<(Text, Nat), T.ReactionCount>(c, func((emoji, count)) = { emoji; count });
+
+    func firstTargets(targets : [T.ReactionTarget]) : [T.ReactionTarget] =
+        if (targets.size() <= MAX_TARGETS) targets else Array.subArray<T.ReactionTarget>(targets, 0, MAX_TARGETS);
+
+    /// Replaces the caller's set on a target and moves the target's counts by the difference.
+    func applyReactions(caller : Principal, target : T.ReactionTarget, wanted : [Text]) : T.Result<[Text], T.ForumError> {
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Log in to react"));
+        if (not targetLive(target)) return #err(#NotFound(switch target { case (#post _) "Post not found"; case (#thread _) "Thread not found" }));
+        let new = switch (Reactions.normalize(wanted)) { case (#ok n) n; case (#err e) return #err(#InvalidInput(e)) };
+        let (sets, counts, id) = reactionMaps(target);
+        let who = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let key : T.VoteKey = (id, who);
+        let old = switch (Map.get(sets, key_utils, key)) { case (?o) o; case null [] };
+        let current = switch (Map.get(counts, Map.nhash, id)) { case (?c) c; case null [] };
+        let next = switch (Reactions.apply(current, old, new)) { case (#ok c) c; case (#err e) return #err(#InvalidInput(e)) };
+        if (new.size() == 0) Map.delete(sets, key_utils, key) else Map.set(sets, key_utils, key, new);
+        if (next.size() == 0) Map.delete(counts, Map.nhash, id) else Map.set(counts, Map.nhash, id, next);
+        #ok(new)
+    };
+
+    /// Sets the caller's reactions on a post or thread to `emojis` (at most 10, each exactly one
+    /// emoji; repeats dropped; [] removes all). Answers the set as stored.
+    public shared ({ caller }) func set_reactions(target : T.ReactionTarget, emojis : [Text]) : async T.Result<[Text], T.ForumError> {
+        if (not rateOk(caller, "react")) return #err(rateError("react"));
+        applyReactions(caller, target, emojis)
+    };
+
+    /// Adds (`on` = true) or takes back one emoji of the caller's reactions on a post or thread.
+    /// Answers the caller's set as stored. Adding one already given, or taking back one not given,
+    /// changes nothing.
+    public shared ({ caller }) func react(target : T.ReactionTarget, emoji : Text, on : Bool) : async T.Result<[Text], T.ForumError> {
+        if (not rateOk(caller, "react")) return #err(rateError("react"));
+        let (sets, _, id) = reactionMaps(target);
+        let old = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, caller)) {
+            case (?who) switch (Map.get(sets, key_utils, (id, who))) { case (?o) o; case null [] };
+            case null [];
+        };
+        let has = Array.find<Text>(old, func(e) = e == emoji) != null;
+        let wanted = if (on) { if (has) old else Array.append(old, [emoji]) } else Array.filter<Text>(old, func(e) = e != emoji);
+        if (not on and not Reactions.isEmoji(emoji)) return #err(#InvalidInput("Not a single emoji"));
+        applyReactions(caller, target, wanted)
+    };
+
+    /// The reactions on each target (at most 200 targets a call): every emoji with how many members
+    /// gave it, in the order first given. Deleted or unknown targets have none.
+    public query func get_reactions(targets : [T.ReactionTarget]) : async [T.TargetReactions] {
+        Array.map<T.ReactionTarget, T.TargetReactions>(firstTargets(targets), func(target) {
+            let (_, counts, id) = reactionMaps(target);
+            { target; counts = if (targetLive(target)) switch (Map.get(counts, Map.nhash, id)) { case (?c) countsView(c); case null [] } else [] }
+        })
+    };
+
+    /// The emojis `user` gave each target (at most 200 targets a call), [] where none.
+    public query func get_reactions_of_user(user : Principal, targets : [T.ReactionTarget]) : async [T.UserReactions] {
+        let who = Dedup.getIndexForPrincipal(state.principal_dedup_state, user);
+        Array.map<T.ReactionTarget, T.UserReactions>(firstTargets(targets), func(target) {
+            let (sets, _, id) = reactionMaps(target);
+            { target; emojis = switch (who) { case (?w) switch (Map.get(sets, key_utils, (id, w))) { case (?e) e; case null [] }; case null [] } }
+        })
+    };
+
+    // -- votes on threads themselves (mirrors vote_on_post and retract_vote) --
+
+    func threadScore(id : Nat) : T.ThreadScore = switch (Map.get(stable_thread_scores, Map.nhash, id)) {
+        case (?s) s;
+        case null ({ upvote_score = 0; downvote_score = 0 });
+    };
+
+    func sub(a : Nat, b : Nat) : Nat = if (a >= b) a - b else 0;
+
+    /// Takes a vote out of a score.
+    func withoutVote(s : T.ThreadScore, v : T.ThreadVote) : T.ThreadScore = switch (v.vote_type) {
+        case (#upvote) ({ s with upvote_score = sub(s.upvote_score, v.voting_power) });
+        case (#downvote) ({ s with downvote_score = sub(s.downvote_score, v.voting_power) });
+    };
+
+    func castThreadVote(caller : Principal, thread_id : Nat, vote_type : T.VoteType, neuron : T.NeuronId, voting_power : Nat) {
+        let who = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let n = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron.id);
+        let votes = switch (Map.get(stable_thread_votes, Map.nhash, thread_id)) {
+            case (?v) v;
+            case null { let v = Map.new<Nat32, T.ThreadVote>(); Map.set(stable_thread_votes, Map.nhash, thread_id, v); v };
+        };
+        let now = Time.now();
+        let old = Map.get(votes, Map.n32hash, n);
+        var s = threadScore(thread_id);
+        switch (old) { case (?o) s := withoutVote(s, o); case null {} };
+        s := switch (vote_type) {
+            case (#upvote) ({ s with upvote_score = s.upvote_score + voting_power });
+            case (#downvote) ({ s with downvote_score = s.downvote_score + voting_power });
+        };
+        Map.set(votes, Map.n32hash, n, {
+            thread_id; neuron_id = n; voter_principal = who; vote_type; voting_power;
+            created_at = switch (old) { case (?o) o.created_at; case null now }; updated_at = now;
+        });
+        Map.set(stable_thread_scores, Map.nhash, thread_id, s);
+    };
+
+    /// Takes back a neuron's vote on a thread; false when it had none.
+    func retractThreadVote(thread_id : Nat, neuron : T.NeuronId) : Bool {
+        let ?n = Dedup.getIndex(state.neuron_dedup_state, neuron.id) else return false;
+        let ?votes = Map.get(stable_thread_votes, Map.nhash, thread_id) else return false;
+        let ?old = Map.remove(votes, Map.n32hash, n) else return false;
+        Map.set(stable_thread_scores, Map.nhash, thread_id, withoutVote(threadScore(thread_id), old));
+        true
+    };
+
+    func wanted(neuron_ids : ?[T.NeuronId], id : T.NeuronId) : Bool = switch (neuron_ids) {
+        case null true;
+        case (?ids) Array.find<T.NeuronId>(ids, func(x) = Blob.equal(x.id, id.id)) != null;
+    };
+
+    /// Votes on (or, `vote_type` null, retracts from) a thread with the caller's reachable neurons
+    /// in the thread's SNS, all of them or those in `neuron_ids`, as the post methods do.
+    func threadVote(caller : Principal, thread_id : Nat, vote_type : ?T.VoteType, neuron_ids : ?[T.NeuronId]) : async T.Result<(), T.ForumError> {
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Authentication required to vote"));
+        if (liveThread(thread_id) == null) return #err(#NotFound("Thread not found"));
+        let (gov, cache) = await Lib.get_governance_canister_id_from_thread(state, thread_id, sns_cache, Time.now());
+        sns_cache := cache;
+        let ?governance = gov else return #err(#InternalError("No SNS governance canister found"));
+        try {
+            let neurons = await SnsUtil.get_reachable_neurons(governance, caller);
+            if (neurons.size() == 0) return #err(#Unauthorized("No accessible neurons found"));
+            switch (vote_type) {
+                case (?vt) {
+                    let params = await SnsUtil.get_system_parameters(governance);
+                    // the thread may have been deleted while we waited
+                    if (liveThread(thread_id) == null) return #err(#NotFound("Thread not found"));
+                    for (neuron in neurons.vals()) switch (neuron.id) {
+                        case (?nid) if (wanted(neuron_ids, nid)) {
+                            let vp = SnsUtil.calculate_neuron_voting_power(neuron, params);
+                            if (vp > 0) castThreadVote(caller, thread_id, vt, nid, vp);
+                        };
+                        case null {};
+                    };
+                    #ok
+                };
+                case null {
+                    var any = false;
+                    for (neuron in neurons.vals()) switch (neuron.id) {
+                        case (?nid) if (wanted(neuron_ids, nid) and retractThreadVote(thread_id, nid)) any := true;
+                        case null {};
+                    };
+                    if (any) #ok else #err(#NotFound("No votes found to retract"))
+                };
+            };
+        } catch (_) {
+            #err(#InternalError(if (vote_type == null) "Failed to retract vote" else "Failed to vote"))
+        };
+    };
+
+    /// Votes on a thread itself (its opening text) with every reachable neuron that has voting power.
+    public shared ({ caller }) func vote_on_thread(thread_id : Nat, vote_type : T.VoteType) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
+        await threadVote(caller, thread_id, ?vote_type, null)
+    };
+
+    /// Votes on a thread itself with the given neurons (those the caller can reach).
+    public shared ({ caller }) func vote_on_thread_with_neurons(thread_id : Nat, vote_type : T.VoteType, neuron_ids : [T.NeuronId]) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
+        await threadVote(caller, thread_id, ?vote_type, ?neuron_ids)
+    };
+
+    public shared ({ caller }) func retract_thread_vote(thread_id : Nat) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
+        await threadVote(caller, thread_id, null, null)
+    };
+
+    public shared ({ caller }) func retract_thread_vote_with_neurons(thread_id : Nat, neuron_ids : [T.NeuronId]) : async T.Result<(), T.ForumError> {
+        if (not rateOk(caller, "vote")) return #err(rateError("vote"));
+        await threadVote(caller, thread_id, null, ?neuron_ids)
+    };
+
+    /// The up and down scores of threads themselves (at most 200 a call; deleted or unknown threads
+    /// are left out).
+    public query func get_thread_scores(thread_ids : [Nat]) : async [T.ThreadScoreResponse] {
+        let out = Vector.new<T.ThreadScoreResponse>();
+        for (id in thread_ids.vals()) if (Vector.size(out) < MAX_TARGETS and liveThread(id) != null) {
+            let s = threadScore(id);
+            Vector.add(out, { thread_id = id; upvote_score = s.upvote_score; downvote_score = s.downvote_score });
+        };
+        Vector.toArray(out)
+    };
+
+    func neuronOf(n : Nat32) : T.NeuronId = { id = switch (Dedup.getBlob(state.neuron_dedup_state, n)) { case (?b) b; case null Blob.fromArray([]) } };
+
+    /// Every vote on a thread itself.
+    public query func get_votes_on_thread(thread_id : Nat) : async [T.ThreadVoteRecordResponse] {
+        let ?votes = Map.get(stable_thread_votes, Map.nhash, thread_id) else return [];
+        Iter.toArray(Iter.map<T.ThreadVote, T.ThreadVoteRecordResponse>(Map.vals(votes), func(v) = {
+            thread_id; neuron_id = neuronOf(v.neuron_id);
+            voter_principal = switch (authorOf(v.voter_principal)) { case (?p) p; case null Principal.fromText("2vxsx-fae") };
+            vote_type = v.vote_type; voting_power = v.voting_power; created_at = v.created_at; updated_at = v.updated_at;
+        }))
+    };
+
+    /// The votes of these neurons on a thread itself (at most 1,000 neurons).
+    public query func get_votes_on_thread_for_neurons(thread_id : Nat, neuron_ids : [T.NeuronId]) : async T.ThreadNeuronVotesResponse {
+        let out = Vector.new<T.NeuronVote>();
+        switch (Map.get(stable_thread_votes, Map.nhash, thread_id)) {
+            case (?votes) for (nid in neuron_ids.vals()) if (Vector.size(out) < MAX_NEURONS) switch (Dedup.getIndex(state.neuron_dedup_state, nid.id)) {
+                case (?n) switch (Map.get(votes, Map.n32hash, n)) {
+                    case (?v) Vector.add(out, { neuron_id = nid; vote_type = v.vote_type; voting_power = v.voting_power; created_at = v.created_at; updated_at = v.updated_at });
+                    case null {};
+                };
+                case null {};
+            };
+            case null {};
+        };
+        { thread_id; neuron_votes = Vector.toArray(out) }
+    };
+
+    // -- tips on threads themselves (mirrors create_tip and verify_tip) --
+
+    func addTo32(map : Map.Map<Nat32, Vector.Vector<Nat>>, k : Nat32, v : Nat) = switch (Map.get(map, Map.n32hash, k)) {
+        case (?vec) Vector.add(vec, v);
+        case null { let vec = Vector.new<Nat>(); Vector.add(vec, v); Map.set(map, Map.n32hash, k, vec) };
+    };
+
+    func recordThreadTip(caller : Principal, to : Principal, thread_id : Nat, ledger : Principal, amount : Nat, block : ?Nat,
+                         status : T.TipCheckStatus, note : ?Text, key : ?Text) : T.Result<Nat, T.ForumError> {
+        let id = Lib.get_next_id(state);
+        let from_i = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let to_i = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, to);
+        Map.set(stable_thread_level_tips, Map.nhash, id, { id; from_principal = from_i; to_principal = to_i; thread_id;
+            token_ledger_principal = ledger; amount; transaction_block_index = block; created_at = Time.now() });
+        switch (Map.get(stable_tips_on_thread, Map.nhash, thread_id)) {
+            case (?vec) Vector.add(vec, id);
+            case null { let vec = Vector.new<Nat>(); Vector.add(vec, id); Map.set(stable_tips_on_thread, Map.nhash, thread_id, vec) };
+        };
+        addTo32(stable_thread_tips_given, from_i, id);
+        addTo32(stable_thread_tips_received, to_i, id);
+        Map.set(stable_tip_checks, Map.nhash, id, { status; note; checked_at = Time.now() });
+        switch (key) { case (?k) Map.set(stable_tip_blocks, Map.thash, k, id); case null {} };
+        #ok(id)
+    };
+
+    func logThreadTip(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
+        let ?tip = Map.get(stable_thread_level_tips, Map.nhash, tip_id) else return;
+        let who = func(i : Nat32) : T3.Value = switch (authorOf(i)) { case (?p) pv(p); case null #Text("unknown") };
+        block(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
+            ("thread_id", #Nat(tip.thread_id)), ("ledger", pv(tip.token_ledger_principal)), ("amount", #Nat(tip.amount))],
+            optNat("ledger_block", tip.transaction_block_index), extra]));
+    };
+
+    /// Records a tip on a thread itself, which the caller has already sent to the thread's author:
+    /// everything as create_tip does for a post (the same ledger check; a block backs one tip, post
+    /// or thread; unreadable blocks are recorded unverified and verify_thread_tip retries them).
+    public shared ({ caller }) func create_thread_tip(to_principal : Principal, thread_id : Nat, token_ledger_principal : Principal,
+                                                     amount : Nat, transaction_block_index : ?Nat) : async T.Result<Nat, T.ForumError> {
+        if (not rateOk(caller, "tip")) return #err(rateError("tip"));
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Authentication required to create tips"));
+        let ?thread = liveThread(thread_id) else return #err(#NotFound("Thread not found"));
+        if (authorOf(thread.created_by) != ?to_principal) {
+            return #err(#InvalidInput("A tip goes to the thread's author: to_principal must be the author of thread " # Nat.toText(thread_id)));
+        };
+        let ?blk = transaction_block_index else {
+            return recordThreadTip(caller, to_principal, thread_id, token_ledger_principal, amount, null, #unchecked, ?"No block index was given", null);
+        };
+        let key = TipVerify.blockKey(token_ledger_principal, blk);
+        switch (Map.get(stable_tip_blocks, Map.thash, key)) {
+            case (?other) return #err(#AlreadyExists("Block " # Nat.toText(blk) # " of this ledger is already the transfer of tip " # Nat.toText(other)));
+            case null {};
+        };
+        if (Map.has(pending_tip_blocks, Map.thash, key)) {
+            return #err(#AlreadyExists("Block " # Nat.toText(blk) # " of this ledger is being registered by another call"));
+        };
+        Map.set(pending_tip_blocks, Map.thash, key, ());
+        let outcome = await* TipVerify.verify(token_ledger_principal, blk, caller, to_principal, amount);
+        Map.delete(pending_tip_blocks, Map.thash, key);
+        switch (outcome) {
+            case (#rejected reason) #err(#InvalidInput("Tip not recorded: " # reason));
+            case (#unchecked reason) recordThreadTip(caller, to_principal, thread_id, token_ledger_principal, amount, ?blk, #unchecked, ?reason, ?key);
+            case (#verified) {
+                let r = recordThreadTip(caller, to_principal, thread_id, token_ledger_principal, amount, ?blk, #verified, null, ?key);
+                switch (r) { case (#ok id) logThreadTip("thread_tip", caller, id, []); case _ {} };
+                if (to_principal != caller) await* sendNotifications([{
+                    user = to_principal; topic = "tip"; title = "Your thread got a tip"; body = "Someone tipped your thread " # threadName(thread_id) # ".";
+                    link = ?threadLink(thread_id); dedupe = null; sponsored = false }]);
+                r
+            };
+        };
+    };
+
+    /// Checks a thread tip on the ledger again (as verify_tip does for post tips).
+    public shared ({ caller }) func verify_thread_tip(tip_id : Nat) : async T.Result<Bool, T.ForumError> {
+        if (not rateOk(caller, "tip")) return #err(rateError("tip"));
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Authentication required"));
+        let ?tip = Map.get(stable_thread_level_tips, Map.nhash, tip_id) else return #err(#NotFound("Tip not found"));
+        switch (Map.get(stable_tip_checks, Map.nhash, tip_id)) {
+            case (?{ status = #verified }) return #ok(true);
+            case (?{ status = #rejected }) return #ok(false);
+            case _ {};
+        };
+        let set = func(status : T.TipCheckStatus, note : ?Text) {
+            Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() });
+            switch (status, note) {
+                case (#verified, _) logThreadTip("thread_tip_verified", caller, tip_id, []);
+                case (#rejected, ?reason) logThreadTip("thread_tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
+                case _ {};
+            };
+        };
+        let ?blk = tip.transaction_block_index else { set(#unchecked, ?"No block index was given"); return #ok(false) };
+        let (?from, ?to) = (authorOf(tip.from_principal), authorOf(tip.to_principal)) else return #err(#InternalError("Unknown principal index"));
+        let key = TipVerify.blockKey(tip.token_ledger_principal, blk);
+        let claimedElsewhere = func() : Bool = switch (Map.get(stable_tip_blocks, Map.thash, key)) { case (?other) other != tip_id; case null false };
+        if (claimedElsewhere()) { set(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
+        if (Map.has(pending_tip_blocks, Map.thash, key)) return #err(#AlreadyExists("This tip's block is being checked by another call"));
+        Map.set(pending_tip_blocks, Map.thash, key, ());
+        let outcome = await* TipVerify.verify(tip.token_ledger_principal, blk, from, to, tip.amount);
+        Map.delete(pending_tip_blocks, Map.thash, key);
+        if (claimedElsewhere()) { set(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
+        switch (outcome) {
+            case (#verified) { set(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
+            case (#rejected reason) { set(#rejected, ?reason); #ok(false) };
+            case (#unchecked reason) { set(#unchecked, ?reason); #ok(false) };
+        };
+    };
+
+    func threadTipView(id : Nat) : ?T.ThreadTipResponse {
+        let ?t = Map.get(stable_thread_level_tips, Map.nhash, id) else return null;
+        let p = func(i : Nat32) : Principal = switch (authorOf(i)) { case (?x) x; case null Principal.fromText("2vxsx-fae") };
+        let check = Map.get(stable_tip_checks, Map.nhash, id);
+        ?{ id; from_principal = p(t.from_principal); to_principal = p(t.to_principal); thread_id = t.thread_id;
+           token_ledger_principal = t.token_ledger_principal; amount = t.amount; transaction_block_index = t.transaction_block_index;
+           created_at = t.created_at;
+           verified = switch (check) { case (?c) ?(c.status == #verified); case null null };
+           verification_note = switch (check) { case (?c) c.note; case null null } }
+    };
+
+    func threadTipVerified(id : Nat) : Bool = switch (Map.get(stable_tip_checks, Map.nhash, id)) { case (?c) c.status == #verified; case null false };
+
+    public query func get_thread_tip(id : Nat) : async ?T.ThreadTipResponse { threadTipView(id) };
+
+    /// A page of a list of thread tip ids, newest first (the user-page rules: `before` a position,
+    /// at most 100 a page, `next` the `before` of the next page, null at the end).
+    func threadTipPage(list : ?Vector.Vector<Nat>, before : ?Nat, limit : Nat) : T.ThreadTipsPage {
+        let ?l = list else return { items = []; next = null };
+        let max = if (limit == 0 or limit > 100) 100 else limit;
+        var i : Nat = switch (before) { case (?b) Nat.min(b, Vector.size(l)); case null Vector.size(l) };
+        let out = Vector.new<T.ThreadTipResponse>();
+        while (i > 0 and Vector.size(out) < max) {
+            i -= 1;
+            switch (threadTipView(Vector.get(l, i))) { case (?t) Vector.add(out, t); case null {} };
+        };
+        { items = Vector.toArray(out); next = if (i > 0) ?i else null }
+    };
+
+    /// Tips on a thread itself, newest first, paged.
+    public query func get_tips_on_thread_page(thread_id : Nat, before : ?Nat, limit : Nat) : async T.ThreadTipsPage {
+        threadTipPage(Map.get(stable_tips_on_thread, Map.nhash, thread_id), before, limit)
+    };
+
+    func userThreadTips(map : Map.Map<Nat32, Vector.Vector<Nat>>, user : Principal) : ?Vector.Vector<Nat> = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user)) {
+        case (?i) Map.get(map, Map.n32hash, i);
+        case null null;
+    };
+
+    /// Thread tips a user gave, newest first, paged.
+    public query func get_thread_tips_given_by_user_page(user : Principal, before : ?Nat, limit : Nat) : async T.ThreadTipsPage {
+        threadTipPage(userThreadTips(stable_thread_tips_given, user), before, limit)
+    };
+
+    /// Thread tips a user received, newest first, paged.
+    public query func get_thread_tips_received_by_user_page(user : Principal, before : ?Nat, limit : Nat) : async T.ThreadTipsPage {
+        threadTipPage(userThreadTips(stable_thread_tips_received, user), before, limit)
+    };
+
+    /// Verified tips on threads themselves, per token (at most 200 threads a call; the newest 1,000
+    /// tips of each thread are summed).
+    public query func get_thread_tip_totals(thread_ids : [Nat]) : async [T.ThreadTipTotals] {
+        let out = Vector.new<T.ThreadTipTotals>();
+        for (thread_id in thread_ids.vals()) if (Vector.size(out) < MAX_TARGETS) {
+            let sums = Map.new<Principal, (Nat, Nat)>();
+            switch (Map.get(stable_tips_on_thread, Map.nhash, thread_id)) {
+                case (?l) {
+                    var i = Vector.size(l);
+                    var seen = 0;
+                    while (i > 0 and seen < 1_000) {
+                        i -= 1; seen += 1;
+                        let id = Vector.get(l, i);
+                        switch (if (threadTipVerified(id)) Map.get(stable_thread_level_tips, Map.nhash, id) else null) {
+                            case (?t) {
+                                let (a, c) = switch (Map.get(sums, Map.phash, t.token_ledger_principal)) { case (?x) x; case null (0, 0) };
+                                Map.set(sums, Map.phash, t.token_ledger_principal, (a + t.amount, c + 1));
+                            };
+                            case null {};
+                        };
+                    };
+                };
+                case null {};
+            };
+            Vector.add(out, { thread_id; tokens = Iter.toArray(Iter.map<(Principal, (Nat, Nat)), T.TipTokenSummary>(Map.entries(sums),
+                func((token_ledger_principal, (total_amount, tip_count))) = { token_ledger_principal; total_amount; tip_count })) });
+        };
+        Vector.toArray(out)
+    };
+
     /// A short Markdown guide to this canister for AI agents and developers (ApiDoc.mo), following
     /// the ICP service-discoverability guide; the full reference is linked from it.
     public query func get_api_doc() : async Text { ApiDoc.text };
@@ -1679,6 +2143,24 @@ persistent actor SneedSNSForum {
         #get_rate_limit_exempt : Any;
         #admin_set_rate_limit_exempt : Any;
         #verify_tip : Any;
+        #set_reactions : () -> (T.ReactionTarget, [Text]);
+        #react : () -> (T.ReactionTarget, Text, Bool);
+        #get_reactions : Any;
+        #get_reactions_of_user : Any;
+        #vote_on_thread : Any;
+        #vote_on_thread_with_neurons : () -> (Nat, T.VoteType, [T.NeuronId]);
+        #retract_thread_vote : Any;
+        #retract_thread_vote_with_neurons : () -> (Nat, [T.NeuronId]);
+        #get_thread_scores : Any;
+        #get_votes_on_thread : Any;
+        #get_votes_on_thread_for_neurons : Any;
+        #create_thread_tip : Any;
+        #verify_thread_tip : Any;
+        #get_thread_tip : Any;
+        #get_tips_on_thread_page : Any;
+        #get_thread_tips_given_by_user_page : Any;
+        #get_thread_tips_received_by_user_page : Any;
+        #get_thread_tip_totals : Any;
     } }) : Bool {
         switch (msg) {
             case (
@@ -1765,6 +2247,16 @@ persistent actor SneedSNSForum {
                 or #get_tips_received_by_user_page _
                 or #get_rate_limits _
                 or #get_rate_limit_exempt _
+                or #get_reactions _
+                or #get_reactions_of_user _
+                or #get_thread_scores _
+                or #get_votes_on_thread _
+                or #get_votes_on_thread_for_neurons _
+                or #get_thread_tip _
+                or #get_tips_on_thread_page _
+                or #get_thread_tips_given_by_user_page _
+                or #get_thread_tips_received_by_user_page _
+                or #get_thread_tip_totals _
             ) false;
             // the log's admin methods: admins only, small arguments
             case (#admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_set_icrc3_settings _) Lib.is_admin(state, caller) and arg.size() <= IngressGuard.SMALL_ARG;
@@ -1788,6 +2280,12 @@ persistent actor SneedSNSForum {
             case (#retract_vote_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().1.size() <= MAX_NEURONS;
             case (#vote_on_poll_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
             case (#vote_on_post _ or #retract_vote _) rateAllows(caller, "vote") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#set_reactions f) { let (_, es) = f(); rateAllows(caller, "react") and arg.size() <= IngressGuard.SMALL_ARG and IngressGuard.all<Text>(es, Reactions.MAX_PER_USER, func(e) = Text.encodeUtf8(e).size() <= Reactions.MAX_BYTES) };
+            case (#react f) { let (_, e, _) = f(); rateAllows(caller, "react") and arg.size() <= IngressGuard.SMALL_ARG and Text.encodeUtf8(e).size() <= Reactions.MAX_BYTES };
+            case (#vote_on_thread_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case (#retract_thread_vote_with_neurons f) rateAllows(caller, "vote") and arg.size() <= NEURONS_ARG and f().1.size() <= MAX_NEURONS;
+            case (#vote_on_thread _ or #retract_thread_vote _) rateAllows(caller, "vote") and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#create_thread_tip _ or #verify_thread_tip _) rateAllows(caller, "tip") and arg.size() <= IngressGuard.SMALL_ARG;
             case (#create_tip _ or #verify_tip _) rateAllows(caller, "tip") and arg.size() <= IngressGuard.SMALL_ARG;
             case (#create_proposal_thread _ or #create_proposal_thread_with_auto_setup _ or #create_special_topic _ or #create_sns_forum_setup _) rateAllows(caller, "thread") and arg.size() <= IngressGuard.SMALL_ARG;
             case _ arg.size() <= IngressGuard.SMALL_ARG;

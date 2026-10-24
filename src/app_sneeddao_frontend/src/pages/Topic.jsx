@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { orderTopicThreads } from '../utils/forumModel';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
@@ -421,63 +422,17 @@ function Topic() {
 
     const fetchThreads = async (actor, topicIdNum) => {
         try {
-            // Determine sort parameters based on sortBy state
-            let sortField = 'created_at';
-            let sortOrder = 'desc';
-            
-            switch (sortBy) {
-                case 'newest':
-                    sortField = 'created_at';
-                    sortOrder = 'desc';
-                    break;
-                case 'oldest':
-                    sortField = 'created_at';
-                    sortOrder = 'asc';
-                    break;
-                case 'activity-newest':
-                    sortField = 'last_activity';
-                    sortOrder = 'desc';
-                    break;
-                case 'activity-oldest':
-                    sortField = 'last_activity';
-                    sortOrder = 'asc';
-                    break;
-            }
-            
-            // Try paginated endpoint first
+            // The topic's threads, most recently active first, with the caller's unread counts
+            // (get_threads_paginated, called here before, never existed); the plain listing (no
+            // activity order, no unread counts) only when that fails
+            let byActivity;
             try {
-                const paginatedResponse = await actor.get_threads_paginated({
-                    topic_id: topicIdNum,
-                    page: currentPage,
-                    page_size: threadsPerPage,
-                    sort_by: [sortField],
-                    sort_order: [sortOrder]
-                });
-                
-                if (paginatedResponse) {
-                    setThreads(paginatedResponse.threads);
-                    setTotalThreads(Number(paginatedResponse.total_count));
-                    
-                    // Fetch post counts asynchronously
-                    fetchThreadPostCounts(paginatedResponse.threads);
-                    fetchProposalDataForThreads(paginatedResponse.threads);
-                    fetchUserThreadReads();
-                    return;
-                }
-            } catch (paginationError) {
-                console.warn('Paginated endpoint failed, falling back:', paginationError);
+                byActivity = (await actor.get_threads_by_activity_with_unread_counts(topicIdNum, [], 100000, true)).threads;
+            } catch (activityError) {
+                console.warn('Activity listing failed, falling back:', activityError);
+                byActivity = await actor.get_threads_by_topic(topicIdNum);
             }
-            
-            // Fallback to simple endpoint
-            const threadsResponse = await actor.get_threads_by_topic(topicIdNum);
-            const activeThreads = threadsResponse.filter(t => !t.deleted);
-            
-            // Sort threads
-            activeThreads.sort((a, b) => {
-                const aTime = sortField === 'last_activity' ? (a.last_activity?.[0] || a.created_at) : a.created_at;
-                const bTime = sortField === 'last_activity' ? (b.last_activity?.[0] || b.created_at) : b.created_at;
-                return sortOrder === 'desc' ? Number(bTime - aTime) : Number(aTime - bTime);
-            });
+            const activeThreads = orderTopicThreads(byActivity, sortBy);
             
             setTotalThreads(activeThreads.length);
             

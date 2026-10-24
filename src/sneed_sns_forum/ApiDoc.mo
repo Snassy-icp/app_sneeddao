@@ -30,7 +30,7 @@ The discussion canister behind the forum on Sneed Hub, also used by other DAOs (
 
 ## Asynchronous lifecycle and polling
 - Every write is one update returning its result; nothing to poll afterwards.
-- `create_post`, voting and proposal setup may wait on SNS-W / SNS governance; `create_tip` waits on the ledger (one call, one more for an archive).
+- Voting and posting may wait on SNS governance; tips on the ledger.
 - For new activity poll the cheap queries `get_current_counter()`, `get_recent_replies_count(me)`, `get_recent_tips_count(me)`, `get_recent_mentions_count(me)`; move marks with `mark_*_seen_up_to(ns)`.
 - `get_feed` walks ids downwards; it may return fewer items than asked (even none) with `has_more = true`: keep paging with `next_start_id` until `has_more` is false. A page holds at most 500 items and about 1.5 MB (always at least one item), and stops early on long text searches.
 - A user's posts, threads, replies to them and tips page with `get_posts_by_user_page`, `get_threads_by_user_page`, `get_replies_to_user_page`, `get_tips_given_by_user_page`, `get_tips_received_by_user_page` `(user, before, limit)`: newest first, at most 100 items and about 1.5 MB a page; pass the page's `next` as `before` until it is null. The unpaged `get_*_by_user` lists can outgrow a reply for a busy user.
@@ -39,19 +39,23 @@ The discussion canister behind the forum on Sneed Hub, also used by other DAOs (
 - `create_thread`, `create_post`, `create_poll` and `create_tip` are NOT idempotent. After a timeout, look for the item (`get_posts_by_user`, `get_tips_given_by_user`, `get_polls_by_thread`) before retrying. Never repeat the token transfer of a tip: retry only `create_tip` with the same block index (a used block answers `AlreadyExists` naming the tip).
 - `InternalError` from SNS calls (voting) wrote nothing and is safe to retry.
 - Votes, retractions, read marks and seen marks are idempotent.
-- Writing is rate limited per caller (`get_rate_limits()`; defaults: threads 10 in a row then 2 a minute, posts and edits 10 then 4 a minute, polls 5 then 1, tips and `verify_tip` 10 then 3, votes and retractions 30 then 10). Over the limit a call is refused at ingress, or answers `InvalidInput(\"Rate limited: ...\")` (calls from canisters): wait a minute and retry. Admins, the SNS canisters the forum knows and the principals on `get_rate_limit_exempt()` are not limited: an integrator whose canister or bot writes in bursts asks Sneed DAO to be put on that list (`admin_set_rate_limit_exempt`). Admins change the limits with `admin_set_rate_limit`.
+- Writing is rate limited per caller (`get_rate_limits()`; defaults: threads 10 in a row then 2 a minute, posts and edits 10 then 4 a minute, polls 5 then 1, tips 10 then 3, votes 30 then 10, reactions 30 then 20). Over the limit a call is refused at ingress, or answers `InvalidInput(\"Rate limited: ...\")` (calls from canisters): wait a minute and retry. Admins, the SNS canisters the forum knows and the principals on `get_rate_limit_exempt()` are not limited: an integrator whose canister or bot writes in bursts asks Sneed DAO to be put on that list (`admin_set_rate_limit_exempt`). Admins change the limits with `admin_set_rate_limit`.
+
+## Reactions, thread votes and thread tips
+- `react(target, emoji, on)`, `set_reactions(target, emojis)`; `target = variant { post; thread }`; up to 10 single emojis each. Read: `get_reactions`, `get_reactions_of_user` (200 targets).
+- A thread's own text has votes (`vote_on_thread*`, `get_thread_scores`) and tips (`create_thread_tip`, `get_tips_on_thread_page`) apart from its posts'.
 
 ## Common pitfalls
 - Query methods sent as update calls are refused by the ingress guard (`inspect`); call them as queries.
-- Arguments are capped at ingress: texts against the text limits, at most 1,000 neuron ids and 100 poll options per call, 4 KiB for everything else.
-- Unread counts and read marks use the caller: sign those queries or every post looks unread.
-- Build reply trees from `reply_to_post_id`; `get_posts_by_thread` is flat, in creation order.
+- Arguments are capped at ingress: texts by the text limits, 1,000 neuron ids, 100 poll options, 4 KiB otherwise.
+- Unread counts and read marks use the caller: sign those queries.
+- Build reply trees from `reply_to_post_id`; `get_posts_by_thread` is flat.
 - Posting in a forum whose SNS is not in SNS-W fails with `InternalError(\"No SNS governance canister found\")`.
 - Mentions are Markdown links `[@Name](https://app.sneeddao.com/principal?id=<principal>)`; plain `@name` is ignored.
 
 ## Activity log (ICRC-3)
-- Verified tips (with the ledger block), moderation (admin deletes, undeletes and edits of others' content: ids and SHA-256 of the texts, never the texts), admin and configuration changes, forums and topics created or changed, and proposal threads are blocks of a certified, hash-chained ICRC-3 log: `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneedforum_*`): https://app.sneeddao.com/api/sneed_sns_forum#block-types
-- Ordinary threads, posts, votes and polls are not logged (they are public in the canister already). Old blocks move to archive canisters co-controlled by the Sneed SNS root.
+- Verified tips (with the ledger block; post and thread tips), moderation (admin deletes, undeletes and edits of others' content: ids and SHA-256 of texts), admin and config changes, forums and topics created or changed, and proposal threads are blocks of a certified, hash-chained ICRC-3 log: `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneedforum_*`): https://app.sneeddao.com/api/sneed_sns_forum#block-types
+- Ordinary threads, posts, votes, reactions and polls are not logged (public already). Old blocks move to archives co-controlled by the Sneed SNS root.
 
 ## Start with these methods
 `get_forum_by_sns_root`, `get_topics_by_forum`, `get_threads_by_activity`, `get_posts_by_thread`, `get_text_limits`, `create_thread`, `create_post`, `vote_on_post`, `create_tip`, `get_tips_by_post`, `get_feed`.

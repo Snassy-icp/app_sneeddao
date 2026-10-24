@@ -812,4 +812,82 @@ module {
         thread_count: Nat;
         total_unread_posts: Nat;
     };
+
+    // ---- Reactions, thread tips and thread votes (spec/pipeline.md "Forum reactions, thread tips
+    // and votes"). All additive: new records and methods beside the post ones, which stay as they were.
+
+    /// What a reaction, vote or tip is on: a post, or a thread itself (its title and opening text,
+    /// which is not a post: posts are the replies in a thread).
+    public type ReactionTarget = {
+        #post: Nat;
+        #thread: Nat;
+    };
+
+    public type ReactionCount = { emoji: Text; count: Nat };
+
+    /// A target's reactions: each emoji with the number of members who gave it, in the order they
+    /// were first given (deleted or unknown targets: none).
+    public type TargetReactions = { target: ReactionTarget; counts: [ReactionCount] };
+
+    /// The emojis one member gave a target.
+    public type UserReactions = { target: ReactionTarget; emojis: [Text] };
+
+    /// An up or down vote of a neuron on a thread itself (mirrors Vote, which is on a post).
+    public type ThreadVote = {
+        thread_id: Nat;
+        neuron_id: Nat32;
+        voter_principal: Nat32;
+        vote_type: VoteType;
+        voting_power: Nat;
+        created_at: Int;
+        updated_at: Int;
+    };
+
+    public type ThreadScore = { upvote_score: Nat; downvote_score: Nat };
+
+    public type ThreadScoreResponse = { thread_id: Nat; upvote_score: Nat; downvote_score: Nat };
+
+    public type ThreadVoteRecordResponse = {
+        thread_id: Nat;
+        neuron_id: NeuronId;
+        voter_principal: Principal;
+        vote_type: VoteType;
+        voting_power: Nat;
+        created_at: Int;
+        updated_at: Int;
+    };
+
+    /// The votes of some neurons on a thread itself.
+    public type ThreadNeuronVotesResponse = { thread_id: Nat; neuron_votes: [NeuronVote] };
+
+    /// A tip on a thread itself, to the thread's author (mirrors Tip, which is on a post). Ids come
+    /// from the forum's one counter, so a tip id is never both a post tip and a thread tip.
+    public type ThreadTip = {
+        id: Nat;
+        from_principal: Nat32;
+        to_principal: Nat32;
+        thread_id: Nat;
+        token_ledger_principal: Principal;
+        amount: Nat;
+        transaction_block_index: ?Nat;
+        created_at: Int;
+    };
+
+    public type ThreadTipResponse = {
+        id: Nat;
+        from_principal: Principal;
+        to_principal: Principal;
+        thread_id: Nat;
+        token_ledger_principal: Principal;
+        amount: Nat;
+        transaction_block_index: ?Nat;
+        created_at: Int;
+        verified: ?Bool; // as in TipResponse
+        verification_note: ?Text;
+    };
+
+    public type ThreadTipsPage = { items: [ThreadTipResponse]; next: ?Nat };
+
+    /// Verified tips on a thread itself, per token.
+    public type ThreadTipTotals = { thread_id: Nat; tokens: [TipTokenSummary] };
 }

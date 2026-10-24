@@ -305,6 +305,7 @@ describe('rate limits', () => {
     expect(await o(alice).get_rate_limits()).toEqual([
       ['thread', { capacity: 10n, per_minute: 2n }], ['post', { capacity: 10n, per_minute: 4n }], ['edit', { capacity: 10n, per_minute: 4n }],
       ['poll', { capacity: 5n, per_minute: 1n }], ['tip', { capacity: 10n, per_minute: 3n }], ['vote', { capacity: 30n, per_minute: 10n }],
+      ['react', { capacity: 30n, per_minute: 20n }],
     ]);
   });
 

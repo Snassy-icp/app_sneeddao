@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { tipDecimals } from '../utils/forumModel';
 import { createPortal } from 'react-dom';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -422,7 +423,7 @@ const TipModal = ({
             const [metadata, fee, decimals] = await Promise.all([
                 ledgerActor.icrc1_metadata().catch(() => []),
                 ledgerActor.icrc1_fee().catch(() => BigInt(0)),
-                ledgerActor.icrc1_decimals().catch(() => 8)
+                ledgerActor.icrc1_decimals().catch(() => null) // unknown: tipping is refused, never guessed
             ]);
 
             console.log('Token metadata fetched:', {
@@ -451,7 +452,8 @@ const TipModal = ({
                 ...prev,
                 [tokenPrincipal]: {
                     symbol,
-                    decimals: Number(decimals),
+                    decimals: decimals === null ? 8 : Number(decimals), // 8 for display only when unknown
+                    decimalsUnknown: decimals === null,
                     fee: fee,
                     logo: logo
                 }
@@ -468,6 +470,7 @@ const TipModal = ({
                 [tokenPrincipal]: {
                     symbol: 'Unknown',
                     decimals: 8,
+                    decimalsUnknown: true,
                     fee: BigInt(0)
                 }
             }));
@@ -624,7 +627,13 @@ const TipModal = ({
             return;
         }
 
-        const { decimals, fee: tokenFee, symbol } = metadata;
+        const checked = tipDecimals(metadata);
+        if (checked.error) {
+            setError(checked.error);
+            return;
+        }
+        const { fee: tokenFee, symbol } = metadata;
+        const { decimals } = checked;
         
         console.log('Tip calculation:', {
             amount,
@@ -1453,7 +1462,7 @@ const TipModal = ({
                                 marginBottom: '8px',
                                 fontWeight: '600'
                             }}>
-                                Post #{post.id.toString()}
+                                {post._thread ? 'Thread' : 'Post'} #{post.id.toString()}
                             </div>
                             {post.title && (
                                 <div style={{

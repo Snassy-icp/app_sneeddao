@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { winningOptionIds } from '../utils/forumModel';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -323,16 +324,7 @@ const Poll = ({
     };
 
     // Get the winning option(s) - could be multiple in case of ties
-    const getWinningOptionIds = () => {
-        if (!poll || !poll.options || !Array.isArray(poll.options)) return new Set();
-        
-        const maxVotingPower = Math.max(...poll.options.map(opt => Number(opt.total_voting_power || 0)));
-        const winningOptions = poll.options
-            .filter(opt => Number(opt.total_voting_power || 0) === maxVotingPower)
-            .map(opt => opt.id);
-        
-        return new Set(winningOptions);
-    };
+    const getWinningOptionIds = () => winningOptionIds(poll?.options); // none when nobody voted
 
     // Show create form
 

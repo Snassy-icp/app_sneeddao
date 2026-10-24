@@ -358,7 +358,9 @@ const Post = () => {
 
     // Memoize forumActor to prevent unnecessary re-renders
     const forumActor = useMemo(() => {
-        return identity ? createForumActor(identity) : null;
+        // anonymous when signed out (as Thread.jsx): posts are public, and without an actor the page
+        // never left its loading state
+        return createForumActor(identity);
     }, [identity, createForumActor]);
 
     // Format voting power for display (same as ThreadViewer)

@@ -2,6 +2,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor, canisterId } from 'declarations/app_sneeddao_backend';
 import * as NS from './NamingService';
+import { createTipArgs } from './forumModel';
 
 // Create an actor for the backend canister using the established pattern
 export const createBackendActor = (identity) => {
@@ -560,13 +561,14 @@ export const tipErrorMessage = (err) => {
 
 export const createTip = async (forumActor, tipInput) => {
     try {
-        const result = await forumActor.create_tip(
-            tipInput.to_principal,
-            tipInput.post_id,
-            tipInput.token_ledger_principal,
-            tipInput.amount,
-            tipInput.transaction_block_index ? [tipInput.transaction_block_index] : []
-        );
+        // exact amounts (BigInt) and block index 0 kept (utils/forumModel.js createTipArgs)
+        const result = await forumActor.create_tip(...createTipArgs({
+            to: tipInput.to_principal,
+            postId: tipInput.post_id,
+            ledger: tipInput.token_ledger_principal,
+            amount: tipInput.amount,
+            blockIndex: tipInput.transaction_block_index,
+        }));
         return result;
     } catch (error) {
         console.error('Error creating tip:', error);

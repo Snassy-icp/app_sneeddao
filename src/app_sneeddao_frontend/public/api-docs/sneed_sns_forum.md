@@ -66,7 +66,7 @@ Timestamps (`created_at`, `updated_at`, `end_timestamp`, the "seen up to" marks)
 
 ### 1.6 Soft deletion
 
-Nothing is ever erased. Deleting a forum, topic, thread or post sets its `deleted` flag; admins can undelete. Public queries hide deleted items (exceptions are listed per method); the `*_admin` queries show them to admins and answer empty to everyone else.
+Nothing is ever erased. Deleting a forum, topic, thread or post sets its `deleted` flag; admins can undelete. Public queries hide deleted items (exceptions are listed per method); the `*_admin` queries show them to admins and answer empty to everyone else. Deleted content is closed: no new threads in a deleted topic or forum, no replies to a deleted post, no votes, tips or reactions on a deleted post (or a post of a deleted thread) or thread, and only admins edit deleted posts and threads (`NotFound`). `get_feed` leaves out threads of deleted topics and posts of deleted threads. A poll's `vp_power` is 0 to 10. `set_last_read_post` answers `success = false` for the anonymous principal and for unknown threads.
 
 ### 1.7 Public, permissionless, not anonymous
 
@@ -374,6 +374,25 @@ Without a mark, everything counts as new. The `mark_*` methods set the caller's 
 
 "Verified" means the token's own ledger, the one the tipper named, records the transfer. It says nothing about what the token is worth: anyone can make a ledger.
 
+### 3.12 Reactions
+
+Members react to a post or to a thread itself with emojis. A target is `ReactionTarget = variant { post : nat; thread : nat }`. A thread's own reactions are those on its title and opening text, which is not a post (posts are the replies in a thread): reacting to the thread never touches the reactions of any post in it.
+
+- `react(target, emoji, on)` adds (`on = true`) or takes back one emoji; `set_reactions(target, emojis)` replaces the caller's whole set (`[]` removes all). Both answer `variant { ok : vec text; err : ForumError }` with the caller's set as stored. Adding one already given, or taking back one not given, changes nothing.
+- A set holds at most 10 emojis (repeats are dropped, the order kept). Each must be exactly one emoji: one grapheme cluster, so ZWJ sequences (👩‍💻, 👨‍👩‍👧‍👦), skin tones (👍🏽), flags (🇲🇹, 🏴󠁧󠁢󠁳󠁣󠁴󠁿) and keycaps (1️⃣) are one; letters, digits, whitespace, two emojis side by side and anything over 64 bytes are refused (`InvalidInput("Not a single emoji: ...")`).
+- A target has at most 100 different emojis: a new one beyond that answers `InvalidInput("This already has 100 different reactions, ...")`; the existing ones can still be given.
+- The anonymous principal is refused (`Unauthorized`); deleted or unknown targets (and posts of deleted threads) answer `NotFound("Post not found")` / `NotFound("Thread not found")`. A `thread` target must be a thread id and a `post` target a post id.
+- `get_reactions(targets)` returns, for each target, `{ target; counts : vec { emoji; count } }` in the order the emojis were first given; deleted targets show none. `get_reactions_of_user(user, targets)` returns `{ target; emojis }` per target (`[]` where none). Both read at most 200 targets a call (the rest are ignored) and cost O(distinct emojis) per target: the counts are kept up to date from the difference whenever a member changes their set.
+- Reactions are public (anyone can read who gave what with `get_reactions_of_user`) and not logged in the ICRC-3 log. `react` and `set_reactions` are rate limited as `react` (4).
+
+### 3.13 Votes and tips on threads
+
+A thread itself can be voted on and tipped, separately from its posts, mirroring the post methods:
+
+- `vote_on_thread(thread_id, vote_type)`, `vote_on_thread_with_neurons(thread_id, vote_type, neuron_ids)`, `retract_thread_vote(thread_id)`, `retract_thread_vote_with_neurons(thread_id, neuron_ids)`: the caller's reachable neurons with voting power in the thread's SNS, as 3.4; errors `NotFound("Thread not found")` (unknown or deleted), `Unauthorized("No accessible neurons found")`, `NotFound("No votes found to retract")`, `InternalError("No SNS governance canister found")` / `("Failed to vote")`.
+- `get_thread_scores(thread_ids)` returns `{ thread_id; upvote_score; downvote_score }` for each live thread (200 a call); `get_votes_on_thread(thread_id)` every vote on the thread; `get_votes_on_thread_for_neurons(thread_id, neuron_ids)` those of the given neurons. Post scores and `get_thread_votes_for_neurons` (votes on the posts of a thread) do not include them.
+- `create_thread_tip(to_principal = thread author, thread_id, token_ledger_principal, amount, opt block_index)` records a tip on the thread itself exactly as `create_tip` does for a post (3.11): the same ledger check, and one `(ledger, block)` backs one tip of either kind. `verify_thread_tip(tip_id)` retries an unverified one. Read them with `get_thread_tip(id)`, `get_tips_on_thread_page(thread_id, before, limit)`, `get_thread_tips_given_by_user_page` / `get_thread_tips_received_by_user_page(user, before, limit)` (pages as in 4) and `get_thread_tip_totals(thread_ids)` (verified only, per token). Thread tips are `ThreadTipResponse` records, not `TipResponse`: the post-tip lists, counters and stats do not include them. A verified thread tip notifies the thread's author (3.6) and is logged (8.3).
+
 ---
 
 ## 4. Limits
@@ -401,8 +420,9 @@ Other bounds: 10 counted mentions per text, 100 mentions per `get_mentions_of_us
 | `post` | `create_post` (posts and replies) | 10, then 4 a minute |
 | `edit` | `update_post`, `update_thread` | 10, then 4 a minute |
 | `poll` | `create_poll` | 5, then 1 a minute |
-| `tip` | `create_tip`, `verify_tip` | 10, then 3 a minute |
-| `vote` | `vote_on_post`, `vote_on_post_with_neurons`, `retract_vote`, `retract_vote_with_neurons`, `vote_on_poll_with_neurons` | 30, then 10 a minute |
+| `tip` | `create_tip`, `verify_tip`, `create_thread_tip`, `verify_thread_tip` | 10, then 3 a minute |
+| `vote` | `vote_on_post`, `vote_on_post_with_neurons`, `retract_vote`, `retract_vote_with_neurons`, `vote_on_poll_with_neurons`, `vote_on_thread`, `vote_on_thread_with_neurons`, `retract_thread_vote`, `retract_thread_vote_with_neurons` | 30, then 10 a minute |
+| `react` | `react`, `set_reactions` | 30, then 20 a minute |
 
 Over the limit, a call from outside the IC is refused at ingress; a call that gets through anyway (or comes from a canister) answers `InvalidInput("Rate limited: at most <capacity> <action> calls in a row and <per_minute> a minute after that. Please try again in a minute.")` and writes nothing. Not limited: admins; the SNS canisters the forum knows (the SNS root of any forum, and the root and governance canisters in its SNS-W cache, which fills on the first post or vote after an upgrade); and the principals on the exempt list (`get_rate_limit_exempt()`). An integrator whose canister or bot writes in bursts (for example a proposal thread for each of many proposals) asks Sneed DAO to put its principal on that list instead of raising the limits for everyone. Rules are capped at 100,000 for `capacity` and `per_minute`. The buckets live in memory, so an upgrade refills them. A tip whose `create_tip` was refused can be recorded later with the same block index.
 
@@ -512,6 +532,28 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_recent_tips_received(user)` / `get_recent_tips_count(user)` | query | since the user's tip mark; verified only |
 | `get_tip_tokens_received_by_user(user)` | query | `vec TipTokenSummary` (verified only) |
 | `get_tip_stats()` | query | `TipStats` (verified only) |
+
+### 6.6a Reactions, thread votes and thread tips (3.12, 3.13)
+
+| Method | Kind | Returns |
+|---|---|---|
+| `react(target : ReactionTarget, emoji : text, on : bool)` | update | `variant { ok : vec text; err : ForumError }` (the caller's set) |
+| `set_reactions(target : ReactionTarget, emojis : vec text)` | update | the same |
+| `get_reactions(targets : vec ReactionTarget)` | query | `vec TargetReactions` (200 targets) |
+| `get_reactions_of_user(user, targets : vec ReactionTarget)` | query | `vec UserReactions` (200 targets) |
+| `vote_on_thread(thread_id, vote_type)` / `vote_on_thread_with_neurons(thread_id, vote_type, vec NeuronId)` | update | `Result` |
+| `retract_thread_vote(thread_id)` / `retract_thread_vote_with_neurons(thread_id, vec NeuronId)` | update | `Result` |
+| `get_thread_scores(vec nat)` | query | `vec ThreadScoreResponse` (live threads, 200 a call) |
+| `get_votes_on_thread(thread_id)` | query | `vec ThreadVoteRecordResponse` |
+| `get_votes_on_thread_for_neurons(thread_id, vec NeuronId)` | query | `ThreadNeuronVotesResponse` |
+| `create_thread_tip(to_principal, thread_id, token_ledger_principal, amount, opt nat)` | update | `Result_1` (tip id) |
+| `verify_thread_tip(tip_id)` | update | `variant { ok : bool; err : ForumError }` |
+| `get_thread_tip(id)` | query | `opt ThreadTipResponse` |
+| `get_tips_on_thread_page(thread_id, before : opt nat, limit : nat)` | query | `ThreadTipsPage` |
+| `get_thread_tips_given_by_user_page(user, before, limit)` / `get_thread_tips_received_by_user_page(...)` | query | `ThreadTipsPage` |
+| `get_thread_tip_totals(vec nat)` | query | `vec ThreadTipTotals` (verified only; 200 threads, newest 1,000 tips each) |
+
+Types: `ReactionTarget = variant { post : nat; thread : nat }`; `TargetReactions = record { target; counts : vec record { emoji : text; count : nat } }`; `UserReactions = record { target; emojis : vec text }`; `ThreadScoreResponse = record { thread_id; upvote_score; downvote_score }`; `ThreadVoteRecordResponse` = `VoteResponse` with `thread_id` for `post_id`; `ThreadNeuronVotesResponse = record { thread_id; neuron_votes : vec NeuronVote }`; `ThreadTipResponse` = `TipResponse` without `post_id` and `created_by`; `ThreadTipsPage = record { items : vec ThreadTipResponse; next : opt nat }`; `ThreadTipTotals = record { thread_id; tokens : vec TipTokenSummary }`.
 
 ### 6.7 Mentions, read state and seen marks
 
@@ -751,6 +793,7 @@ All types carry the `sneedforum_` prefix. A block is appended only once its acti
 | `sneedforum_tip` | `create_tip` recorded a tip the token's ledger confirmed. | `caller` (the tipper), `tip_id`, `from`, `to` (the post's author), `post_id`, `thread_id`, `ledger`, `amount`, `ledger_block` |
 | `sneedforum_tip_verified` | `verify_tip` confirmed a tip that was recorded unverified (or before the forum checked tips). | `caller` (who asked), the fields of `sneedforum_tip` |
 | `sneedforum_tip_rejected` | `verify_tip` found the tip contradicted by its ledger block, its block used by another tip, or its recipient not the post's author. Final. | `caller`, the fields of `sneedforum_tip` (`ledger_block` when given), `reason` |
+| `sneedforum_thread_tip` / `sneedforum_thread_tip_verified` / `sneedforum_thread_tip_rejected` | As the three above, for tips on a thread itself (`create_thread_tip`, `verify_thread_tip`). | as `sneedforum_tip` with `thread_id` and no `post_id`; `reason` when rejected |
 | `sneedforum_delete` | An admin deleted a forum or topic, or someone deleted a thread or post they did not write. An author deleting their own post is not logged. | `caller`, `kind`, `id`; threads and posts: `author`, `body_sha256`, `title_sha256` |
 | `sneedforum_undelete` | An admin restored a forum, topic, thread or post. | as `sneedforum_delete` |
 | `sneedforum_edit` | `update_thread` / `update_post` by someone other than the author (an admin). | `caller`, `kind`, `id`, `author`, `old_body_sha256`, `body_sha256`, `old_title_sha256`, `title_sha256` |
@@ -764,9 +807,9 @@ All types carry the `sneedforum_` prefix. A block is appended only once its acti
 | `sneedforum_admin_add` / `sneedforum_admin_remove` | `add_admin` / `remove_admin` | `caller`, `principal` |
 | `sneedforum_config_update` | A setting changed. | `caller`, `key`, `old_value`, `value` |
 
-`sneedforum_config_update` keys: `rate_limit_exempt` (with a `principal` field; values 1 exempt, 0 not); the rate limits `rate_limit.thread`, `rate_limit.post`, `rate_limit.edit`, `rate_limit.poll`, `rate_limit.tip`, `rate_limit.vote` (values are Maps `{ capacity; per_minute }`); the text limits `post_title_max_length`, `post_body_max_length`, `thread_title_max_length`, `thread_body_max_length`, `topic_title_max_length`, `topic_description_max_length`, `forum_title_max_length`, `forum_description_max_length`; the premium settings `sneed_premium_canister_id`, `premium_post_body_max_length`, `premium_thread_body_max_length`; `notifications_canister`; and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedforum_config_update` keys: `rate_limit_exempt` (with a `principal` field; values 1 exempt, 0 not); the rate limits `rate_limit.thread`, `rate_limit.post`, `rate_limit.edit`, `rate_limit.poll`, `rate_limit.tip`, `rate_limit.vote`, `rate_limit.react` (values are Maps `{ capacity; per_minute }`); the text limits `post_title_max_length`, `post_body_max_length`, `thread_title_max_length`, `thread_body_max_length`, `topic_title_max_length`, `topic_description_max_length`, `forum_title_max_length`, `forum_description_max_length`; the premium settings `sneed_premium_canister_id`, `premium_post_body_max_length`, `premium_thread_body_max_length`; `notifications_canister`; and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
-Not logged: ordinary threads, posts and replies, an author's edits and deletions of their own content, votes on posts, polls and poll votes, mentions, read marks and seen marks, mention-SMS settings, and tips the ledger has not confirmed (they count nowhere; they are logged when `verify_tip` settles them). All of these are public in the canister already.
+Not logged: ordinary threads, posts and replies, an author's edits and deletions of their own content, votes on posts and threads, reactions, polls and poll votes, mentions, read marks and seen marks, mention-SMS settings, and tips the ledger has not confirmed (they count nowhere; they are logged when `verify_tip` settles them). All of these are public in the canister already.
 
 ### 8.4 Verifying and using the log
 

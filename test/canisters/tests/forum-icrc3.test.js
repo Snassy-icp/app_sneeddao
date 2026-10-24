@@ -24,6 +24,7 @@ const BLOCK_TYPES_URL = 'https://app.sneeddao.com/api/sneed_sns_forum#block-type
 const CATALOGUE = [
   'tip', 'tip_verified', 'tip_rejected', 'delete', 'undelete', 'edit', 'forum_create', 'forum_update', 'topic_create', 'topic_update',
   'proposals_topic_set', 'proposals_topic_remove', 'proposal_thread_create', 'admin_add', 'admin_remove', 'config_update',
+  'thread_tip', 'thread_tip_verified', 'thread_tip_rejected', // tips on threads themselves (forum-reactions.test.js)
 ].map((t) => `sneedforum_${t}`);
 const SNS_W = Principal.fromText('qaa6y-5yaaa-aaaaa-aaafa-cai');
 const E8S = 100_000_000n;
@@ -402,7 +403,8 @@ describe('upgrades', () => {
 
     // the first logged act after the upgrade is block 0, without phash; the log verifies
     unwrap(await o(dave).delete_post(pb));
-    expect(unwrap(await o(carol).create_tip(bob, pb, ICP_LEDGER_ID, 1n, []))).toBeGreaterThan(tip); // unverified: not logged
+    const pc = unwrap(await o(bob).create_post(th, [], [], 'still here')); // (no tips on deleted posts since the bug pass)
+    expect(unwrap(await o(carol).create_tip(bob, pc, ICP_LEDGER_ID, 1n, []))).toBeGreaterThan(tip); // unverified: not logged
     const blocks = await verifiedLog(oldId);
     expect(strip(blocks)).toEqual([{ t: 'delete', caller: P(dave), kind: 'post', id: pb, author: P(bob), body_sha256: H(`bob ${mention(alice, 'Alice')}`) }]);
     expect((await rawLog(oldId))[0].Map.some(([k]) => k === 'phash')).toBe(false);

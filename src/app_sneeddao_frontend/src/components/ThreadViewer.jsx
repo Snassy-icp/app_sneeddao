@@ -40,6 +40,10 @@ import EmojiPicker from './EmojiPicker';
 import MarkdownButtons from './MarkdownButtons';
 import MarkdownBody from './MarkdownBody';
 import './ThreadViewer.css';
+import ReactionBar from './ReactionBar';
+import { forumExtrasActor, loadReactionCounts, loadMyReactions, isMissingMethod } from '../utils/forumReactions';
+import { toggleEmoji, applyReactionChange, postTarget, threadTarget, targetKey, MAX_PER_USER } from '../utils/reactionsModel';
+import { scoreLabel, threadDisplayTitle, planReadTracking, tipExceptionMessage } from '../utils/forumModel';
 import MentionTextarea from './MentionTextarea';
 import { smsMentioned } from '../utils/mentions';
 import { icrc1Transfer } from '../utils/icrcTx';
@@ -523,31 +527,6 @@ function ThreadViewer({
         const upvotes = Number(post.upvote_score);
         const downvotes = Number(post.downvote_score);
         return upvotes - downvotes;
-    };
-
-    // Format vote scores with compact notation for large numbers
-    const formatScore = (score) => {
-        // Convert from e8s (divide by 10^8)
-        const scoreInTokens = score / 100000000;
-        const absScore = Math.abs(scoreInTokens);
-        
-        if (scoreInTokens === 0) {
-            return '0';
-        } else if (absScore >= 1000000) {
-            // Millions: 1.2M, 3.5M, etc.
-            const millions = scoreInTokens / 1000000;
-            return millions.toFixed(1).replace(/\.0$/, '') + 'M';
-        } else if (absScore >= 1000) {
-            // Thousands: 1.1K, 238K, etc.
-            const thousands = scoreInTokens / 1000;
-            return thousands.toFixed(1).replace(/\.0$/, '') + 'K';
-        } else if (absScore >= 1) {
-            // For values >= 1, show up to 1 decimal place
-            return scoreInTokens.toFixed(1).replace(/\.0$/, '');
-        } else {
-            // For values < 1, show up to 2 decimal places
-            return scoreInTokens.toFixed(2).replace(/\.?0+$/, '');
-        }
     };
 
     // Format relative time (e.g., "2h ago", "3d ago")
@@ -1950,6 +1929,7 @@ function ThreadViewer({
 
     const handleTip = useCallback(async ({ tokenPrincipal, amount, recipientPrincipal, postId }) => {
         if (!forumActor || !selectedPostForTip) return;
+        let stage = 'transfer'; // after the transfer: 'register' (the tokens are sent)
 
         try {
             setTipError(null);
@@ -1982,15 +1962,38 @@ function ThreadViewer({
             }
 
             console.log('Transfer successful, block index:', transferResult.Ok);
+            stage = 'register';
             setTippingState('registering');
+
+            // A tip on the thread itself (its opening text): recorded with create_thread_tip
+            if (selectedPostForTip._thread) {
+                const extras = await forumExtrasActor(identity);
+                const r = await extras.create_thread_tip(recipientPrincipal, BigInt(threadId), Principal.fromText(tokenPrincipal), BigInt(amount), [BigInt(transferResult.Ok)]);
+                if ('err' in r) {
+                    setTipError('The tokens were sent (do not send them again), but the forum did not record the tip: ' + tipErrorMessage(r.err));
+                    setTippingState('error');
+                    return;
+                }
+                const [recorded] = await extras.get_thread_tip(r.ok).catch(() => []);
+                if (recorded && recorded.verified?.[0] !== true) {
+                    setTipError('The tokens were sent (do not send them again) and the tip is recorded, but the forum could not confirm it on the ledger yet: '
+                        + (recorded.verification_note?.[0] || 'no reason given') + '. It is shown once verified.');
+                    setTippingState('error');
+                    return;
+                }
+                setTippingState('success');
+                setLastTippedInfo({ postId: `thread${threadId}`, tokenPrincipal: tokenPrincipal.toString(), post: null, thread: true });
+                if (refreshTokenBalance) refreshTokenBalance(tokenPrincipal.toString());
+                return;
+            }
 
             // Register the tip in the backend
             const tipResult = await createTip(forumActor, {
                 to_principal: recipientPrincipal,
-                post_id: Number(postId),
+                post_id: postId,
                 token_ledger_principal: Principal.fromText(tokenPrincipal), // Convert string to Principal
-                amount: Number(amount), // Convert BigInt to Number to avoid serialization issues
-                transaction_block_index: Number(transferResult.Ok) // Convert BigInt to Number
+                amount, // exact (createTipArgs keeps BigInt)
+                transaction_block_index: transferResult.Ok // block 0 included
             });
 
             if ('ok' in tipResult) {
@@ -2060,9 +2063,11 @@ function ThreadViewer({
             }
         } catch (error) {
             console.error('Error in tip process:', error);
+            // after the transfer the tokens are gone: say so, or the tipper may send them again
+            setTipError(tipExceptionMessage(stage, error));
             setTippingState('error');
         }
-    }, [forumActor, selectedPostForTip, identity, refreshTokenBalance, closeTipModal]);
+    }, [forumActor, selectedPostForTip, identity, refreshTokenBalance, closeTipModal, threadId]);
 
     // Edit handlers - preserve scroll position to prevent unwanted scroll
     const startEditPost = useCallback((post) => {
@@ -2254,35 +2259,145 @@ function ThreadViewer({
         }
     }, [fetchPolls, threadId, discussionPosts]);
 
+    // ---- Reactions (posts and the thread itself), thread votes and thread tips ----
+    // One batched read per page of targets (get_reactions / get_reactions_of_user, 200 a call), never
+    // a call per post. A forum build without these methods leaves them hidden (reactionsAvailable).
+    const [reactionCounts, setReactionCounts] = useState(new Map()); // targetKey -> [{emoji, count}]
+    const [myReactions, setMyReactions] = useState(new Map()); // targetKey -> [emoji]
+    const [reactionsAvailable, setReactionsAvailable] = useState(false);
+    const [threadScore, setThreadScore] = useState(null); // { up, down } in e8s, null: not loaded / not available
+    const [threadMyVote, setThreadMyVote] = useState(null); // 'up' | 'down' | null (selected neurons)
+    const [threadVoting, setThreadVoting] = useState(false);
+    const [threadTips, setThreadTips] = useState([]); // verified tips on the thread itself
+    const reactionsRequestRef = useRef(0);
+
+    const reactionTargetsKey = threadId ? [String(threadId), ...discussionPosts.filter((p) => String(p.thread_id) === String(threadId)).map((p) => String(p.id))].join(',') : '';
+
+    useEffect(() => {
+        if (!threadId) return;
+        const request = ++reactionsRequestRef.current; // a later load (another thread, new posts) wins
+        const ids = reactionTargetsKey.split(',').slice(1);
+        const targets = [threadTarget(threadId), ...ids.map((id) => postTarget(id))];
+        const me = identity ? identity.getPrincipal() : null;
+        (async () => {
+            try {
+                const counts = await loadReactionCounts(identity, targets);
+                if (request !== reactionsRequestRef.current) return;
+                if (counts === null) { setReactionsAvailable(false); return; }
+                const mine = me ? await loadMyReactions(identity, me, targets) : new Map();
+                if (request !== reactionsRequestRef.current) return;
+                setReactionCounts(counts);
+                setMyReactions(mine);
+                setReactionsAvailable(true);
+            } catch (e) {
+                console.warn('Could not load reactions:', e);
+            }
+        })();
+    }, [reactionTargetsKey, identity, threadId]);
+
+    /// Taps an emoji on a target: optimistic, then the forum's answer; resolves to an error text or null.
+    const toggleReaction = useCallback(async (target, emoji) => {
+        if (!identity) return 'Log in to react';
+        const key = targetKey(target);
+        const oldSet = myReactions.get(key) || [];
+        const newSet = toggleEmoji(oldSet, emoji);
+        if (newSet === null) return `At most ${MAX_PER_USER} reactions each; take one back first`;
+        const oldCounts = reactionCounts.get(key) || [];
+        setMyReactions((prev) => new Map(prev).set(key, newSet));
+        setReactionCounts((prev) => new Map(prev).set(key, applyReactionChange(oldCounts, oldSet, newSet)));
+        try {
+            const actor = await forumExtrasActor(identity);
+            const r = await actor.react(target, emoji, newSet.includes(emoji));
+            const [fresh] = await actor.get_reactions([target]);
+            if ('ok' in r) {
+                setMyReactions((prev) => new Map(prev).set(key, r.ok));
+                if (fresh) setReactionCounts((prev) => new Map(prev).set(key, fresh.counts));
+                return null;
+            }
+            setMyReactions((prev) => new Map(prev).set(key, oldSet));
+            setReactionCounts((prev) => new Map(prev).set(key, fresh ? fresh.counts : oldCounts));
+            return Object.values(r.err)[0] || 'The forum refused the reaction';
+        } catch (e) {
+            setMyReactions((prev) => new Map(prev).set(key, oldSet));
+            setReactionCounts((prev) => new Map(prev).set(key, oldCounts));
+            return /refused|rate/i.test(String(e?.message)) ? 'Too many reactions at once; try again in a minute' : 'Could not save the reaction';
+        }
+    }, [identity, myReactions, reactionCounts]);
+
+    const reactionBarFor = (target, compact = false) => {
+        if (!reactionsAvailable) return null;
+        const key = targetKey(target);
+        return (
+            <ReactionBar
+                counts={reactionCounts.get(key) || []}
+                mine={myReactions.get(key) || []}
+                onToggle={isAuthenticated && identity ? (emoji) => toggleReaction(target, emoji) : null}
+                compact={compact}
+            />
+        );
+    };
+
+    /// The thread's own score, my (selected neurons') vote on it, and its verified tips.
+    const loadThreadExtras = useCallback(async () => {
+        if (!threadId) return;
+        try {
+            const actor = await forumExtrasActor(identity);
+            const [score] = await actor.get_thread_scores([BigInt(threadId)]);
+            setThreadScore(score ? { up: score.upvote_score, down: score.downvote_score } : { up: 0n, down: 0n });
+            const neurons = getSelectedNeurons() || [];
+            if (identity && neurons.length > 0) {
+                const mine = await actor.get_votes_on_thread_for_neurons(BigInt(threadId), neurons.map((n) => ({ id: n.id[0].id })));
+                const kinds = new Set(mine.neuron_votes.map((v) => ('upvote' in v.vote_type ? 'up' : 'down')));
+                setThreadMyVote(kinds.size === 1 ? [...kinds][0] : null);
+            } else {
+                setThreadMyVote(null);
+            }
+            const page = await actor.get_tips_on_thread_page(BigInt(threadId), [], 100n);
+            setThreadTips(page.items.filter((t) => t.verified?.[0] === true));
+        } catch (e) {
+            if (isMissingMethod(e)) setThreadScore(null);
+            else console.warn('Could not load the thread score and tips:', e);
+        }
+    }, [threadId, identity, getSelectedNeurons]);
+
+    useEffect(() => { loadThreadExtras(); }, [loadThreadExtras]);
+
+    const voteOnThread = useCallback(async (direction) => {
+        const neurons = getSelectedNeurons() || [];
+        if (!identity || neurons.length === 0 || threadVoting) return;
+        setThreadVoting(true);
+        try {
+            const actor = await forumExtrasActor(identity);
+            const ids = neurons.map((n) => ({ id: n.id[0].id }));
+            const r = threadMyVote === direction
+                ? await actor.retract_thread_vote_with_neurons(BigInt(threadId), ids)
+                : await actor.vote_on_thread_with_neurons(BigInt(threadId), direction === 'up' ? { upvote: null } : { downvote: null }, ids);
+            if ('err' in r) await appAlert(Object.values(r.err)[0] || 'The vote was not recorded');
+            await loadThreadExtras();
+        } catch (e) {
+            await appAlert('The vote was not recorded: ' + (e?.message || e));
+        } finally {
+            setThreadVoting(false);
+        }
+    }, [identity, threadId, threadMyVote, threadVoting, getSelectedNeurons, loadThreadExtras]);
+
     // Effect to handle read tracking when thread is loaded
+    const readStashedForRef = useRef(null); // the thread whose "new since last visit" marks are stashed
     useEffect(() => {
         const handleReadTracking = async () => {
             if (!threadId || !identity || discussionPosts.length === 0) return;
-            
-            // Find the highest post ID that the user can see (current state of thread)
-            const visiblePosts = discussionPosts.filter(post => !post.deleted || post.author === identity.getPrincipal().toText());
-            if (visiblePosts.length === 0) return;
-            
-            const currentHighestPostId = Math.max(...visiblePosts.map(post => Number(post.id)));
-            
-            // Fetch user's last read position and stash both values for highlighting
+            const me = identity.getPrincipal().toText();
             const userLastReadPostId = await fetchLastReadPost(threadId);
-            
-            // Stash both values BEFORE updating anything
-            setStashedLastReadPostId(userLastReadPostId);
-            setStashedHighestPostId(currentHighestPostId);
-            
-            console.log(`🔖 Read tracking for thread ${threadId}:`, {
-                userLastRead: userLastReadPostId,
-                currentHighest: currentHighestPostId,
-                isFirstVisit: userLastReadPostId === 0,
-                willHighlight: currentHighestPostId > userLastReadPostId ? `posts ${userLastReadPostId + 1}-${currentHighestPostId}` : 'no posts'
-            });
-            
-            // Update the user's read position to the current highest visible post
-            if (currentHighestPostId > userLastReadPostId) {
-                await updateLastReadPost(threadId, currentHighestPostId);
-                setLastReadPostId(currentHighestPostId);
+            const plan = planReadTracking({ threadId, posts: discussionPosts, me, serverLastRead: userLastReadPostId, stashedFor: readStashedForRef.current });
+            if (plan.stash) {
+                // stashed once per visit: later reloads (after a vote or a reply) read back our own mark
+                readStashedForRef.current = String(threadId);
+                setStashedLastReadPostId(plan.stash.lastRead);
+                setStashedHighestPostId(plan.stash.highest);
+            }
+            if (plan.write !== null) {
+                await updateLastReadPost(threadId, plan.write);
+                setLastReadPostId(plan.write);
             } else {
                 setLastReadPostId(userLastReadPostId);
             }
@@ -2803,20 +2918,7 @@ function ThreadViewer({
     }, [threadDetails, threadId, checkProposalLink]);
 
     // Get display title
-    const getDisplayTitle = () => {
-        if (title) return title;
-        if (mode === 'post' && focusedPostId) {
-            // For post mode, show the thread title instead of the post title
-            if (threadDetails && threadDetails.title) {
-                return threadDetails.title;
-            }
-            return `Thread #${threadId}`;
-        }
-        if (threadDetails && threadDetails.title) {
-            return threadDetails.title;
-        }
-        return `Thread #${threadId}`;
-    };
+    const getDisplayTitle = () => threadDisplayTitle({ title, threadDetails, threadId }); // [] (no title) is "Thread #id"
 
     // Render loading state
     if (loadingDiscussion) {
@@ -2917,6 +3019,56 @@ function ThreadViewer({
                                 <MarkdownBody text={threadDetails.body} style={{ color: theme.colors.secondaryText }} />
                             </div>
                         )}
+
+                        {/* The thread's own tips, reactions, votes (separate from those of its posts) */}
+                        {!editingThread && threadDetails && (
+                            <div style={{ marginBottom: '12px' }}>
+                                {threadTips.length > 0 && (
+                                    <TipDisplay
+                                        tips={threadTips}
+                                        principalDisplayInfo={principalDisplayInfo}
+                                        isNarrowScreen={isNarrowScreen}
+                                        onTip={identity && threadDetails.created_by && threadDetails.created_by.toString() !== identity.getPrincipal().toString()
+                                            ? (tokenPrincipal) => openTipModal({ ...threadDetails, id: BigInt(threadId), _thread: true }, tokenPrincipal ? tokenPrincipal.toString() : null)
+                                            : null}
+                                        animateToken={animatingTipToken && animatingTipToken.postId === `thread${threadId}` ? animatingTipToken.tokenPrincipal : null}
+                                        postId={`thread${threadId}`}
+                                    />
+                                )}
+                                {reactionBarFor(threadTarget(threadId))}
+                                {threadScore !== null && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                                        {(() => {
+                                            const label = scoreLabel(Number(threadScore.up) - Number(threadScore.down));
+                                            const canVote = isAuthenticated && identity && (getSelectedNeurons() || []).length > 0;
+                                            const voteBtn = (direction) => (
+                                                <button type="button" className="post-action-btn" disabled={!canVote || threadVoting}
+                                                    title={!canVote ? 'Vote with your neurons (select them in the settings)' : threadMyVote === direction ? 'Take back your vote' : (direction === 'up' ? 'Upvote the thread' : 'Downvote the thread')}
+                                                    aria-pressed={threadMyVote === direction}
+                                                    style={{ color: threadMyVote === direction ? (direction === 'up' ? '#6b8e6b' : '#b85c5c') : undefined, opacity: canVote ? 1 : 0.5 }}
+                                                    onClick={() => voteOnThread(direction)}>
+                                                    {direction === 'up' ? <FaThumbsUp size={12} /> : <FaThumbsDown size={12} />}
+                                                </button>
+                                            );
+                                            return (
+                                                <>
+                                                    {voteBtn('up')}
+                                                    <span title="The thread's score (its votes, apart from its posts')" style={{ fontSize: '12px', fontWeight: 600, minWidth: '24px', textAlign: 'center',
+                                                        color: label.sign > 0 ? '#6b8e6b' : label.sign < 0 ? '#b85c5c' : theme.colors.mutedText }}>{label.text}</span>
+                                                    {voteBtn('down')}
+                                                </>
+                                            );
+                                        })()}
+                                        {identity && threadDetails.created_by && threadDetails.created_by.toString() !== identity.getPrincipal().toString() && (
+                                            <button type="button" className="post-action-btn" title="Send a tip to the thread's author"
+                                                onClick={(e) => { e.preventDefault(); openTipModal({ ...threadDetails, id: BigInt(threadId), _thread: true }); }}>
+                                                <FaCoins size={12} style={{ opacity: 0.7 }} /> Tip
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
                         {/* Edit Thread Button - show for thread owner or admin when not editing */}
                         {!editingThread && identity && threadDetails && threadDetails.created_by && 
@@ -2947,7 +3099,7 @@ function ThreadViewer({
                         {/* Thread Edit Form */}
                         {editingThread && threadDetails && (
                             <ThreadEditForm
-                                initialTitle={threadDetails.title || ''}
+                                initialTitle={(Array.isArray(threadDetails.title) ? threadDetails.title[0] : threadDetails.title) || ''}
                                 initialBody={threadDetails.body || ''}
                                 onSubmit={submitEditThread}
                                 onCancel={cancelEditThread}
@@ -3656,7 +3808,9 @@ function ThreadViewer({
                             // Now fetch the real tips (replaces placeholder)
                             // Small delay so the logo fade-in animation can play first
                             setTimeout(() => {
-                                if (lastTippedInfo.post) {
+                                if (lastTippedInfo.thread) {
+                                    loadThreadExtras();
+                                } else if (lastTippedInfo.post) {
                                     fetchTipsForPosts([lastTippedInfo.post]);
                                 }
                             }, 400);
@@ -3980,6 +4134,9 @@ function ThreadViewer({
                                     <MarkdownBody text={effectiveContent.body} style={{ color: theme.colors.primaryText }} />
                                 </div>
                             )}
+
+                            {/* Reactions (not on optimistic posts, which have no id yet) */}
+                            {!isOptimistic && !post.deleted && reactionBarFor(postTarget(post.id), true)}
                             
                             {/* Post Polls */}
                             {postPolls.get(Number(post.id))?.map(poll => (
@@ -4054,8 +4211,8 @@ function ThreadViewer({
                                         <span 
                                             className={`vote-score ${hasScoreAnimation ? 'score-animate' : ''}`}
                                             style={{ 
-                                                color: score > 0 ? '#6b8e6b' : 
-                                                       score < 0 ? '#b85c5c' : theme.colors.mutedText,
+                                                color: scoreLabel(score).sign > 0 ? '#6b8e6b' : 
+                                                       scoreLabel(score).sign < 0 ? '#b85c5c' : theme.colors.mutedText,
                                                 fontSize: '12px',
                                                 fontWeight: '600',
                                                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
@@ -4066,7 +4223,7 @@ function ThreadViewer({
                                             }}
                                             title={isOptimistic ? 'Updating score...' : undefined}
                                         >
-                                            {(score > 0 ? '+' : '') + formatScore(score)}
+                                            {scoreLabel(score).text}
                                         </span>
                                     );
                                 })()}

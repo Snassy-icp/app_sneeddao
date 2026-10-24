@@ -57,6 +57,7 @@ module {
 
 
     // Constants
+    public let MAX_VP_POWER : Float = 10.0; // polls' vp_power: (voting power ^ 10) still fits a Float
     private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
     private let CACHE_EXPIRY_NANOSECONDS = 86400000000000; // 24 hours in nanoseconds
     // SNS cache management functions
@@ -517,7 +518,7 @@ module {
     };
 
     // Helper function to get next ID
-    private func get_next_id(state: ForumState) : Nat {
+    public func get_next_id(state: ForumState) : Nat {
         let id = state.next_id;
         state.next_id += 1;
         id
@@ -1045,10 +1046,16 @@ module {
             case (#ok()) {};
         };
 
-        // Check if topic exists
+        // Check if topic exists (and is not deleted, nor its forum: moderators closed it)
         switch (Map.get(state.topics, Map.nhash, input.topic_id)) {
             case null return #err(#NotFound("Topic not found"));
-            case (?_) {};
+            case (?topic) {
+                if (topic.deleted) return #err(#NotFound("Topic not found"));
+                switch (Map.get(state.forums, Map.nhash, topic.forum_id)) {
+                    case (?forum) if (forum.deleted) return #err(#NotFound("Forum not found"));
+                    case null {};
+                };
+            };
         };
 
         let id = get_next_id(state);
@@ -1153,11 +1160,12 @@ module {
     // Get threads by topic with unread counts for a specific caller
     public func get_threads_by_topic_with_unread_counts(state: ForumState, topic_id: Nat, caller: Principal) : [T.ThreadResponse] {
         let threads = Buffer.Buffer<T.ThreadResponse>(0);
+        let show_deleted = is_admin(state, caller); // as get_threads_by_topic: deleted threads only for admins
         switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
             case (?thread_ids) {
                 for (thread_id in Vector.vals(thread_ids)) {
                     switch (get_thread_with_unread_count(state, thread_id, caller)) {
-                        case (?thread_response) threads.add(thread_response);
+                        case (?thread_response) if (show_deleted or not thread_response.deleted) threads.add(thread_response);
                         case null {};
                     };
                 };
@@ -1250,6 +1258,7 @@ module {
                         if (reply_post.thread_id != thread_id) {
                             return #err(#InvalidInput("Reply target must be in the same thread"));
                         };
+                        if (reply_post.deleted) return #err(#NotFound("Reply target post not found"));
                     };
                 };
             };
@@ -1359,10 +1368,16 @@ module {
         voting_power: Nat,
         current_time: Int
     ) : Result<(), ForumError> {
-        // Check if post exists
+        // Check if post exists (votes on deleted posts, or posts of deleted threads, are refused;
+        // retracting stays possible)
         let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?p) p;
             case null return #err(#NotFound("Post not found"));
+        };
+        if (post.deleted) return #err(#NotFound("Post not found"));
+        switch (Map.get(state.threads, Map.nhash, post.thread_id)) {
+            case (?t) if (t.deleted) return #err(#NotFound("Post not found"));
+            case null {};
         };
 
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -1562,146 +1577,46 @@ module {
         Buffer.toArray(votes)
     };
 
-    // Get votes for specific neurons across all posts in a thread
+    /// The (deduplicated) indexes of the given neurons that ever voted, in the order given.
+    func known_neuron_indexes(state: ForumState, neuron_ids: [T.NeuronId]) : [(Nat32, T.NeuronId)] {
+        let out = Buffer.Buffer<(Nat32, T.NeuronId)>(neuron_ids.size());
+        for (neuron_id in neuron_ids.vals()) switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
+            case (?index) if (not Buffer.contains<(Nat32, T.NeuronId)>(out, (index, neuron_id), func(x, y) = x.0 == y.0)) out.add((index, neuron_id));
+            case null {}; // never voted
+        };
+        Buffer.toArray(out)
+    };
+
+    /// The votes of these neurons on one post, by direct key lookups (no scan of all votes).
+    func neuron_votes_on_post(state: ForumState, post_id: Nat, neurons: [(Nat32, T.NeuronId)]) : [T.NeuronVote] {
+        let out = Buffer.Buffer<T.NeuronVote>(0);
+        for ((index, neuron_id) in neurons.vals()) switch (Map.get(state.votes, vote_key_hash_utils, (post_id, index))) {
+            case (?vote) out.add({ neuron_id; vote_type = vote.vote_type; voting_power = vote.voting_power; created_at = vote.created_at; updated_at = vote.updated_at });
+            case null {};
+        };
+        Buffer.toArray(out)
+    };
+
+    // Get votes for specific neurons across all posts in a thread: the thread's posts × the neurons,
+    // looked up by key (it used to scan every vote in the forum, with a search of the thread's posts
+    // for each, which grows past the query instruction limit as the forum grows)
     public func get_thread_votes_for_neurons(state: ForumState, thread_id: Nat, neuron_ids: [T.NeuronId]) : [T.ThreadVoteResponse] {
-        // First, get all posts in the thread
-        let thread_posts = switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
-            case (?post_ids) Vector.toArray(post_ids);
-            case null [];
-        };
-
-        // Create a map to store votes by post_id
-        let post_votes_map = Map.new<Nat, Buffer.Buffer<T.NeuronVote>>();
-
-        // Convert neuron IDs to their deduplicated indices for efficient lookup
-        let neuron_indices = Buffer.Buffer<Nat32>(neuron_ids.size());
-        for (neuron_id in neuron_ids.vals()) {
-            switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
-                case (?index) neuron_indices.add(index);
-                case null {}; // Neuron not found in dedup state, skip
+        let neurons = known_neuron_indexes(state, neuron_ids);
+        if (neurons.size() == 0) return [];
+        let response = Buffer.Buffer<T.ThreadVoteResponse>(0);
+        switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+            case (?post_ids) for (post_id in Vector.vals(post_ids)) {
+                let votes = neuron_votes_on_post(state, post_id, neurons);
+                if (votes.size() > 0) response.add({ post_id; neuron_votes = votes });
             };
+            case null {};
         };
-
-        // Search through all votes for matching post_id and neuron_id combinations
-        for ((vote_key, vote) in Map.entries(state.votes)) {
-            let (post_id, neuron_index) = vote_key;
-            
-            // Check if this vote is for a post in our thread
-            let is_in_thread = Array.find<Nat>(thread_posts, func(id) = id == post_id) != null;
-            
-            // Check if this vote is from one of our target neurons
-            let is_target_neuron = Array.find<Nat32>(Buffer.toArray(neuron_indices), func(idx) = idx == neuron_index) != null;
-            
-            if (is_in_thread and is_target_neuron) {
-                // Get the original neuron ID from the dedup state
-                let neuron_id : T.NeuronId = switch (Dedup.getBlob(state.neuron_dedup_state, neuron_index)) {
-                    case (?blob) {
-                        { id = blob }
-                    };
-                    case null {
-                        { id = Blob.fromArray([]) }
-                    };
-                };
-
-                let neuron_vote : T.NeuronVote = {
-                    neuron_id = neuron_id;
-                    vote_type = vote.vote_type;
-                    voting_power = vote.voting_power;
-                    created_at = vote.created_at;
-                    updated_at = vote.updated_at;
-                };
-
-                // Add to the post's vote collection
-                switch (Map.get(post_votes_map, Map.nhash, post_id)) {
-                    case (?existing_votes) existing_votes.add(neuron_vote);
-                    case null {
-                        let new_votes = Buffer.Buffer<T.NeuronVote>(1);
-                        new_votes.add(neuron_vote);
-                        ignore Map.put(post_votes_map, Map.nhash, post_id, new_votes);
-                    };
-                };
-            };
-        };
-
-        // Convert the map to the response format
-        let response = Buffer.Buffer<T.ThreadVoteResponse>(Map.size(post_votes_map));
-        for ((post_id, votes_buffer) in Map.entries(post_votes_map)) {
-            response.add({
-                post_id;
-                neuron_votes = Buffer.toArray(votes_buffer);
-            });
-        };
-
         Buffer.toArray(response)
     };
 
-    // Get votes for specific neurons on a single post
+    // Get votes for specific neurons on a single post (by key, as above); an empty answer when none
     public func get_post_votes_for_neurons(state: ForumState, post_id: Nat, neuron_ids: [T.NeuronId]) : ?T.ThreadVoteResponse {
-        // Get all votes for this post - need to filter from all votes
-        let all_votes = Map.entries(state.votes);
-        let post_votes = Buffer.Buffer<T.Vote>(0);
-        
-        for ((vote_key, vote) in all_votes) {
-            if (vote_key.0 == post_id) {
-                post_votes.add(vote);
-            };
-        };
-        
-        let post_votes_array = Buffer.toArray(post_votes);
-
-        // Convert neuron IDs to their deduplicated indices for efficient lookup
-        let neuron_indices = Buffer.Buffer<Nat32>(neuron_ids.size());
-        for (neuron_id in neuron_ids.vals()) {
-            switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
-                case (?index) neuron_indices.add(index);
-                case null {}; // Neuron not found in dedup state, skip
-            };
-        };
-        let neuron_indices_array = Buffer.toArray(neuron_indices);
-
-        // Collect votes from the specified neurons
-        let matching_votes = Buffer.Buffer<T.NeuronVote>(0);
-        
-        for (vote in post_votes_array.vals()) {
-            // Check if this vote is from one of our target neurons
-            for (target_index in neuron_indices_array.vals()) {
-                if (vote.neuron_id == target_index) {
-                    // Reconstruct the neuron_id from the dedup state
-                    let neuron_id = switch (Dedup.getBlob(state.neuron_dedup_state, target_index)) {
-                        case (?blob) {
-                            { id = blob }
-                        };
-                        case null {
-                            // Fallback to empty blob if not found
-                            { id = Blob.fromArray([]) }
-                        };
-                    };
-
-                    let neuron_vote : T.NeuronVote = {
-                        neuron_id = neuron_id;
-                        vote_type = vote.vote_type;
-                        voting_power = vote.voting_power;
-                        created_at = vote.created_at;
-                        updated_at = vote.updated_at;
-                    };
-
-                    matching_votes.add(neuron_vote);
-                };
-            };
-        };
-
-        // Return the response if we found any votes
-        if (matching_votes.size() > 0) {
-            ?{
-                post_id;
-                neuron_votes = Buffer.toArray(matching_votes);
-            }
-        } else {
-            ?{
-                post_id;
-                neuron_votes = [];
-            }
-        }
+        ?{ post_id; neuron_votes = neuron_votes_on_post(state, post_id, known_neuron_indexes(state, neuron_ids)) }
     };
 
     // Poll functions
@@ -1747,6 +1662,10 @@ module {
             case (?power) {
                 if (power < 0) {
                     return #err(#InvalidInput("VP power cannot be negative"));
+                };
+                // NaN fails every comparison; above the cap, voting power ^ vp_power overflows to inf
+                if (not (power <= MAX_VP_POWER)) {
+                    return #err(#InvalidInput("VP power must be a number from 0 to " # Float.toText(MAX_VP_POWER)));
                 };
                 power
             };
@@ -2017,7 +1936,9 @@ module {
                                         } else {
                                             // Calculate base_voting_power^vp_power
                                             let base_float = Float.fromInt(base_voting_power);
-                                            let result_float = Float.pow(base_float, poll.vp_power);
+                                            let raw = Float.pow(base_float, poll.vp_power);
+                                            // polls made before vp_power was capped: never let inf or NaN trap the vote
+                                            let result_float = if (raw != raw) 0.0 else Float.min(raw, 1e300);
                                             let result_int = Float.toInt(result_float);
                                             if (result_int < 0) 0 else Int.abs(result_int)
                                         };
@@ -3376,6 +3297,8 @@ module {
                 if (not (is_admin(state, caller) or is_thread_owner)) {
                     return #err(#Unauthorized("Only admins or thread owners can edit threads"));
                 };
+                // a deleted thread stays as moderators left it; only admins edit it
+                if (thread.deleted and not is_admin(state, caller)) return #err(#NotFound("Thread not found"));
 
                 // Validate input
                 switch (title) {
@@ -3428,6 +3351,8 @@ module {
                 if (not (is_admin(state, caller) or is_post_owner)) {
                     return #err(#Unauthorized("Only admins or post owners can edit posts"));
                 };
+                // a deleted post stays as moderators left it; only admins edit it
+                if (post.deleted and not is_admin(state, caller)) return #err(#NotFound("Post not found"));
 
                 // Validate input
                 switch (title) {
@@ -4076,6 +4001,15 @@ module {
         }
     };
 
+    func feed_topic_deleted(state: ForumState, topic_id: Nat) : Bool = switch (Map.get(state.topics, Map.nhash, topic_id)) {
+        case (?t) t.deleted;
+        case null false;
+    };
+    func feed_thread_hidden(state: ForumState, thread_id: Nat) : Bool = switch (Map.get(state.threads, Map.nhash, thread_id)) {
+        case (?t) t.deleted or feed_topic_deleted(state, t.topic_id);
+        case null false;
+    };
+
     private func build_feed_item_from_thread(state: ForumState, thread: Thread) : ?T.FeedItem {
         let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, thread.created_by)) {
             case (?p) p;
@@ -4362,7 +4296,8 @@ module {
                             // Check if it's a thread
                             switch (Map.get(state.threads, Map.nhash, current_id)) {
                                 case (?thread) {
-                                    if (not thread.deleted) {
+                                    // not deleted, nor in a deleted topic
+                                    if (not thread.deleted and not feed_topic_deleted(state, thread.topic_id)) {
                                         feed_item := build_feed_item_from_thread(state, thread);
                                     };
                                 };
@@ -4370,7 +4305,8 @@ module {
                                     // Check if it's a post
                                     switch (Map.get(state.posts, Map.nhash, current_id)) {
                                         case (?post) {
-                                            if (not post.deleted) {
+                                            // not deleted, nor in a deleted thread (whose title would show) or topic
+                                            if (not post.deleted and not feed_thread_hidden(state, post.thread_id)) {
                                                 feed_item := build_feed_item_from_post(state, post);
                                             };
                                         };
@@ -4558,6 +4494,9 @@ module {
     };
 
     public func set_last_read_post(state: ForumState, caller: Principal, thread_id: Nat, last_read_post_id: Nat) : T.SetLastReadPostResponse {
+        // read marks are per signed-in member and per existing thread (nobody grows the state with marks on nothing)
+        if (Principal.isAnonymous(caller)) return { success = false; message = "Log in to keep read marks" };
+        if (not Map.has(state.threads, Map.nhash, thread_id)) return { success = false; message = "Thread not found" };
         let key = make_user_thread_key(caller, thread_id);
         let current_time = Time.now();
         
