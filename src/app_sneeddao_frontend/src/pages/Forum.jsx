@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useNavigationType } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -69,6 +69,12 @@ function Forum() {
     const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const navigate = useNavigate();
+    // Opening the forum starts at the top (the router keeps the previous page's scroll position);
+    // back and forward (POP) keep the browser's own restoration
+    const navigationType = useNavigationType();
+    useEffect(() => {
+        if (navigationType !== 'POP') window.scrollTo(0, 0);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
     const [forum, setForum] = useState(null);
     const [topics, setTopics] = useState([]);
     const [topicHierarchy, setTopicHierarchy] = useState([]);

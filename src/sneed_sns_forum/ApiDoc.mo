@@ -58,7 +58,7 @@ The discussion canister behind the forum on Sneed Hub, also used by other DAOs (
 - Ordinary threads, posts, votes, reactions and polls are not logged (public already). Old blocks move to archives co-controlled by the Sneed SNS root.
 
 ## Start with these methods
-`get_forum_by_sns_root`, `get_topics_by_forum`, `get_threads_by_activity`, `get_posts_by_thread`, `get_text_limits`, `create_thread`, `create_post`, `vote_on_post`, `create_tip`, `get_tips_by_post`, `get_feed`.
+`get_forum_by_sns_root`, `get_topics_by_forum`, `get_threads_by_activity`, `get_threads_by_hot`, `get_posts_by_thread`, `get_text_limits`, `create_thread`, `create_post`, `vote_on_post`, `create_tip`, `get_tips_by_post`, `get_feed`.
 
 ## Full reference
 - https://app.sneeddao.com/api-docs/sneed_sns_forum.md

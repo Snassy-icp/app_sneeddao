@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { orderTopicThreads } from '../utils/forumModel';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams, useNavigationType } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -80,9 +80,18 @@ function Topic() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { identity } = useAuth();
     const { theme } = useTheme();
+    // explicit colours: a select's options do not follow its own in dark mode
+    const optionStyle = { background: theme.colors.secondaryBg, color: theme.colors.primaryText };
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const navigate = useNavigate();
+    // Opening a topic starts at the top, by the thread list: the router keeps the previous page's
+    // scroll position, which left readers coming from a scrolled forum or feed page down by the
+    // create-thread form. Back and forward (POP) keep the browser's own restoration.
+    const navigationType = useNavigationType();
+    useEffect(() => {
+        if (navigationType !== 'POP') window.scrollTo(0, 0);
+    }, [topicId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Get SNS from URL params if provided, otherwise use selected SNS
     const snsParam = searchParams.get('sns');
@@ -117,12 +126,13 @@ function Topic() {
             return 10;
         }
     });
+    // Hot by default (a new key: the old 'topicSortBy' held 'newest' for everyone, saved on every visit)
     const [sortBy, setSortBy] = useState(() => {
         try {
-            const saved = localStorage.getItem('topicSortBy');
-            return saved || 'newest';
+            const saved = localStorage.getItem('topicThreadSort');
+            return saved || 'hot';
         } catch (e) {
-            return 'newest';
+            return 'hot';
         }
     });
     const [createThreadTitle, setCreateThreadTitle] = useState('');
@@ -425,12 +435,31 @@ function Topic() {
             // The topic's threads, most recently active first, with the caller's unread counts
             // (get_threads_paginated, called here before, never existed); the plain listing (no
             // activity order, no unread counts) only when that fails
+            // Hot: the forum's hot order, hottest first, read in pages of 100 (the activity order
+            // when the forum cannot give it, e.g. before its upgrade)
             let byActivity;
-            try {
-                byActivity = (await actor.get_threads_by_activity_with_unread_counts(topicIdNum, [], 100000, true)).threads;
-            } catch (activityError) {
-                console.warn('Activity listing failed, falling back:', activityError);
-                byActivity = await actor.get_threads_by_topic(topicIdNum);
+            if (sortBy === 'hot') {
+                try {
+                    const hot = [];
+                    let start = [];
+                    for (;;) {
+                        const page = await actor.get_threads_by_hot(topicIdNum, start, 100, true);
+                        hot.push(...page.threads);
+                        if (!page.has_more || page.next_start_from.length === 0) break;
+                        start = page.next_start_from;
+                    }
+                    byActivity = hot;
+                } catch (hotError) {
+                    console.warn('Hot listing failed, showing recent activity:', hotError);
+                }
+            }
+            if (!byActivity) {
+                try {
+                    byActivity = (await actor.get_threads_by_activity_with_unread_counts(topicIdNum, [], 100000, true)).threads;
+                } catch (activityError) {
+                    console.warn('Activity listing failed, falling back:', activityError);
+                    byActivity = await actor.get_threads_by_topic(topicIdNum);
+                }
             }
             const activeThreads = orderTopicThreads(byActivity, sortBy);
             
@@ -471,7 +500,7 @@ function Topic() {
 
     useEffect(() => {
         try {
-            localStorage.setItem('topicSortBy', sortBy);
+            localStorage.setItem('topicThreadSort', sortBy);
         } catch (e) {}
     }, [sortBy]);
 
@@ -1133,10 +1162,13 @@ function Topic() {
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        <option value="newest">Newest</option>
-                                        <option value="oldest">Oldest</option>
-                                        <option value="activity-newest">Recent Activity</option>
-                                        <option value="activity-oldest">Oldest Activity</option>
+                                        <option value="hot" style={optionStyle}>Hot</option>
+                                        <optgroup label="Advanced" style={optionStyle}>
+                                            <option value="activity-newest" style={optionStyle}>Recent Activity</option>
+                                            <option value="activity-oldest" style={optionStyle}>Oldest Activity</option>
+                                            <option value="newest" style={optionStyle}>Newest</option>
+                                            <option value="oldest" style={optionStyle}>Oldest</option>
+                                        </optgroup>
                                     </select>
                                 </div>
                                 

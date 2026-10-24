@@ -528,6 +528,13 @@ persistent actor SneedSNSForum {
         Lib.get_threads_by_activity_with_unread_counts(state, topic_id, start_from, length, reverse, is_admin, caller)
     };
 
+    /// A topic's threads in "Hot" order (Lib.get_threads_by_hot: votes, replies and recent activity;
+    /// `reverse` = hottest first), with the caller's unread counts; at most 100 a page.
+    public query ({ caller }) func get_threads_by_hot(topic_id: Nat, start_from: ?Nat, length: Nat, reverse: Bool) : async T.GetThreadsByActivityResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_threads_by_hot(state, topic_id, start_from, length, reverse, is_admin, caller, threadNet, Time.now())
+    };
+
     public query ({ caller }) func get_threads_by_topic_with_unread_counts(topic_id: Nat) : async [T.ThreadResponse] {
         Lib.get_threads_by_topic_with_unread_counts(state, topic_id, caller)
     };
@@ -1669,6 +1676,9 @@ persistent actor SneedSNSForum {
 
     func sub(a : Nat, b : Nat) : Nat = if (a >= b) a - b else 0;
 
+    /// A thread's own net vote tally (up minus down voting power), for the hot order.
+    func threadNet(id : Nat) : Int { let s = threadScore(id); s.upvote_score - s.downvote_score };
+
     /// Takes a vote out of a score.
     func withoutVote(s : T.ThreadScore, v : T.ThreadVote) : T.ThreadScore = switch (v.vote_type) {
         case (#upvote) ({ s with upvote_score = sub(s.upvote_score, v.voting_power) });
@@ -2119,6 +2129,7 @@ persistent actor SneedSNSForum {
         #get_thread_votes_for_neurons : Any;
         #get_threads_by_activity : Any;
         #get_threads_by_activity_with_unread_counts : Any;
+        #get_threads_by_hot : Any;
         #get_threads_by_topic : Any;
         #get_threads_by_topic_admin : Any;
         #get_threads_by_topic_with_unread_counts : Any;
@@ -2242,6 +2253,7 @@ persistent actor SneedSNSForum {
                 or #get_thread_votes_for_neurons _
                 or #get_threads_by_activity _
                 or #get_threads_by_activity_with_unread_counts _
+                or #get_threads_by_hot _
                 or #get_threads_by_topic _
                 or #get_threads_by_topic_admin _
                 or #get_threads_by_topic_with_unread_counts _

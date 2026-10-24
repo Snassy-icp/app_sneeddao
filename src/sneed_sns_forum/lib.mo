@@ -4514,6 +4514,112 @@ module {
         }
     };
 
+    // ---- "Hot" order (get_threads_by_hot) ----
+    //
+    // score = (thread votes + first post's votes + replies / 2 + 1) / (hours since last activity + 2)^1.5
+    //
+    // Votes are the net (up minus down) voting-power tallies the forum keeps, in the SNS's e8s units.
+    // Raw, one vote of a 1,000-token neuron would be 1e11 and bury the +1 and the replies term, so
+    // each net tally counts as sign * log10(1 + |net| / 1e8): a 1-token vote adds 0.3, 10 tokens 1,
+    // 100 tokens 2, 10,000 tokens 4. A typical vote is then worth a few replies, a whale's not a
+    // hundred times more, and downvotes push a thread down the same way. Last activity is the newest
+    // live post's created_at, or the thread's own when it has no replies. Everything is computed at
+    // read time from what is stored; nothing new is kept.
+
+    public let HOT_PAGE_MAX : Nat = 100;
+
+    func hot_votes(net : Int) : Float {
+        if (net == 0) return 0.0;
+        let tokens = Float.fromInt(Int.abs(net)) / 100_000_000.0;
+        let v = Float.log(1.0 + tokens) / Float.log(10.0);
+        if (net < 0) -v else v
+    };
+
+    public func hot_score(thread_net : Int, first_post_net : Int, replies : Nat, hours_since_activity : Float) : Float {
+        let h = if (hours_since_activity < 0.0) 0.0 else hours_since_activity;
+        (hot_votes(thread_net) + hot_votes(first_post_net) + Float.fromInt(replies) / 2.0 + 1.0) / Float.pow(h + 2.0, 1.5)
+    };
+
+    /// A topic's threads by hot score (`reverse`: hottest first), with the caller's unread counts, paged
+    /// like get_threads_by_activity (start_from is an index into the order; at most HOT_PAGE_MAX a page).
+    /// Ties go to the more recent activity, then the newer thread. `thread_net` is a thread's own net
+    /// vote tally (kept by the actor).
+    public func get_threads_by_hot(state: ForumState, topic_id: Nat, start_from: ?Nat, length: Nat, reverse: Bool, show_deleted: Bool, caller: Principal, thread_net: Nat -> Int, now: Int) : T.GetThreadsByActivityResponse {
+        let scored = Buffer.Buffer<(T.ThreadResponse, Float, Int)>(0);
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    switch (get_thread_with_unread_count(state, thread_id, caller)) {
+                        case (?thread_response) {
+                            if (show_deleted or not thread_response.deleted) {
+                                var replies = 0;
+                                var last_activity = thread_response.created_at;
+                                var first_post : ?Post = null;
+                                switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+                                    case (?post_ids) {
+                                        for (post_id in Vector.vals(post_ids)) {
+                                            switch (Map.get(state.posts, Map.nhash, post_id)) {
+                                                case (?post) {
+                                                    if (not post.deleted) {
+                                                        replies += 1;
+                                                        if (post.created_at > last_activity) last_activity := post.created_at;
+                                                        if (post.reply_to_post_id == null) {
+                                                            switch (first_post) {
+                                                                case (?f) if (post.id < f.id) first_post := ?post;
+                                                                case null first_post := ?post;
+                                                            };
+                                                        };
+                                                    };
+                                                };
+                                                case null {};
+                                            };
+                                        };
+                                    };
+                                    case null {};
+                                };
+                                let first_post_net : Int = switch (first_post) {
+                                    case (?p) p.upvote_score - p.downvote_score;
+                                    case null 0;
+                                };
+                                let hours = Float.fromInt(now - last_activity) / 3_600_000_000_000.0;
+                                scored.add((thread_response, hot_score(thread_net(thread_id), first_post_net, replies, hours), last_activity));
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+
+        let sorted = Array.sort(Buffer.toArray(scored), func(a : (T.ThreadResponse, Float, Int), b : (T.ThreadResponse, Float, Int)) : Order.Order {
+            let c = switch (Float.compare(a.1, b.1)) {
+                case (#equal) switch (Int.compare(a.2, b.2)) {
+                    case (#equal) Nat.compare(a.0.id, b.0.id);
+                    case o o;
+                };
+                case o o;
+            };
+            if (not reverse) c else switch (c) { case (#less) #greater; case (#greater) #less; case (#equal) #equal } // reverse: hottest first
+        });
+
+        let total_count = sorted.size();
+        let start_index = switch (start_from) { case (?from) from; case null 0 };
+        let end_index = Nat.min(start_index + Nat.min(length, HOT_PAGE_MAX), total_count);
+        let has_more = end_index < total_count;
+        let result_threads = Buffer.Buffer<T.ThreadResponse>(0);
+        var i = start_index;
+        while (i < end_index) {
+            result_threads.add(sorted[i].0);
+            i += 1;
+        };
+        {
+            threads = Buffer.toArray(result_threads);
+            has_more;
+            next_start_from = if (has_more) ?end_index else null;
+        }
+    };
+
     private func get_highest_post_id_in_thread(state: ForumState, thread_id: Nat) : Nat {
         switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
             case (?post_ids) {
