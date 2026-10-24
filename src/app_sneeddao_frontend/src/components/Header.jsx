@@ -39,6 +39,10 @@ import UpgradeBotsDialog from './UpgradeBotsDialog';
 import BotHealthDialog from './BotHealthDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
 
+// SNS root -> its nervous system parameters, for the VP bar: every page renders its own Header, so
+// without this the bar went away on each navigation until they were fetched again
+const nervousSystemParametersCache = new Map();
+
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
     const navigate = useNavigate();
@@ -165,7 +169,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
-    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(() => nervousSystemParametersCache.get(selectedSnsRoot) ?? null);
     const [isVpBarVisible, setIsVpBarVisible] = useState(true);
     // Phones and the installed app: the menu row also slides away on scroll, and the collapse pill is bigger
     const compactQuery = () => {
@@ -419,6 +423,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 });
                 
                 const params = await snsGovActor.get_nervous_system_parameters(null);
+                nervousSystemParametersCache.set(selectedSnsRoot, params);
                 setNervousSystemParameters(params);
             } catch (error) {
                 console.error('Error fetching nervous system parameters:', error);

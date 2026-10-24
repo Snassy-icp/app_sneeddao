@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { fetchVotableProposalsCount } from '../utils/VotableProposalsUtils';
+import { useStickyCount } from './useStickyCount';
 
 /**
  * Hook for votable proposals notification count.
@@ -13,7 +14,7 @@ export function useVotableProposalsNotifications() {
     const walletContext = useWalletOptional();
     const neuronCache = walletContext?.neuronCache;
     
-    const [votableCount, setVotableCount] = useState(0);
+    const [votableCount, setVotableCount] = useStickyCount('votable', identity?.getPrincipal().toText() ?? null);
     const [loading, setLoading] = useState(false);
 
     const checkVotableProposals = useCallback(async () => {
@@ -32,7 +33,7 @@ export function useVotableProposalsNotifications() {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, neuronCache]);
+    }, [isAuthenticated, identity, neuronCache, setVotableCount]);
 
     useEffect(() => {
         checkVotableProposals();
