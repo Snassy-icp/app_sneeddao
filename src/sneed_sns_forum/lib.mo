@@ -1369,7 +1369,8 @@ module {
         current_time: Int
     ) : Result<(), ForumError> {
         // Check if post exists (votes on deleted posts, or posts of deleted threads, are refused;
-        // retracting stays possible)
+        // retracting stays possible). Votes and retractions leave the post's updated_at as it
+        // is: they are not edits (clients show updated_at > created_at as "edited").
         let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?p) p;
             case null return #err(#NotFound("Post not found"));
@@ -1411,7 +1412,6 @@ module {
                         {
                             post with
                             upvote_score = new_upvote_score;
-                            updated_at = current_time;
                         }
                     };
                     case (#downvote, #downvote) {
@@ -1424,7 +1424,6 @@ module {
                         {
                             post with
                             downvote_score = new_downvote_score;
-                            updated_at = current_time;
                         }
                     };
                     case (#upvote, #downvote) {
@@ -1438,7 +1437,6 @@ module {
                             post with
                             upvote_score = new_upvote_score;
                             downvote_score = post.downvote_score + voting_power;
-                            updated_at = current_time;
                         }
                     };
                     case (#downvote, #upvote) {
@@ -1452,7 +1450,6 @@ module {
                             post with
                             downvote_score = new_downvote_score;
                             upvote_score = post.upvote_score + voting_power;
-                            updated_at = current_time;
                         }
                     };
                 };
@@ -1477,14 +1474,12 @@ module {
                         {
                             post with
                             upvote_score = post.upvote_score + voting_power;
-                            updated_at = current_time;
                         }
                     };
                     case (#downvote) {
                         {
                             post with
                             downvote_score = post.downvote_score + voting_power;
-                            updated_at = current_time;
                         }
                     };
                 };
@@ -1526,7 +1521,6 @@ module {
                     upvote_score = if (post.upvote_score >= existing_vote.voting_power) {
                         post.upvote_score - existing_vote.voting_power
                     } else { 0 };
-                    updated_at = Time.now();
                 }
             };
             case (#downvote) {
@@ -1535,7 +1529,6 @@ module {
                     downvote_score = if (post.downvote_score >= existing_vote.voting_power) {
                         post.downvote_score - existing_vote.voting_power
                     } else { 0 };
-                    updated_at = Time.now();
                 }
             };
         };
@@ -1909,6 +1902,17 @@ module {
                     };
                     
                     let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
+
+                    // Every check runs after the last await, on the poll as it is now, before any vote
+                    // is written: the poll may have ended (or gone) while governance answered.
+                    let poll = switch (Map.get(state.polls, Map.nhash, poll_id)) {
+                        case (?p) p;
+                        case null return (#err(#NotFound("Poll not found")), updated_cache);
+                    };
+                    if (Time.now() >= poll.end_timestamp) {
+                        return (#err(#InvalidInput("Poll has ended")), updated_cache);
+                    };
+                    let votes = Buffer.Buffer<(NeuronId, Nat)>(0);
                     
                     // Filter reachable neurons to only include the specified ones
                     let target_neuron_ids = Array.map<T.NeuronId, Blob>(neuron_ids, func(n) = n.id);
@@ -1943,16 +1947,37 @@ module {
                                             if (result_int < 0) 0 else Int.abs(result_int)
                                         };
                                         
-                                        switch (vote_on_poll(state, caller, poll_id, option_id, neuron_id, adjusted_voting_power, current_time, poll)) {
-                                            case (#err(error)) {
-                                                return (#err(error), updated_cache);
-                                            };
-                                            case (#ok()) { };
-                                        };
+                                        votes.add((neuron_id, adjusted_voting_power));
                                     };
                                 };
                             };
                             case null { };
+                        };
+                    };
+
+                    // A neuron that already voted on a poll without vote changes is skipped; the
+                    // others vote. The call fails only when every neuron that could vote was skipped.
+                    let writes = if (poll.allow_vote_changes) votes else {
+                        let fresh = Buffer.Buffer<(NeuronId, Nat)>(votes.size());
+                        for ((neuron_id, voting_power) in votes.vals()) {
+                            let voted = switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
+                                case (?neuron_index) Map.has(state.poll_votes, poll_vote_key_hash_utils, (poll_id, neuron_index));
+                                case null false;
+                            };
+                            if (not voted) fresh.add((neuron_id, voting_power));
+                        };
+                        if (votes.size() > 0 and fresh.size() == 0) {
+                            return (#err(#InvalidInput("Vote changes are not allowed for this poll")), updated_cache);
+                        };
+                        fresh
+                    };
+
+                    for ((neuron_id, voting_power) in writes.vals()) {
+                        switch (vote_on_poll(state, caller, poll_id, option_id, neuron_id, voting_power, current_time, poll)) {
+                            case (#err(error)) {
+                                return (#err(error), updated_cache);
+                            };
+                            case (#ok()) { };
                         };
                     };
                     
@@ -3504,15 +3529,25 @@ module {
                     case (?name) name;
                     case null "SNS " # Principal.toText(sns_root_canister_id);
                 };
+                // another call may have made the forum while the name was read
+                var made_meanwhile : ?Nat = null;
+                for ((forum_id, forum) in Map.entries(state.forums)) {
+                    if (forum.sns_root_canister_id == ?sns_root_canister_id) made_meanwhile := ?forum_id;
+                };
                 let forum_input : T.CreateForumInput = {
                     title = sns_name # " Forum";
                     description = "Discussion forum for " # sns_name # " governance and community topics";
                     sns_root_canister_id = ?sns_root_canister_id;
                 };
                 
-                switch (create_forum_internal(state, caller, forum_input)) {
-                    case (#ok(new_forum_id)) new_forum_id;
-                    case (#err(error)) return (#err(error), updated_cache);
+                switch (made_meanwhile) {
+                    case (?fid) fid;
+                    case null {
+                        switch (create_forum_internal(state, caller, forum_input)) {
+                            case (#ok(new_forum_id)) new_forum_id;
+                            case (#err(error)) return (#err(error), updated_cache);
+                        }
+                    };
                 }
             };
         };
@@ -3748,6 +3783,12 @@ module {
         switch (proposals_topic_result) {
             case (#err(error)) return (#err(error), updated_cache);
             case (#ok(_)) {};
+        };
+
+        // Another call may have made this proposal's thread while the structure was set up
+        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
+            case (?_) return (#err(#AlreadyExists("Thread for this proposal already exists")), updated_cache);
+            case null {};
         };
 
         // Now find the forum and topic again (they should exist now)

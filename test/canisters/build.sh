@@ -277,6 +277,18 @@ git archive "$FORUM_P469_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence --stable-types "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_p469.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_sns_forum_p469.wasm"
+# sneed_sns_forum before the second bug batch (partial multi-neuron poll votes, auto-setup races,
+# votes rewriting updated_at, the poll recount on every upgrade), for the fail-before runs of
+# forum-bugbatch.test.js (FORUM_WASM=sneed_sns_forum_prebatch); its .most is what
+# `moc --stable-compatible` checks the current build against
+FORUM_PREBATCH_COMMIT=f5620213
+echo "== sneed_sns_forum at $FORUM_PREBATCH_COMMIT (moc, EOP, sneed_sns_forum_prebatch)"
+PREV_SRC="$(mktemp -d)"
+git archive "$FORUM_PREBATCH_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence --stable-types "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_prebatch.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_sns_forum_prebatch.wasm"
 # sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
 # upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
 MON_STAGING_COMMIT=1bbee49a

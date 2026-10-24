@@ -148,6 +148,10 @@ persistent actor SneedSNSForum {
     // blocks being checked right now: reserved before the ledger call, so two calls interleaving
     // over the await cannot both accept the same block
     transient let pending_tip_blocks = Map.new<Text, ()>();
+    // SNS forum setups and auto-setup proposal threads being made right now: reserved before the
+    // first await, so a second call for the same SNS root (create_sns_forum_setup) or proposal
+    // (create_proposal_thread_with_auto_setup) while the first waits is refused, not duplicated
+    transient let pending_sns_setups = Map.new<Text, ()>();
     
     // Premium configuration and cache
     var stable_premium_config : T.PremiumConfig = {
@@ -164,6 +168,10 @@ persistent actor SneedSNSForum {
     let stable_user_threads = Map.new<Nat32, Vector.Vector<Nat>>();
     let stable_user_reply_inbox = Map.new<Nat32, Vector.Vector<Nat>>();
     var stable_user_indexes_built : Bool = false;
+    // Poll counts recounted from the stored votes (Lib.recount_poll_votes): once, on the first
+    // upgrade to this build. Builds since f9df91bf count every vote, so the counts stay right after
+    // that, and a recount on every upgrade would only walk all poll votes again.
+    var stable_poll_votes_recounted : Bool = false;
 
     // Rate limits (src/RateLimit.mo, rules in src/RateRules.mo) per caller and action, for the methods
     // anyone signed in can call to write: admins set them (admin_set_rate_limit), only the ones changed
@@ -1289,7 +1297,16 @@ persistent actor SneedSNSForum {
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create proposal threads"));
         };
-        let (result, updated_cache) = await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache);
+        let key = "thread:" # Principal.toText(input.sns_root_canister_id) # ":" # Nat.toText(input.proposal_id);
+        if (Map.has(pending_sns_setups, Map.thash, key)) {
+            return #err(#AlreadyExists("The thread for this proposal is being created by another call"));
+        };
+        Map.set(pending_sns_setups, Map.thash, key, ());
+        let (result, updated_cache) = try {
+            await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache)
+        } finally {
+            Map.delete(pending_sns_setups, Map.thash, key);
+        };
         sns_cache := updated_cache;
         logProposalThread(caller, input, result)
     };
@@ -1300,8 +1317,17 @@ persistent actor SneedSNSForum {
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create an SNS forum setup"));
         };
+        let key = "setup:" # Principal.toText(sns_root_canister_id);
+        if (Map.has(pending_sns_setups, Map.thash, key)) {
+            return #err(#AlreadyExists("The forum of this SNS is being set up by another call"));
+        };
+        Map.set(pending_sns_setups, Map.thash, key, ());
         let current_time = Time.now();
-        let (result, updated_cache) = await Lib.ensure_sns_proposal_structure(state, caller, sns_root_canister_id, sns_cache, current_time);
+        let (result, updated_cache) = try {
+            await Lib.ensure_sns_proposal_structure(state, caller, sns_root_canister_id, sns_cache, current_time)
+        } finally {
+            Map.delete(pending_sns_setups, Map.thash, key);
+        };
         sns_cache := updated_cache;
         switch (result) {
             case (#ok(proposals_topic_id)) #ok(proposals_topic_id);
@@ -1496,8 +1522,11 @@ persistent actor SneedSNSForum {
         Icrc3Log.certify(icrc3);
         ensure_icrc3_timer<system>();
         // State is already initialized with stable values.
-        // Put right the poll counts of builds before f9df91bf (first votes went uncounted).
-        ignore Lib.recount_poll_votes(state);
+        // Put right the poll counts of builds before f9df91bf (first votes went uncounted), once.
+        if (not stable_poll_votes_recounted) {
+            ignore Lib.recount_poll_votes(state);
+            stable_poll_votes_recounted := true;
+        };
         // Tips recorded before the forum checked them keep their blocks: the first tip to name a
         // (ledger, block) owns it, so no later tip can reuse that transfer.
         if (not stable_tip_blocks_backfilled) {
