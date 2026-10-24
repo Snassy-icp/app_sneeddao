@@ -16,8 +16,10 @@
 //   8. orderTopicThreads: the topic page sorted "by activity" on a field threads do not have
 //      (last_activity), so both activity sorts were the creation-time sorts (and it asked for a
 //      method that does not exist, get_threads_paginated, so unread markers never showed)
+//   9. predictThreadVote: a vote on a thread showed nothing until the forum answered (post votes
+//      update at once)
 import { describe, it, expect } from 'vitest';
-import { scoreLabel, winningOptionIds, threadDisplayTitle, planReadTracking, createTipArgs, tipExceptionMessage, tipDecimals, orderTopicThreads } from '../../../src/app_sneeddao_frontend/src/utils/forumModel.js';
+import { scoreLabel, winningOptionIds, threadDisplayTitle, planReadTracking, createTipArgs, tipExceptionMessage, tipDecimals, orderTopicThreads, predictThreadVote } from '../../../src/app_sneeddao_frontend/src/utils/forumModel.js';
 import { isSingleEmoji, toggleEmoji, applyReactionChange, COMMON_EMOJIS, searchEmojis } from '../../../src/app_sneeddao_frontend/src/utils/reactionsModel.js';
 
 const E8 = 100_000_000;
@@ -124,4 +126,23 @@ describe('reactions model (reaction bar)', () => {
     expect(searchEmojis('THUMB').map((e) => e.emoji)).toContain('👍');
     expect(searchEmojis('').length).toBe(COMMON_EMOJIS.length);
   });
+});
+
+describe('predictThreadVote', () => {
+    const s = (up, down) => ({ up: BigInt(up), down: BigInt(down) });
+    it('adds a new vote to its side at once', () => {
+        expect(predictThreadVote(s(100, 0), null, 'up', 50)).toEqual({ score: s(150, 0), myVote: 'up' });
+        expect(predictThreadVote(s(100, 0), null, 'down', 50)).toEqual({ score: s(100, 50), myVote: 'down' });
+    });
+    it('pressing my current vote retracts it', () => {
+        expect(predictThreadVote(s(150, 0), 'up', 'up', 50)).toEqual({ score: s(100, 0), myVote: null });
+        expect(predictThreadVote(s(0, 30), 'down', 'down', 50)).toEqual({ score: s(0, 0), myVote: null });
+    });
+    it('switching sides moves the voting power', () => {
+        expect(predictThreadVote(s(150, 10), 'up', 'down', 50)).toEqual({ score: s(100, 60), myVote: 'down' });
+    });
+    it('keeps big e8s amounts exact and handles no voting power', () => {
+        expect(predictThreadVote(s(2n ** 60n, 0), null, 'up', 2 ** 40)).toEqual({ score: { up: 2n ** 60n + 2n ** 40n, down: 0n }, myVote: 'up' });
+        expect(predictThreadVote(s(5, 5), null, 'up', NaN)).toEqual({ score: s(5, 5), myVote: 'up' });
+    });
 });
