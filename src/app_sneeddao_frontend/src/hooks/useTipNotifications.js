@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
+import { useStickyCount } from './useStickyCount';
 import { useForum } from '../contexts/ForumContext';
 import { 
     getRecentTipsReceived, 
@@ -21,7 +22,7 @@ export function useTipNotifications() {
     const { isAuthenticated, identity } = useAuth();
     const { createNotificationForumActor } = useForum();
     
-    const [newTipCount, setNewTipCount] = useState(0);
+    const [newTipCount, setNewTipCount] = useStickyCount('tips', identity?.getPrincipal().toText() ?? null);
     const [newTips, setNewTips] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -63,7 +64,7 @@ export function useTipNotifications() {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createNotificationForumActor]);
+    }, [isAuthenticated, identity, createNotificationForumActor, setNewTipCount]);
 
     const markAsViewed = useCallback(async () => {
         if (!isAuthenticated || !identity || newTipCount === 0) {
@@ -87,7 +88,7 @@ export function useTipNotifications() {
             console.error('Error marking tips as viewed:', err);
             setError(err.message);
         }
-    }, [isAuthenticated, identity, createNotificationForumActor, newTipCount]);
+    }, [isAuthenticated, identity, createNotificationForumActor, newTipCount, setNewTipCount]);
 
     const refreshNotifications = useCallback(() => {
         checkForNewTips();

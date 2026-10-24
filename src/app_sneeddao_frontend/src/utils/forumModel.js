@@ -49,6 +49,15 @@ export function planReadTracking({ threadId, posts, me, serverLastRead, stashedF
     return { stash, write: highest > last ? highest : null };
 }
 
+/// Whether a post shows as new since my last visit: above the stashed read mark and present when
+/// the thread was loaded (stash.highest), and never one of my own (a thread with no posts when I
+/// came stashes its marks only after my first post, which then showed as new to me).
+export function isPostNew({ post, me, lastRead, highest }) {
+    if (me != null && post.created_by != null && String(post.created_by) === String(me)) return false;
+    const id = Number(post.id);
+    return id > (Number(lastRead) || 0) && id <= (Number(highest) || 0);
+}
+
 /// The arguments of create_tip (to, post id, ledger, amount, opt block index).
 export function createTipArgs({ to, postId, ledger, amount, blockIndex }) {
     // BigInt all the way (Number loses precision above 2^53), and block 0 is a block

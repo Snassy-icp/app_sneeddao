@@ -8,7 +8,7 @@
 // collections when they are shown. Until it is known — or when there is none, or the image will not
 // load — a fallback of the same size shows (the principal's colour with the name's initial, a user
 // icon, or a cube for a canister), so nothing moves when the picture arrives.
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { Principal } from '@dfinity/principal';
 import { FaCheck, FaCube, FaUser } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
@@ -33,13 +33,18 @@ const toPrincipal = (p) => {
 /// A picture over a same-size fallback: the fallback is always laid out, the picture fades in on
 /// top once it loads and disappears if it fails.
 function Picture({ src, radius, fit = 'cover' }) {
-    const [state, setState] = useState('loading'); // loading | ok | broken
-    useEffect(() => { setState('loading'); }, [src]);
-    if (!src || state === 'broken') return null;
+    // the src that loaded / failed, so a new src starts hidden without an effect: an effect that reset
+    // the state ran after a cached picture's load event and hid it for good (a post's avatar after
+    // the post remounted under its real id)
+    const [loaded, setLoaded] = useState(null);
+    const [broken, setBroken] = useState(null);
+    // a cached picture can also finish before React listens to it, and its load event is lost
+    const ref = useCallback((img) => { if (img && img.complete && img.naturalWidth > 0) setLoaded(src); }, [src]);
+    if (!src || broken === src) return null;
     return (
-        <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false}
-            onLoad={() => setState('ok')} onError={() => setState('broken')}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: fit, borderRadius: radius, opacity: state === 'ok' ? 1 : 0, transition: 'opacity 0.18s ease' }} />
+        <img ref={ref} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" draggable={false}
+            onLoad={() => setLoaded(src)} onError={() => setBroken(src)}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: fit, borderRadius: radius, opacity: loaded === src ? 1 : 0, transition: 'opacity 0.18s ease' }} />
     );
 }
 

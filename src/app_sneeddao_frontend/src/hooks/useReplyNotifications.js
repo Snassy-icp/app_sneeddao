@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
+import { useStickyCount } from './useStickyCount';
 import { useForum } from '../contexts/ForumContext';
 import { 
     getRecentRepliesCount,
@@ -19,7 +20,7 @@ export function useReplyNotifications() {
     const { isAuthenticated, identity } = useAuth();
     const { createNotificationForumActor } = useForum();
     
-    const [newReplyCount, setNewReplyCount] = useState(0);
+    const [newReplyCount, setNewReplyCount] = useStickyCount('replies', identity?.getPrincipal().toText() ?? null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [lastChecked, setLastChecked] = useState(null);
@@ -56,7 +57,7 @@ export function useReplyNotifications() {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createNotificationForumActor]);
+    }, [isAuthenticated, identity, createNotificationForumActor, setNewReplyCount]);
 
     const markAsViewed = useCallback(async () => {
         if (!isAuthenticated || !identity || newReplyCount === 0) {
@@ -79,7 +80,7 @@ export function useReplyNotifications() {
             console.error('Error marking replies as viewed:', err);
             setError(err.message);
         }
-    }, [isAuthenticated, identity, createNotificationForumActor, newReplyCount]);
+    }, [isAuthenticated, identity, createNotificationForumActor, newReplyCount, setNewReplyCount]);
 
     const refreshNotifications = useCallback(() => {
         checkForNewReplies();
