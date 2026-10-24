@@ -144,9 +144,9 @@ describe('native → ckBTC: terms and the minimum', () => {
     });
     it('the send form enforces the guard before review and again right before signing', () => {
         const send = src('components/btc/BtcSend.jsx');
-        expect(send).toMatch(/const canReview = plan\?\.ok && !storeBlocked && step === 'edit' && \(!guard \|\| guard\.ok\);/);
+        expect(send).toMatch(/const canReview = plan\?\.ok && !storeBlocked && step === 'edit' && \(!guard \|\| guard\.ok\)( && \(!target \|\| target\.ok\))?;/); // A4: a sweep target must be valid too
         expect(send).toMatch(/if \(move && !depositGuard\(\{ amount: plan\.amount, terms: move\.terms \}\)\.ok\) throw/);
-        expect(send).toMatch(/kind: move \? 'toCkbtc' : 'send'/);
+        expect(send).toMatch(/kind: move \? 'toCkbtc' : (sweep \? 'sweep' : )?'send'/); // A4: or a sweep
     });
 });
 

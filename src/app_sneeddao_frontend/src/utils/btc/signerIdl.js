@@ -5,6 +5,10 @@
 //   btc_caller_address : (GetAddressRequest, opt PaymentType) -> (Result)
 //   btc_caller_send    : (SendBtcRequest, opt PaymentType) -> (Result_2)
 //   btc_caller_sign    : (SendBtcRequest, opt PaymentType) -> (Result_3)
+//   btc_caller_balance : (GetBalanceRequest, opt PaymentType) -> (Result_1)   // deprecated, still served
+//     (checked against the deployed canister's candid:service metadata, 2026-10-24:
+//      GetBalanceRequest { network; address_type; min_confirmations : opt nat32 },
+//      Result_1 = variant { Ok : record { balance : nat64 }; Err : GetAddressError })
 // Custody-relevant (spec/sneed_wallet.md §4).
 export const signerIdl = ({ IDL }) => {
     const Network = IDL.Variant({ mainnet: IDL.Null, regtest: IDL.Null, testnet: IDL.Null });
@@ -87,10 +91,13 @@ export const signerIdl = ({ IDL }) => {
         InternalError: IDL.Record({ msg: IDL.Text }),
         PaymentError,
     });
+    const GetBalanceRequest = IDL.Record({ network: Network, address_type: BitcoinAddressType, min_confirmations: IDL.Opt(IDL.Nat32) });
+    const GetBalanceResponse = IDL.Record({ balance: IDL.Nat64 });
     const SendBtcResponse = IDL.Record({ txid: IDL.Text });
     const SignBtcResponse = IDL.Record({ txid: IDL.Text, signed_transaction_hex: IDL.Text });
     return IDL.Service({
         btc_caller_address: IDL.Func([GetAddressRequest, IDL.Opt(PaymentType)], [IDL.Variant({ Ok: GetAddressResponse, Err: GetAddressError })], []),
+        btc_caller_balance: IDL.Func([GetBalanceRequest, IDL.Opt(PaymentType)], [IDL.Variant({ Ok: GetBalanceResponse, Err: GetAddressError })], []),
         btc_caller_send: IDL.Func([SendBtcRequest, IDL.Opt(PaymentType)], [IDL.Variant({ Ok: SendBtcResponse, Err: SendBtcError })], []),
         btc_caller_sign: IDL.Func([SendBtcRequest, IDL.Opt(PaymentType)], [IDL.Variant({ Ok: SignBtcResponse, Err: SendBtcError })], []),
     });

@@ -8,7 +8,9 @@
 //   bitcoin        the IC Bitcoin canister's free queries (UTXOs)
 //   makeActor      any other canister (the ck minter and ledger for moves, utils/btc/moves.js)
 // Reads refresh on open, after each action, and every 60 s while the page is visible; there is no
-// background polling. Fee rates (mempool.space) are NOT read here: only the send form asks for
+// background polling. Phase A4: each refresh also settles RBF groups whose coins are spent (which
+// version was mined: the recipient's UTXOs, a free IC query, at most every 10 minutes per group),
+// and verifyBalance runs the paid, replicated balance cross-check (utils/btc/verify.js). Fee rates (mempool.space) are NOT read here: only the send form asks for
 // them, while it is open, unless the user turned lookups off (utils/btc/fees.js).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actor, HttpAgent } from '@dfinity/agent';
@@ -23,7 +25,9 @@ import { signerIdl } from '../utils/btc/signerIdl';
 import { bitcoinCanisterIdl } from '../utils/btc/bitcoinCanisterIdl';
 import { fetchFeeRates } from '../utils/btc/fees';
 import { CYCLES_LEDGER, readCredit, creditPlan, approveSigner } from '../utils/btc/credit';
-import { storeKey, defaultStorage, lockedOutpoints, reconcileAll } from '../utils/btc/pending';
+import { storeKey, defaultStorage, lockedOutpoints, reconcileAll, reconcile, groupId, groupMembers, markMined, LOCKING_STATES } from '../utils/btc/pending';
+import { identifyWinner } from '../utils/btc/speedup';
+import { crossCheckBalance, utxoTotal, utxoFingerprint, BALANCE_CYCLES } from '../utils/btc/verify';
 import { makeStore } from '../utils/btc/send';
 import { movesKey, makeMovesStore } from '../utils/btc/moves';
 import { CMC_CANISTER_ID_TEXT } from '../utils/cyclesTopUp';
@@ -31,6 +35,7 @@ import { outpointKey } from '../utils/btc/utxos';
 
 export const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const REFRESH_MS = 60_000;
+const IDENTIFY_EVERY_MS = 10 * 60_000;
 const isLocal = () => !(process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging');
 const nowNs = () => BigInt(Date.now()) * 1_000_000n;
 
@@ -85,6 +90,8 @@ export function useBtcWallet() {
     const [records, setRecords] = useState({ ok: true, records: [] });
     const [market, setMarket] = useState({ icpUsd: null, xdrPermyriadPerIcp: null, btcUsd: null, icpBalance: null });
     const inFlight = useRef(new Set());
+    const identifiedAt = useRef(new Map()); // group id → last lookup
+    const lastCheck = useRef(null); // the last passed balance cross-check { ok, verified, fingerprint, at }
     const live = useRef(true);
     useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
 
@@ -104,6 +111,23 @@ export function useBtcWallet() {
             if (store) {
                 const utxoKeys = new Set(data.utxos.map(outpointKey));
                 store.mutate((rs) => reconcileAll(rs, { utxoKeys, now: Date.now(), inFlight: inFlight.current }).records);
+                // RBF groups whose coins are spent but whose winner is unknown: look at the recipient
+                const cur = store.load();
+                if (cur.ok && cfg) {
+                    const now = Date.now();
+                    const todo = new Map();
+                    for (const r of cur.records) {
+                        if (!LOCKING_STATES.includes(r.state)) continue;
+                        if (reconcile(r, { utxoKeys, now, records: cur.records }).action !== 'identify') continue;
+                        const g = groupId(r);
+                        if (now - (identifiedAt.current.get(g) || 0) >= IDENTIFY_EVERY_MS) todo.set(g, r);
+                    }
+                    for (const [g, r] of todo) {
+                        identifiedAt.current.set(g, now);
+                        const win = await identifyWinner(actors.bitcoin(cfg.bitcoinCanister), { network: cfg.network, members: groupMembers(cur.records, r) }).catch(() => null); // eslint-disable-line no-await-in-loop
+                        if (win) store.mutate((rs) => reconcileAll(markMined(rs, win, { now: Date.now(), via: "the recipient's output on the IC Bitcoin canister" }), { utxoKeys, now: Date.now(), inFlight: inFlight.current }).records);
+                    }
+                }
                 loadRecords();
             }
             if (live.current) setBtc({ data, error: null, loading: false });
@@ -112,7 +136,7 @@ export function useBtcWallet() {
             if (live.current) setBtc((s) => ({ ...s, error: String(e?.message || e), loading: false }));
             return null;
         }
-    }, [ctx, store, loadRecords]);
+    }, [ctx, store, loadRecords, cfg, actors]);
 
     const refreshCredit = useCallback(async () => {
         if (!actors || !me) return null;
@@ -188,8 +212,28 @@ export function useBtcWallet() {
         return { ok: true, plan, approved: true };
     }, [actors, me, refreshCredit]);
 
+    /**
+     * The replicated balance cross-check (btc_caller_balance, 0.113B + 0.1B ledger fee). `pay`:
+     * approve its cost first (false when the caller already approved it with a send). Compares
+     * with a fresh UTXO read, re-reading once on a difference. Returns crossCheckBalance's answer.
+     */
+    const verifyBalance = useCallback(async ({ pay = true } = {}) => {
+        if (!actors || !cfg) return { ok: false, error: 'Sign in first.' };
+        if (pay) {
+            const c = await ensureCredit([BALANCE_CYCLES]);
+            if (!c.ok) return { ok: false, shortfall: c.shortfall, error: c.shortfall ? 'Not enough signing credit for the balance check.' : c.error };
+        }
+        const data = await refreshBtc();
+        if (!data) return { ok: false, error: "Couldn't read your Bitcoin coins. Try again." };
+        const reread = async () => { const d = await refreshBtc(); return d ? { total: utxoTotal(d.utxos), fingerprint: utxoFingerprint(d.utxos) } : null; };
+        const r = await crossCheckBalance({ signer: actors.signer, network: cfg.network, local: utxoTotal(data.utxos), fingerprint: utxoFingerprint(data.utxos), reread });
+        if (r.ok) lastCheck.current = r;
+        refreshCredit();
+        return r;
+    }, [actors, cfg, ensureCredit, refreshBtc, refreshCredit]);
+
     return {
-        status, surface, cfg, me, meText, address, actors, storage, store, ck, movesStore, makeActor,
+        status, surface, cfg, verifyBalance, lastCheck, tipHeight: btc.data?.tipHeight ?? null, me, meText, address, actors, storage, store, ck, movesStore, makeActor,
         btc, credit, fees, records, market, locked, inFlight,
         refreshAll, refreshBtc, refreshCredit, refreshFees, refreshMarket, loadRecords, ensureCredit,
     };

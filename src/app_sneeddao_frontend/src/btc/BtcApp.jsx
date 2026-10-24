@@ -22,6 +22,29 @@ import { BtcNetworkBadge, MainnetDevBanner } from '../components/btc/TestnetBadg
 import MainnetDevToggle from '../components/btc/MainnetDevToggle';
 import { BtcBetaOffer, BtcBetaIntro, BtcBetaSwitch } from '../components/btc/BtcBeta';
 import { Card, Button, Notice, Advanced } from '../components/convert/ConvertUi';
+import { BALANCE_CYCLES } from '../utils/btc/verify';
+import { CYCLES_LEDGER_FEE, formatCycles } from '../utils/btc/credit';
+
+/// "Verify balance" (phase A4): the signer's replicated balance (btc_caller_balance, paid) against
+/// the coins the free query showed. Shown on request; costs 0.113B + ledger fees.
+function VerifyBalance({ w }) {
+    const [busy, setBusy] = useState(false);
+    const [res, setRes] = useState(null);
+    const cost = BALANCE_CYCLES + 2n * CYCLES_LEDGER_FEE;
+    const run = async () => {
+        setBusy(true); setRes(null);
+        try { setRes(await w.verifyBalance({ pay: true })); } catch (e) { setRes({ ok: false, error: String(e?.message || e) }); } finally { setBusy(false); }
+    };
+    return (
+        <div style={{ marginTop: 4 }}>
+            <Button variant="ghost" onClick={run} disabled={busy} title="Asks the Bitcoin canister through the signer with an update call that all replicas agree on">
+                {busy ? 'Verifying…' : `Verify balance (${formatCycles(cost)} cycles)`}
+            </Button>
+            {res?.ok && <Notice tone="success" style={{ marginTop: 6 }}>Verified: the Bitcoin canister's replicated answer is {formatAmount(res.verified, 8)} {w.cfg.symbol}, the same as the coins shown here{res.reread ? ' (after a fresh read)' : ''}. Coins in pending sends are included.</Notice>}
+            {res && !res.ok && <Notice tone="error" style={{ marginTop: 6 }}>{res.error}</Notice>}
+        </div>
+    );
+}
 
 const TABS = [['send', 'Send'], ['move', 'Move'], ['credit', 'Signing credit'], ['activity', 'Activity']];
 const hashHead = () => (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '').split('&')[0];
@@ -83,6 +106,7 @@ export default function BtcApp() {
                         Balance: <b style={{ color: c.primaryText }}>{s ? `${formatAmount(s.confirmed, 8)} ${w.cfg.symbol}` : '…'}</b>
                         {s && s.locked > 0n && <> · {formatAmount(s.locked, 8)} in pending sends</>}
                         <div style={{ fontSize: 12, color: c.mutedText }}>From <span style={{ fontFamily: 'ui-monospace, monospace' }}>{w.address}</span></div>
+                        {s && <VerifyBalance w={w} />}
                     </div>
                     {w.cfg.testnet && <Notice tone="warning" style={{ marginBottom: 12 }}>Staging preview on Bitcoin <b>testnet4</b>: test coins with no value. Send only to testnet4 addresses.</Notice>}
                     <nav role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>

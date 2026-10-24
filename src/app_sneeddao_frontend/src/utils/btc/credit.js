@@ -8,6 +8,7 @@
 //   btc_caller_send     95B + 37B per input + 1B per output, where the signer always prices
 //                       one extra output for a possible change (lib.rs: outputs.len() + 1)
 //   btc_caller_address  0.079B
+//   btc_caller_balance  0.113B
 // and from dfinity/cycles-ledger (storage.rs): every approve costs the 0.1B ledger fee, and every
 // withdraw_from uses `amount + 0.1B` of the allowance and of the balance.
 // So the allowance a set of signer calls needs is Σ (cost + 0.1B), and the balance needs that
@@ -24,6 +25,8 @@ export const SEND_BASE_CYCLES = 95_000_000_000n;
 export const SEND_PER_INPUT_CYCLES = 37_000_000_000n;
 export const SEND_PER_OUTPUT_CYCLES = 1_000_000_000n;
 export const ADDRESS_CYCLES = 79_000_000n;
+/// btc_caller_balance (the replicated balance cross-check, phase A4): methods.rs BtcCallerBalance.
+export const BALANCE_CYCLES = 113_000_000n;
 export const APPROVAL_TTL_NS = 3_600n * 1_000_000_000n; // one hour, as ckMinters.js
 /// An allowance that expires sooner than this is renewed instead of used.
 export const APPROVAL_MIN_LEFT_NS = 10n * 60n * 1_000_000_000n;

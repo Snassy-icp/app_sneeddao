@@ -7,11 +7,19 @@
 // Explorer links and lookups are opt-in clicks; nothing is sent to mempool.space on its own.
 // Moves (phase A3): each move to ckBTC (its send record + conversion state, with "Check / finish")
 // and each move to the Bitcoin address (its own record, tracked with the minter), newest first.
-import React, { useMemo, useState } from 'react';
-import { FaExternalLinkAlt, FaCopy, FaSync } from 'react-icons/fa';
+// Phase A4: "Speed up" on a pending send that waited SPEEDUP_AFTER_BLOCKS (BtcSpeedUp: RBF or
+// CPFP; Advanced offers it earlier); a replaced send is listed inside its faster version until one
+// of them is mined; the support log shows every record's steps; opt-in explorer history.
+import React, { useEffect, useMemo, useState } from 'react';
+import { FaExternalLinkAlt, FaCopy, FaSync, FaBolt } from 'react-icons/fa';
 import { formatAmount } from '../../utils/StringUtils';
-import { reconcile, updateRecord, canReissue } from '../../utils/btc/pending';
-import { buildHistory, loadReceives, saveReceives, mergeReceives, receivesKey, ownTxids, checkTxOnMempool } from '../../utils/btc/history';
+import { reconcile, reconcileAll, updateRecord, canReissue, groupMembers, markMined, recordTxid, LOCKING_STATES } from '../../utils/btc/pending';
+import { speedUpStatus } from '../../utils/btc/speedup';
+import BtcSpeedUp from './BtcSpeedUp';
+import {
+    buildHistory, loadReceives, saveReceives, mergeReceives, receivesKey, ownTxids, checkTxOnMempool,
+    explorerHistoryAllowed, setExplorerHistoryAllowed, fetchExplorerHistory,
+} from '../../utils/btc/history';
 import { reissueSend } from '../../utils/btc/send';
 import { sendCycles, formatCycles } from '../../utils/btc/credit';
 import { outpointKey } from '../../utils/btc/utxos';
@@ -25,20 +33,41 @@ const STATE_TEXT = {
     submitting: 'sending', broadcast: 'waiting for a block', unknown: 'outcome unknown', confirmed: 'confirmed', failed: 'failed', replaced: 'replaced', dropped: 'dropped',
 };
 const json = (v) => JSON.stringify(v, null, 2);
+const short = (t) => (t ? `${t.slice(0, 10)}…` : '');
 
-function PendingItem({ w, r, utxoKeys }) {
+function PendingItem({ w, r, utxoKeys, records, older = [] }) {
     const c = useC();
     const { cfg } = w;
     const [busy, setBusy] = useState(false);
     const [ask, setAsk] = useState(null); // 'reissue' | 'drop'
     const [note, setNote] = useState(null);
     const [mempool, setMempool] = useState(null);
-    const d = reconcile(r, { utxoKeys, now: Date.now(), mempool });
+    const [speedUp, setSpeedUp] = useState(false);
+    const d = reconcile(r, { utxoKeys, now: Date.now(), mempool, records });
     const cost = sendCycles(r.request.inputs.length, r.request.outputs.length);
     const txid = r.txid || r.expectedTxid;
+    const su = speedUpStatus(r, { records, tipHeight: w.tipHeight, now: Date.now(), tiers: w.fees.data?.ok ? w.fees.data.tiers : null });
 
     const askMempool = async () => {
         setBusy(true);
+        // an RBF group: ask about every version; the confirmed one settles the group
+        const members = groupMembers(records, r);
+        if (members.length > 1) {
+            let winner = null; let seen = false; let err = null;
+            for (const m of members) {
+                const q = await checkTxOnMempool(cfg.network, recordTxid(m)); // eslint-disable-line no-await-in-loop
+                if (q.error) err = q.error;
+                if (q.seen) seen = true;
+                if (q.confirmed) { winner = recordTxid(m); break; }
+            }
+            setBusy(false);
+            if (winner) {
+                w.store.mutate((rs) => reconcileAll(markMined(rs, winner, { now: Date.now(), via: 'mempool.space (asked by the user)' }), { utxoKeys, now: Date.now(), inFlight: w.inFlight.current }).records);
+                w.loadRecords();
+                setNote({ tone: 'success', text: `mempool.space shows ${short(winner)} confirmed.` });
+            } else setNote({ tone: err && !seen ? 'warning' : 'info', text: err && !seen ? err : seen ? 'mempool.space has a version in its mempool; none is confirmed yet.' : 'mempool.space knows none of the versions.' });
+            return;
+        }
         const m = await checkTxOnMempool(cfg.network, txid);
         setBusy(false);
         if (m.error) { setNote({ tone: 'warning', text: m.error }); return; }
@@ -67,9 +96,17 @@ function PendingItem({ w, r, utxoKeys }) {
     return (
         <div style={{ borderTop: `1px solid ${c.border}`, padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ color: c.primaryText, fontWeight: 600 }}>{r.kind === 'toCkbtc' && <span style={{ color: c.mutedText, fontWeight: 400 }}>Move to {r.ckbtc?.symbol}: </span>}{formatAmount(BigInt(r.amount), 8)} {cfg.symbol} <span style={{ color: c.mutedText, fontWeight: 400 }}>to</span> <span style={{ ...mono, fontWeight: 400 }}>{r.request.outputs[0]?.address}</span></span>
-                <Pill tone={STATE_TONE[r.state]}>{STATE_TEXT[r.state]}</Pill>
+                {r.kind === 'cpfp'
+                    ? <span style={{ color: c.primaryText, fontWeight: 600 }}><span style={{ color: c.mutedText, fontWeight: 400 }}>Speed-up (CPFP) for </span><span style={{ ...mono, fontWeight: 400 }}>{short(r.parentTxid)}</span>: {formatAmount(BigInt(r.amount), 8)} {cfg.symbol} back to you</span>
+                    : <span style={{ color: c.primaryText, fontWeight: 600 }}>{r.kind === 'toCkbtc' && <span style={{ color: c.mutedText, fontWeight: 400 }}>Move to {r.ckbtc?.symbol}: </span>}{r.kind === 'sweep' && <span style={{ color: c.mutedText, fontWeight: 400 }}>Sweep: </span>}{formatAmount(BigInt(r.amount), 8)} {cfg.symbol} <span style={{ color: c.mutedText, fontWeight: 400 }}>to</span> <span style={{ ...mono, fontWeight: 400 }}>{r.request.outputs[0]?.address}</span></span>}
+                <Pill tone={STATE_TONE[r.state]}>{r.replaces ? `faster version · ${STATE_TEXT[r.state]}` : STATE_TEXT[r.state]}</Pill>
             </div>
+            {older.length > 0 && (
+                <div style={{ fontSize: 12, color: c.secondaryText, lineHeight: 1.5 }}>
+                    Replaces {older.map((o) => <span key={o.id} style={mono}>{short(recordTxid(o))} (fee {o.fee} sats{o.state === 'unknown' ? ', outcome unknown' : ''}) </span>)}. Both stay listed until one is mined; whichever confirms counts. The coins can only be spent once.
+                </div>
+            )}
+            {d.action === 'identify' && <div style={{ fontSize: 12, color: c.secondaryText }}>Its coins were spent, so one version was mined. Finding out which (from the recipient's coins on the IC; or ask mempool.space below).</div>}
             <div style={{ fontSize: 12, color: c.mutedText }}>
                 fee {r.fee} sats · {new Date(r.createdAt).toLocaleString()} · {r.request.inputs.length} coin{r.request.inputs.length === 1 ? '' : 's'} reserved{r.attempts > 1 ? ` · ${r.attempts} attempts` : ''}
             </div>
@@ -83,7 +120,9 @@ function PendingItem({ w, r, utxoKeys }) {
                 </div>
             )}
             {r.error && r.state !== 'broadcast' && <div style={{ fontSize: 12, color: c.warning }}>{r.error}</div>}
+            {su.can && su.offer && !speedUp && <div style={{ fontSize: 12, color: c.warning }}>Not mined yet: {su.reason}. You can pay a higher fee to speed it up.</div>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {su.can && su.offer && !speedUp && <Button onClick={() => setSpeedUp(true)} disabled={busy}><FaBolt size={10} /> Speed up…</Button>}
                 <Button variant="ghost" onClick={askMempool} disabled={busy} title="Tells mempool.space this transaction id">Ask mempool.space</Button>
                 {d.action === 'offer_reissue' && canReissue(r, utxoKeys) && (ask === 'reissue'
                     ? <><Button onClick={reissue} disabled={busy}>Send again for {formatCycles(cost)} cycles</Button><Button variant="ghost" onClick={() => setAsk(null)}>Cancel</Button></>
@@ -94,6 +133,74 @@ function PendingItem({ w, r, utxoKeys }) {
             </div>
             {ask === 'drop' && <div style={{ fontSize: 12, color: c.secondaryText }}>Only if it is in no mempool any more: its coins become spendable again. If it still confirms later, a new send that used the same coins fails harmlessly.</div>}
             {note && <Notice tone={note.tone}>{note.text}</Notice>}
+            {speedUp && <BtcSpeedUp w={w} r={r} onClose={() => setSpeedUp(false)} />}
+            {su.can && !su.offer && !speedUp && (
+                <Advanced title="Advanced: speed up now">
+                    <div style={{ fontSize: 12, color: c.mutedText }}>Usually worth it only after {su.waited === 0 ? 'a couple of blocks' : 'another block'} without a confirmation ({su.reason} so far).</div>
+                    <div><Button variant="ghost" onClick={() => setSpeedUp(true)}><FaBolt size={10} /> Speed up…</Button></div>
+                </Advanced>
+            )}
+            {!su.can && r.state === 'broadcast' && su.why && r.kind !== 'cpfp' && !r.supersededBy && <div style={{ fontSize: 11, color: c.mutedText }}>{su.why}</div>}
+        </div>
+    );
+}
+
+/// Every record with its steps, for support (spec §8 "Help → BTC send log").
+function SendLog({ records }) {
+    const c = useC();
+    if (!records.length) return <div style={{ fontSize: 12, color: c.mutedText }}>No records yet.</div>;
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {records.slice().sort((a, b) => b.createdAt - a.createdAt).map((r) => (
+                <div key={r.id} style={{ fontSize: 11, borderTop: `1px solid ${c.border}`, paddingTop: 6, minWidth: 0 }}>
+                    <div style={{ color: c.primaryText, ...mono }}>{r.kind || 'send'} · {r.state} · {r.id} · {recordTxid(r)}</div>
+                    {(r.replaces || r.supersededBy || r.parent || r.cpfpBy || r.replacedBy) && (
+                        <div style={{ color: c.mutedText, ...mono }}>
+                            {r.replaces && `replaces ${r.replaces} `}{r.supersededBy && `superseded by ${r.supersededBy} `}{r.parent && `child of ${r.parent} `}{r.cpfpBy && `cpfp ${r.cpfpBy} `}{r.replacedBy && `replaced by tx ${r.replacedBy}`}
+                        </div>
+                    )}
+                    {(r.log || []).map((e, i) => (
+                        <div key={i} style={{ color: c.secondaryText, ...mono }}>{new Date(e.at).toLocaleString()} · {e.event}{e.detail ? ` · ${e.detail}` : ''}</div>
+                    ))}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/// Full history from mempool.space (opt-in: it tells mempool.space which address is looked up).
+function ExplorerHistory({ w }) {
+    const c = useC();
+    const { cfg } = w;
+    const [allowed, setAllowed] = useState(() => explorerHistoryAllowed(w.storage));
+    const [state, setState] = useState({ loading: false, txs: [], error: null, more: false, last: null });
+    const load = async (after = null) => {
+        setState((s) => ({ ...s, loading: true, error: null }));
+        const r = await fetchExplorerHistory(cfg.network, w.address, { afterTxid: after });
+        setState((s) => (r.ok ? { loading: false, error: null, txs: after ? [...s.txs, ...r.txs] : r.txs, more: r.more, last: r.last } : { ...s, loading: false, error: r.error }));
+    };
+    useEffect(() => { if (allowed) load(); }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!allowed) {
+        return (
+            <div style={{ fontSize: 12, color: c.mutedText, lineHeight: 1.5 }}>
+                The lists above show what this device did and the coins the IC sees. The full history of your address (also sends from elsewhere, and unconfirmed incoming) can come from mempool.space, a third-party explorer: it then learns which address you look up, from your IP. Asked once; remembered in this browser.
+                <div style={{ marginTop: 6 }}><Button variant="ghost" onClick={() => { setExplorerHistoryAllowed(true, w.storage); setAllowed(true); }}>Yes, look up my address on mempool.space</Button></div>
+            </div>
+        );
+    }
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 12, color: c.mutedText }}>From mempool.space, loaded when you open Activity. <button type="button" onClick={() => { setExplorerHistoryAllowed(false, w.storage); setAllowed(false); setState({ loading: false, txs: [], error: null, more: false, last: null }); }} style={{ background: 'none', border: 'none', color: c.accent, cursor: 'pointer', padding: 0, fontSize: 12 }}>Stop using it</button></div>
+            {state.error && <Notice tone="warning">{state.error}</Notice>}
+            {state.txs.map((t) => (
+                <div key={t.txid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 12, borderTop: `1px solid ${c.border}`, padding: '4px 0' }}>
+                    <span style={{ color: t.net >= 0n ? c.success : c.primaryText }}>{t.net >= 0n ? '+' : '−'}{formatAmount(t.net >= 0n ? t.net : -t.net, 8)} {cfg.symbol} <span style={{ color: c.mutedText }}>{t.confirmed ? `block ${t.height}${t.time ? ` · ${new Date(t.time).toLocaleDateString()}` : ''}` : 'unconfirmed'}</span></span>
+                    <a href={`${cfg.explorer}/tx/${t.txid}`} target="_blank" rel="noopener noreferrer" style={{ color: c.accent, ...mono }}>{short(t.txid)} <FaExternalLinkAlt size={9} /></a>
+                </div>
+            ))}
+            {state.loading && <div style={{ fontSize: 12, color: c.mutedText }}>Loading…</div>}
+            {!state.loading && !state.txs.length && !state.error && <div style={{ fontSize: 12, color: c.mutedText }}>No transactions.</div>}
+            {state.more && !state.loading && <div><Button variant="ghost" onClick={() => load(state.last)}>Older</Button></div>}
         </div>
     );
 }
@@ -224,7 +331,8 @@ export function BtcMoves({ w, mv }) {
     const c = useC();
     const recs = w.records.ok ? w.records.records : [];
     const items = [
-        ...recs.filter((r) => r.kind === 'toCkbtc' && r.ckbtc).map((r) => ({ at: r.createdAt, el: <DepositItem key={r.id} w={w} mv={mv} r={r} /> })),
+        // a move whose send was replaced by its own faster version is listed once, as that version
+        ...recs.filter((r) => r.kind === 'toCkbtc' && r.ckbtc && !(r.supersededBy && recs.some((x) => x.id === r.supersededBy && x.state !== 'failed')) && !(r.state === 'replaced' && r.replacedBy && recs.some((x) => recordTxid(x) === r.replacedBy))).map((r) => ({ at: r.createdAt, el: <DepositItem key={r.id} w={w} mv={mv} r={r} /> })),
         ...(mv.moves.ok ? mv.moves.records : []).filter((r) => r.kind === 'toBtc').map((r) => ({ at: r.createdAt, el: <WithdrawItem key={r.id} w={w} mv={mv} r={r} /> })),
     ].sort((a, b) => b.at - a.at);
     return (
@@ -252,7 +360,10 @@ export default function BtcActivity({ w, mv = null }) {
         return merged;
     }, [w.meText, w.storage, btc.data, cfg.network, utxos, recs]);
     const h = buildHistory({ records: recs, receives, tipHeight: btc.data?.tipHeight ?? null, unspent: utxoKeys });
-    const pending = h.sends.filter((s) => ['submitting', 'broadcast', 'unknown'].includes(s.state));
+    // a send superseded by its own pending faster version is shown inside that version
+    const live = (id) => recs.some((x) => x.id === id && x.state !== 'failed');
+    const pending = h.sends.filter((s) => LOCKING_STATES.includes(s.state) && !(s.record.supersededBy && live(s.record.supersededBy)));
+    const olderOf = (r) => groupMembers(recs, r).filter((x) => x.id !== r.id && x.createdAt < r.createdAt && LOCKING_STATES.includes(x.state));
     // finished moves to ckBTC are listed under Moves, not Sent
     const done = h.sends.filter((s) => !['submitting', 'broadcast', 'unknown'].includes(s.state) && s.kind !== 'toCkbtc');
     const copyLog = async () => {
@@ -264,7 +375,7 @@ export default function BtcActivity({ w, mv = null }) {
             {!records.ok && <Notice tone="error">{records.error}</Notice>}
             <h3 style={{ fontSize: 15, margin: '0 0 6px', color: c.primaryText }}>Pending</h3>
             {!pending.length && <div style={{ fontSize: 13, color: c.mutedText }}>Nothing pending.</div>}
-            {pending.map((s) => <PendingItem key={s.id} w={w} r={s.record} utxoKeys={utxoKeys} />)}
+            {pending.map((s) => <PendingItem key={s.id} w={w} r={s.record} utxoKeys={utxoKeys} records={recs} older={olderOf(s.record)} />)}
 
             {mv && w.ck && <BtcMoves w={w} mv={mv} />}
 
@@ -272,12 +383,13 @@ export default function BtcActivity({ w, mv = null }) {
             {!done.length && <div style={{ fontSize: 13, color: c.mutedText }}>No sends from this device yet.</div>}
             {done.map((s) => (
                 <div key={s.id} style={{ borderTop: `1px solid ${c.border}`, padding: '6px 0', fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                    <span style={{ color: c.primaryText, minWidth: 0 }}>{formatAmount(s.amount, 8)} {cfg.symbol} <span style={{ color: c.mutedText }}>to</span> <span style={mono}>{s.to?.slice(0, 12)}…</span> <span style={{ color: c.mutedText }}>{new Date(s.at).toLocaleDateString()}</span></span>
+                    <span style={{ color: c.primaryText, minWidth: 0 }}>{s.kind === 'cpfp' ? <span style={{ color: c.mutedText }}>Speed-up to yourself: </span> : s.kind === 'sweep' ? <span style={{ color: c.mutedText }}>Sweep: </span> : null}{formatAmount(s.amount, 8)} {cfg.symbol} <span style={{ color: c.mutedText }}>to</span> <span style={mono}>{s.to?.slice(0, 12)}…</span> <span style={{ color: c.mutedText }}>{new Date(s.at).toLocaleDateString()}</span></span>
                     <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                         <Pill tone={STATE_TONE[s.state]}>{STATE_TEXT[s.state]}</Pill>
                         {s.state !== 'failed' && <a href={`${cfg.explorer}/tx/${s.txid}`} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }} aria-label="Open on mempool.space"><FaExternalLinkAlt size={10} /></a>}
                     </span>
                     {s.state === 'failed' && s.record.error && <div style={{ width: '100%', fontSize: 12, color: c.mutedText }}>{s.record.error}</div>}
+                    {s.state === 'replaced' && s.record.replacedBy && <div style={{ width: '100%', fontSize: 12, color: c.mutedText }}>Another version was mined instead: <span style={mono}>{short(s.record.replacedBy)}</span>{recs.some((x) => recordTxid(x) === s.record.replacedBy) ? ' (your faster version)' : ''}. These coins were spent only once.</div>}
                 </div>
             ))}
 
@@ -290,9 +402,14 @@ export default function BtcActivity({ w, mv = null }) {
                 </div>
             ))}
 
+            <Advanced title="Advanced: full history from mempool.space">
+                <ExplorerHistory w={w} />
+            </Advanced>
+
             <Advanced title="Advanced: send log for support">
                 <div style={{ fontSize: 12, color: c.mutedText }}>Every send this device made, with each step. Sends are kept in this browser only for now, so sends from another device are not listed here.</div>
                 <div><Button variant="ghost" onClick={copyLog}><FaCopy size={11} /> {copied ? 'Copied' : 'Copy log (JSON)'}</Button></div>
+                <SendLog records={recs} />
             </Advanced>
         </Card>
     );

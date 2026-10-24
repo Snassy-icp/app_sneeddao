@@ -1,9 +1,9 @@
 # Sneed Wallet: native Bitcoin and "Sign in with Sneed Wallet"
 
-Status: spec draft, 2026-10-23. A1 (receive), A0/A2 (signing credit, fee source, `btc.html`,
-pending store, send) and A3 (native ↔ ckBTC moves, §6) built. Staging: testnet4 behind the A1 triple flag, plus mainnet developer
+Status: spec draft, 2026-10-23 (A4 2026-10-24). A1 (receive), A0/A2 (signing credit, fee source, `btc.html`,
+pending store, send), A3 (native ↔ ckBTC moves, §6) and A4 (speed-up, sweep, balance cross-check, §12.3) built. Staging: testnet4 behind the A1 triple flag, plus mainnet developer
 mode (§11). **Prod: Bitcoin MAINNET as an opt-in beta** (decided 2026-10-23, §12.1): a "Bitcoin
-(beta)" switch per browser, default off. A3 is built (not yet released); A4 is built during the beta. Builds on `spec/oisy_comparison.md` (§3.1 signer,
+(beta)" switch per browser, default off. A3 and A4 are built (not yet released), during the beta. Builds on `spec/oisy_comparison.md` (§3.1 signer,
 §3.2 Chain Fusion Signer, §5 order) and `spec/programmable_accounts.md` (pockets). Paths are
 relative to `src/app_sneeddao_frontend/src`.
 
@@ -223,8 +223,8 @@ and [bitcoin_api.rs](https://github.com/dfinity/chain-fusion-signer/blob/main/sr
    - **Pending in** = incoming outputs we know of with < 1 confirmation. The Bitcoin canister
      only sees blocks, so mempool incoming needs an explorer (Advanced, opt-in, §5.6).
    - **Pending out** = change outputs of our own pending sends.
-4. Cross-check: before any send above a threshold (default: 25% of the balance) or when the
-   user taps "verify", call `bitcoin_get_balance` through `btc_caller_balance` (0.113B). Despite
+4. Cross-check (built A4, §12.3): before any send above a threshold (25% of the balance, or above
+   1,000,000 sats, and every sweep) or when the user taps "verify", call `bitcoin_get_balance` through `btc_caller_balance` (0.113B). Despite
    the deprecation it is the only update path a frontend can pay for. If it disagrees with the
    query sum, block the send and say why.
 5. Refresh: on wallet open, after each send, and every 60 s while the BTC view is visible.
@@ -484,7 +484,7 @@ with the XDR rate from the CMC.
 |---|---|---|
 | Call timed out or trapped after signing (`unknown`) | No `Ok`/`Err` came back | Look for `expectedTxid` via the Bitcoin canister (inputs spent once mined) and, opt-in, mempool.space (`GET /api/tx/<txid>`: 404 = unknown; `/tx/<txid>/status` answers `confirmed: false` even for unknown txids, so it can't tell "never seen"). If it is still unseen after 30 min: **re-issue the identical `btc_caller_send`**, same UTXOs, outputs and fee. The txid is the same, so a duplicate broadcast is harmless. This costs the signing cycles again, and the UI says so. |
 | Signed with `btc_caller_sign` but not broadcast | The record holds `signed_transaction_hex` | "Broadcast": paste-ready hex, plus a one-click POST to mempool.space (opt-in, third party). |
-| Broadcast but stuck (low fee) | 0 confirmations after N blocks; the rate is below the current "Slow" | **Speed up** (full RBF): a new `btc_caller_send` with the **same inputs** and a higher fee that also pays the old fee plus the incremental relay fee. The signer does not signal BIP-125, so this relies on full-RBF relay, which Bitcoin Core enables by default since 28.0 ([release notes](https://bitcoincore.org/en/releases/28.0/)). That must be confirmed on testnet through the IC adapter (Q6). **CPFP** alternative: spend our own unconfirmed change outpoint, which we pass by hand, with a high fee. |
+| Broadcast but stuck (low fee) | 0 confirmations after N = 2 blocks, or the rate is below the current "Slow" (built A4, §12.3) | **Speed up** (full RBF): a new `btc_caller_send` with the **same inputs** and a higher fee that also pays the old fee plus the incremental relay fee. The signer does not signal BIP-125, so this relies on full-RBF relay, which Bitcoin Core enables by default since 28.0 ([release notes](https://bitcoincore.org/en/releases/28.0/)). That must be confirmed on testnet through the IC adapter (Q6). **CPFP** alternative: spend our own unconfirmed change outpoint, which we pass by hand, with a high fee. |
 | Dropped from mempools | Inputs still unspent after ~14 days and not in the mempool | Mark the record `dropped`, which unlocks the UTXOs. The user can resend. |
 | Replaced | Inputs spent by a different txid | Record → `replaced`, linked to the new txid. |
 | Pending store unreadable | Backend read fails | Block sends with the reason. Receive still works. |
@@ -662,7 +662,7 @@ support can explain and fix any case.
 | A1 | Address (offline + verify), UTXOs, balance, receive QR, `btc_native` pocket adapter, testnet on staging | 1 week |
 | A2 | Send: selection, fee tiers, cost summary, pending locks, `expectedTxid`, error texts, recovery (re-issue, sign-only), history v1 | 1.5–2 weeks |
 | A3 | Native ↔ ckBTC moves, with conversion records and auto `update_balance` | 1 week |
-| A4 | Speed-up (RBF and CPFP), sweep, verified balance, opt-in explorer history, support log view. Mainnet went to prod earlier, as the opt-in beta (§12.1); A3/A4 are built during it, default-on comes after | 1 week |
+| A4 | Speed-up (RBF and CPFP), sweep, verified balance, opt-in explorer history, support log view. Mainnet went to prod earlier, as the opt-in beta (§12.1); A3/A4 are built during it, default-on comes after. **Built 2026-10-24** (§12.3), not yet released | 1 week |
 | A5 | ETH/EVM (address, send, ERC-20, ck conversions from the own address) | 4–6 weeks, separate revision |
 | B1 | `sign.html` entry with the library, permissions, ICRC-27 pocket accounts, decoders, block list, connected-apps settings, test dapp | 2–3 weeks |
 | B2 | ICRC-21 consent messages on Sneed canisters (proposals), signer listing (IdentityKit and the `@icp-sdk/signer` lists), docs for dapps | 1–2 weeks plus outreach |
@@ -675,10 +675,12 @@ post (topic 899).
 Status by phase (2026-10-23): A0 built (signing credit, mempool.space fee source, `btc.html`;
 the pending store is localStorage for now, not the backend layout store). A1 and A2 built. **A3
 built** (native ↔ ckBTC moves, §6 "As built"; staging test with real sats in developer mainnet
-mode next, then release with the beta). **A4 is built during the prod beta**: speed-up (RBF, and CPFP per
-Q6) and sweep, and the paid balance cross-check (an update call to the Bitcoin canister) before
-large sends (§4, §5.2). Until A4's cross-check exists, balances and UTXOs come from the
-uncertified queries only; the beta explanation tells users to start with small amounts.
+mode next, then release with the beta). **A4 built (2026-10-24, §12.3)**: speed-up (RBF and CPFP,
+both shipped, Q6), sweep (also to another principal), the paid balance cross-check before large
+sends and a "Verify balance" button, opt-in explorer history and the support log view. Not yet
+released: real-money test on staging developer mainnet first (§12.3 test plan). Until it is
+released, balances and UTXOs on prod come from the uncertified queries only; the beta explanation
+tells users to start with small amounts.
 
 ### 12.1 Prod beta: Bitcoin (beta) switch (decided 2026-10-23)
 
@@ -729,6 +731,99 @@ uncertified queries only; the beta explanation tells users to start with small a
 > `retrieve_btc_with_approval` to the user's own address as derived by this frontend (checked once
 > with the signer). Custody-relevant: the frontend chooses the deposit address and the payout
 > address. Also `utils/btc/moves.js`, `utils/ckMinters.js` (`ckbtcWithdraw`), `PocketRows.jsx`.
+>
+> *Addition with A4:* "Speed up" for a stuck send: either a replacement that signs the same coins
+> again with a higher fee taken from the change (relies on full-RBF relay; only with an explicit tick
+> does the recipient get less), or a child transaction that spends the stuck send's change back to
+> the user's own address with a fee that pays for both. "Sweep" sends every coin to one address,
+> or to another principal's Sneed Wallet address computed by this frontend, after the user types
+> the address's last 8 characters. Before a send of more than 25% of the balance or more than
+> 0.01 BTC, and before every sweep, the frontend asks the signer for the Bitcoin canister's
+> replicated balance (`btc_caller_balance`, 0.113B cycles) and refuses to sign when it differs from
+> the coins it read; this can be skipped only under Advanced. Opt-in history from mempool.space.
+> Custody-relevant: the frontend now signs second transactions over pending coins and chooses the
+> sweep destination for a principal. Files: `utils/btc/speedup.js`, `sweep.js`, `verify.js`,
+> `pending.js`, `send.js`, `history.js`, `signerIdl.js`, `credit.js`, `components/btc/BtcSpeedUp.jsx`,
+> `BtcActivity.jsx`, `BtcSend.jsx`, `btc/BtcApp.jsx`, `btc/useBtcWallet.js`.
+
+### 12.3 A4 as built (2026-10-24, not yet released)
+
+Files: `utils/btc/speedup.js` (RBF/CPFP plans, offer rule, winner lookup), `utils/btc/sweep.js`,
+`utils/btc/verify.js` (cross-check), `utils/btc/pending.js` (supersede groups, CPFP children),
+`utils/btc/send.js` (`executeReplacement`, `executeCpfp`; `executeSend` takes `outputs`, `link`,
+`tipHeight`), `utils/btc/history.js` (explorer history), `utils/btc/signerIdl.js`
+(`btc_caller_balance`), `utils/btc/credit.js` (`BALANCE_CYCLES`), `components/btc/BtcSpeedUp.jsx`,
+`BtcActivity.jsx`, `BtcSend.jsx`, `btc/BtcApp.jsx`, `btc/useBtcWallet.js`. Tests:
+`test/canisters/tests/btc-speedup.test.js` (38).
+
+- **Speed-up** (Activity, a pending `broadcast` send): offered after 2 blocks without a confirmation
+  (`tipAtSend`, now kept on every record; older records count 10 min per block), or at once when its
+  rate is below the current "Slow"; Advanced offers it any time. Not for CPFP children, sends with a
+  pending child, or sends already superseded. Default rate "Fast"; default way RBF when the change pays
+  for it, else CPFP, else RBF with a smaller amount (explicit tick, which names the new amount).
+  - **RBF**: same inputs in the same order, same outputs; fee = max(rate × vsize, old fee + vsize ×
+    1 sat/vB) (BIP-125 rules 3 and 4; 1 sat/vB also covers Core 30's lower 0.1 default), taken from
+    the change; change < 1,000 sats is dropped and the whole remainder becomes fee. The new feerate is
+    always above the old one. Relay: the signer doesn't signal BIP-125, so this relies on full-RBF
+    (Bitcoin Core ≥ 28 by default). The IC Bitcoin adapter applies no mempool policy: it advertises
+    each transaction to its peers by `inv` and serves it for 10 minutes (`transaction_store.rs`), so
+    whether the replacement spreads is the peers' decision. Unverified in practice: part of the test
+    plan below. If it does not spread, the original confirms as it was; only the signing cycles are lost.
+  - **CPFP**: a child spends the stuck send's change output (unconfirmed, so passed by hand; the
+    signer does not check UTXOs and P2WPKH signatures commit to the value we pass) back to our own
+    address: child fee = ceil(rate × (parent vsize + child vsize)) − parent fee, at least 1 sat/vB
+    on its own; confirmed coins are added when the change can't cover it and leave ≥ 1,000 sats. Only
+    while the parent is still in mempools.
+  - **Records**: a replacement joins the original's `group`, with `replaces`; the original gets
+    `supersededBy` (cleared when the replacement fails). Both lock the inputs and both stay pending.
+    When the inputs are spent, the version proven mined is `confirmed` and the other `replaced`
+    (`replacedBy` = the winner's txid). Proof: an output of it in our UTXO set (its change), a later
+    record of ours spending one of its outputs, or `minedSeen` from a lookup: the recipient's UTXOs
+    on the IC Bitcoin canister (free, automatic every refresh, at most every 10 min per group) or the
+    opt-in "Ask mempool.space". Without proof both wait (action `identify`). A CPFP child (kind
+    `cpfp`, `parent`) is confirmed when its own output 0 is mined, replaced when its parent is replaced
+    or dropped; its unconfirmed input is ignored in every "spent?" test (the old rule would have taken
+    a child for confirmed at once: tested). A move to ckBTC keeps its conversion on the replacement.
+- **Sweep** (Send → Advanced → "Sweep: empty this address", or `BtcSend sweepTo={{ principal }}` for
+  the migration wizard): every confirmed coin not reserved by a pending send, to one output, no change.
+  Policy decided: unlike Max, sweep includes the uneconomic coins (worth ≤ 68 vB × rate) so nothing
+  stays behind, says how many and what they are worth, and Advanced can leave them out; reserved coins
+  stay behind and the review says how much. To another principal: the address is derived offline
+  (`sweepTarget`, the signer's derivation; anonymous, `aaaaa-aa` and the own principal refused),
+  shown with the principal. Every sweep needs the destination's last 8 characters typed. On btc.html
+  the principal is a plain text field (no naming provider on that page, small bundle, §4); the SPA
+  wizard passes a principal picked with `PrincipalInput`. Records: kind `sweep` with `sweep {
+  principal, uneconomicIncluded, crossChecked }`. Q1 (auto-sweep in the wizard) stays open.
+- **Balance cross-check**: `btc_caller_balance` (checked against the deployed candid 2026-10-24;
+  0.113B cycles per `methods.rs`, plus the 0.1B ledger fee, approved together with the send) asks the
+  Bitcoin canister by a replicated update call (`ic-cdk-bitcoin-canister` `bitcoin_get_balance`,
+  min_confirmations = 1) and is compared with the sum of all UTXOs the query gave (reserved ones
+  included). Runs before a send whose amount + fee is above 25% of that sum or above 1,000,000 sats
+  (both constants in `verify.js`, DAO-settable later), and before every sweep (and every move to
+  ckBTC above the threshold). On a difference the UTXOs are read once more (a block in between is
+  honest); a difference that remains, or an error, stops the send ("Nothing was sent"). A passed
+  check is reused for 10 minutes on the same UTXO set. Skippable only under the review's Advanced,
+  with a warning. "Verify balance" on btc.html runs the same check on request.
+- **Explorer history** (Activity → Advanced): mempool.space's address API, asked once per browser
+  (`sneed_btc_explorer_history_ok_v1`), then loaded when Activity opens; net amount per transaction,
+  confirmed/unconfirmed, paging back. "Stop using it" forgets the yes.
+- **Support log view** (Activity → Advanced): each record with its links (replaces, superseded by,
+  child of, replaced by) and every logged step, next to "Copy log (JSON)".
+
+**Real-money test plan (staging developer mainnet, Mr Sneed's ~59k sats):**
+1. *RBF.* Send ~5,000 sats to an own external address with Custom 1 sat/vB (warning shown). After 2
+   blocks (or at once via Advanced) press Speed up: RBF suggested, recipient amount unchanged, extra fee
+   and cycles shown; replace at "Fast". Check on mempool.space that the replacement txid (= the shown
+   expected txid) replaced the original (the original shows "replaced"). After a block: the replacement
+   is confirmed, the original "replaced", the change shows up; nothing is double-counted.
+2. *CPFP.* Again a 1 sat/vB send; Speed up → choose CPFP; check the child spends `<txid>:1` back to
+   the own address and that mempool.space shows the package rate near the target. Both confirm in one
+   block; Activity shows both confirmed.
+3. *Cross-check.* Send > 25% of the balance (e.g. 20,000 of 59,000 sats): the review lists "Balance
+   cross-check 0.21B cycles"; the send passes it. Then press "Verify balance" (matches). Check the
+   cycles-ledger history: one 0.113B + fee charge per check.
+4. *Optional:* sweep to an own address with 3 coins (typed confirmation), and the "rbf_reduce" path
+   on a sweep record (the tick names the new amount).
 
 ## 13. Open questions
 
@@ -745,8 +840,9 @@ uncertified queries only; the beta explanation tells users to start with small a
   blocks, for unusual valid values), fetch only while the send form is open with no address or
   txid, and a remembered "Don't look up fees" switch (§5.4).
 - **Q5. Decided (2026-10-23):** users always pay signing cycles; no DAO sponsorship.
-- **Q6. Speed-up.** Is full-RBF replacement through the IC's Bitcoin adapter acceptable as the
-  only speed-up, or do we also ship CPFP in A4? Both depend on testnet results.
+- **Q6. Speed-up. Built both (A4, §12.3):** RBF as the default when the change pays for it, CPFP as
+  the alternative. Whether a full-RBF replacement handed to the IC's Bitcoin adapter spreads is still
+  to be confirmed by the real-money test (§12.3).
 - **Q7. Signer scope at launch.** Ledger-only (ICRC-1/2/7/37 plus ICRC-21-capable canisters),
   with everything else blocked, or also allow decoded calls to known third-party canisters
   behind warnings?

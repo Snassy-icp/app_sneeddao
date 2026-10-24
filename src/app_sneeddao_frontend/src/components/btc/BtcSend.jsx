@@ -11,6 +11,18 @@
 // account ({ pair, terms, depositAddress, owner }): the destination is fixed, the amount must clear
 // the minter's minimum (moves.js depositGuard), the review shows the check fee, what arrives as
 // ckBTC and the honest wait, and the pending record carries the conversion (kind 'toCkbtc').
+//
+// Phase A4:
+//   - Sweep (Advanced → "Sweep", or `sweepTo` = { principal } from the later principal-migration
+//     wizard): every confirmed, unreserved coin to one destination, no change (utils/btc/sweep.js);
+//     the destination is an address or another principal's Sneed Wallet address derived offline
+//     (shown with the principal); the review needs the destination's last 8 characters typed.
+//   - Balance cross-check (utils/btc/verify.js): a send moving more than 25% of the balance or
+//     more than 1,000,000 sats, and every sweep, first asks the signer's btc_caller_balance
+//     (replicated, 0.113B cycles + 0.1B ledger fee, approved with the send) and stops on a
+//     difference. Skippable only in the review's Advanced section, with a warning.
+//   The principal field is a plain text field here: btc.html has no naming provider (and keeps its
+//   bundle small, §4); the wizard in the SPA passes the principal it picked with PrincipalInput.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FaPaperPlane, FaSync, FaExternalLinkAlt, FaArrowLeft } from 'react-icons/fa';
 import { useDenomination } from '../../contexts/DenominationContext';
@@ -21,6 +33,8 @@ import { TIERS, TIER_BLOCKS, validateCustomRate, feeNeedsExtraConfirm, feeLookup
 import { sendCycles, ADDRESS_CYCLES, CYCLES_LEDGER_FEE, cyclesUsd, formatCycles } from '../../utils/btc/credit';
 import { executeSend, isAddressVerified, verifySignerAddress, buildSendRequest } from '../../utils/btc/send';
 import { newId } from '../../utils/btc/pending';
+import { planSweep, sweepTarget, confirmTailOk, confirmTailOf, CONFIRM_TAIL } from '../../utils/btc/sweep';
+import { needsCrossCheck, crossCheckFresh, utxoTotal, utxoFingerprint, BALANCE_CYCLES } from '../../utils/btc/verify';
 import { depositGuard, depositEta, depositMin, newDepositInfo } from '../../utils/btc/moves';
 import { outpointKey } from '../../utils/btc/utxos';
 import QrScanButton from '../QrScanButton';
@@ -32,7 +46,7 @@ const TIER_LABEL = { slow: 'Slow', normal: 'Normal', fast: 'Fast', custom: 'Cust
 const FEE_POLL_MS = 60_000;
 const json = (v) => JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? x.toString() : x instanceof Uint8Array ? Array.from(x) : x), 2);
 
-export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
+export default function BtcSend({ w, onGoCredit, onGoActivity, move = null, sweepTo = null }) {
     const c = useC();
     const { formatValue } = useDenomination();
     const { cfg, address, btc, fees, records, market, locked } = w;
@@ -50,6 +64,14 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
     const [progress, setProgress] = useState('');
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
+    // sweep (A4): everything to one destination; to an address or to another principal's address
+    const [sweepMode, setSweepMode] = useState(Boolean(sweepTo) && !move);
+    const [sweepKind, setSweepKind] = useState(sweepTo ? 'principal' : 'address');
+    const [principalText, setPrincipalText] = useState(sweepTo?.principal || '');
+    const [dropUneconomic, setDropUneconomic] = useState(false);
+    const [confirmText, setConfirmText] = useState('');
+    // balance cross-check (A4): skippable in the review's Advanced section only
+    const [skipCheck, setSkipCheck] = useState(false);
 
     // fees: fetched only while this form is open, and only when lookups are on
     const { refreshFees } = w;
@@ -66,7 +88,9 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
     const custom = tier === 'custom' ? validateCustomRate(customText, tiers) : null;
     const feeRate = tier === 'custom' ? (custom?.ok ? custom.rate : null) : tiers?.[tier] ?? null;
 
-    const dest = move ? move.depositAddress : to.trim();
+    const sweep = sweepMode && !move;
+    const target = sweep && sweepKind === 'principal' ? sweepTarget(principalText, cfg.network, { me: w.meText }) : null;
+    const dest = move ? move.depositAddress : target ? (target.ok ? target.address : '') : to.trim();
     const parsedTo = dest ? parseBtcAddress(dest, cfg.network) : null;
     const amount = max ? null : parseBtcAmount(amountText);
     const utxos = btc.data?.utxos || [];
@@ -75,9 +99,10 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
 
     const livePlan = useMemo(() => {
         if (!btc.data || !parsedTo?.ok || feeRate == null) return null;
+        if (sweep) return planSweep({ utxos, locked, feeRate, destType: parsedTo.type, dropUneconomic });
         if (!max && !amount?.ok) return null;
         return planSend({ utxos, locked, amount: max ? null : amount.sats, max, feeRate, destType: parsedTo.type, inputs: chosenList });
-    }, [btc.data, parsedTo?.ok, parsedTo?.type, feeRate, max, amount?.ok, amount?.sats, utxos, locked, chosenList]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [btc.data, parsedTo?.ok, parsedTo?.type, feeRate, max, amount?.ok, amount?.sats, utxos, locked, chosenList, sweep, dropUneconomic]); // eslint-disable-line react-hooks/exhaustive-deps
     const [sendingPlan, setSendingPlan] = useState(null);
     const plan = planShown({ step, sendingPlan, livePlan });
 
@@ -85,7 +110,12 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
     const realBtc = Boolean(cfg.devMode || cfg.beta);
     const verified = isAddressVerified(w.storage, cfg.network, w.meText, address);
     const signCycles = plan?.ok ? sendCycles(plan.nInputs, 1) : null;
-    const charges = plan?.ok ? [signCycles, ...(verified ? [] : [ADDRESS_CYCLES])] : [];
+    // the cross-check before a large send (a passed one is reused for 10 minutes on the same coins)
+    const fingerprint = utxoFingerprint(utxos);
+    const cc = plan?.ok ? needsCrossCheck({ leaving: plan.amount + plan.fee, balance: utxoTotal(utxos), sweep }) : { needed: false, reasons: [] };
+    const ccFresh = crossCheckFresh(w.lastCheck.current, { fingerprint, now: Date.now() });
+    const ccRun = cc.needed && !skipCheck && !ccFresh;
+    const charges = plan?.ok ? [signCycles, ...(verified ? [] : [ADDRESS_CYCLES]), ...(ccRun ? [BALANCE_CYCLES] : [])] : [];
     const ledgerFees = BigInt(charges.length + 1) * CYCLES_LEDGER_FEE; // one withdraw fee per call + one approve (at most)
     const totalCycles = charges.reduce((t, x) => t + x, 0n) + ledgerFees;
     const satsUsd = (s) => (cfg.testnet || !market.btcUsd ? null : (Number(s) / 1e8) * market.btcUsd);
@@ -95,7 +125,8 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
     const storeBlocked = !records.ok;
     // a move must arrive above the minter's minimum and check fee, or nothing is minted
     const guard = move && plan?.ok ? depositGuard({ amount: plan.amount, terms: move.terms, symbol: move.pair.symbol }) : null;
-    const canReview = plan?.ok && !storeBlocked && step === 'edit' && (!guard || guard.ok);
+    const canReview = plan?.ok && !storeBlocked && step === 'edit' && (!guard || guard.ok) && (!target || target.ok);
+    const sweepConfirmed = !sweep || confirmTailOk(confirmText, dest);
     const eta = move ? depositEta(move.terms.minConfirmations) : null;
 
     const value = (usd) => (usd != null ? <span style={{ color: c.mutedText }}> · {formatValue(usd)}</span> : null);
@@ -126,7 +157,13 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                 if (pay.shortfall) { setStep('review'); setError({ text: `You need ${formatCycles(pay.shortfall)} more cycles of signing credit. Nothing was sent.`, topUp: pay.shortfall }); return; }
                 throw new Error(pay.error);
             }
-            // 3. first send on this device: check our address with the signer (0.079B)
+            // 3. a large send: the replicated balance must match the coins this page read (0.113B)
+            if (ccRun) {
+                setProgress('Cross-checking your balance with the Bitcoin canister (all replicas agree on this answer)…');
+                const v = await w.verifyBalance({ pay: false });
+                if (!v.ok) throw new Error(v.error);
+            }
+            // 3b. first send on this device: check our address with the signer (0.079B)
             if (!verified) {
                 setProgress('Checking your address with the signer…');
                 const v = await verifySignerAddress({ signer: w.actors.signer, network: cfg.network, expected: address, storage: w.storage, principal: w.meText });
@@ -138,8 +175,10 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
             if (move && !depositGuard({ amount: plan.amount, terms: move.terms }).ok) throw new Error('This amount is below the minter\'s minimum. Nothing was sent.');
             const r = await executeSend({
                 signer: w.actors.signer, store: w.store, plan, toAddress: dest, network: cfg.network, ownAddress: address, id,
-                kind: move ? 'toCkbtc' : 'send',
-                extra: move ? { ckbtc: newDepositInfo({ pair: move.pair, owner: move.owner, depositAddress: move.depositAddress, terms: move.terms, amount: plan.amount }) } : null,
+                kind: move ? 'toCkbtc' : sweep ? 'sweep' : 'send',
+                extra: move ? { ckbtc: newDepositInfo({ pair: move.pair, owner: move.owner, depositAddress: move.depositAddress, terms: move.terms, amount: plan.amount }) }
+                    : sweep ? { sweep: { principal: target?.ok ? target.principal : null, uneconomicIncluded: !dropUneconomic, crossChecked: ccRun || ccFresh } } : null,
+                tipHeight: fresh.tipHeight,
                 onSubmitting: () => { w.inFlight.current.add(id); w.loadRecords(); },
             });
             w.inFlight.current.delete(id);
@@ -154,9 +193,9 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
         } finally {
             setProgress('');
         }
-    }, [plan, w, charges, verified, cfg.network, realBtc, mainnetOk, address, dest, move]);
+    }, [plan, w, charges, verified, cfg.network, realBtc, mainnetOk, address, dest, move, ccRun, ccFresh, sweep, target, dropUneconomic]);
 
-    const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setMainnetOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); };
+    const reset = () => { setStep('edit'); setResult(null); setError(null); setExtraOk(false); setMainnetOk(false); setTo(''); setAmountText(''); setMax(false); setChosen(null); setConfirmText(''); setSkipCheck(false); if (!sweepTo) setSweepMode(false); };
     const ckSym = move?.pair.symbol;
 
     // ---------------------------------------------------------------- done
@@ -207,8 +246,15 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                     style={{ background: 'none', border: 'none', color: c.secondaryText, cursor: 'pointer', padding: 0, fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <FaArrowLeft size={11} /> Edit
                 </button>
-                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{move ? `Review the move to ${ckSym}` : 'Review the send'} <BtcNetworkBadge cfg={cfg} /></h2>
-                <div style={{ fontSize: 13, color: c.mutedText }}>{move ? `To the ${ckSym} minter's deposit address for your account` : 'To'}</div>
+                <h2 style={{ fontSize: 18, margin: '10px 0', color: c.primaryText, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{move ? `Review the move to ${ckSym}` : sweep ? 'Review the sweep' : 'Review the send'} <BtcNetworkBadge cfg={cfg} /></h2>
+                {target?.ok && (
+                    <>
+                        <div style={{ fontSize: 13, color: c.mutedText }}>To the Sneed Wallet of principal</div>
+                        <div style={{ ...mono, fontSize: 14, color: c.primaryText, marginBottom: 4 }}>{target.principal}</div>
+                        <div style={{ fontSize: 12, color: c.mutedText, marginBottom: 4 }}>whose Bitcoin address, computed on this page the way the signer computes it, is</div>
+                    </>
+                )}
+                <div style={{ fontSize: 13, color: c.mutedText }}>{move ? `To the ${ckSym} minter's deposit address for your account` : target?.ok ? 'Address' : 'To'}</div>
                 <div style={{ ...mono, fontSize: 14, color: c.primaryText, marginBottom: 8 }}>{dest} <span style={{ color: c.mutedText }}>({btcAddressTypeLabel(parsedTo.type)})</span></div>
                 {ownAddress && <Notice tone="warning">This is your own address: the coins come back to you, minus the fee.</Notice>}
                 {move ? (
@@ -222,9 +268,21 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                 <Row k="Network fee" v={<>{btcShown(plan.fee)}{value(satsUsd(plan.fee))}</>}
                     sub={`${plan.feeRate} sat/vB × ${plan.vsize} vB${tier !== 'custom' ? ` · ${TIER_LABEL[tier]}, about ${TIER_BLOCKS[tier]} block${TIER_BLOCKS[tier] === 1 ? '' : 's'}` : ' · custom rate'}${plan.dustToFee > 0n ? ` · includes ${plan.dustToFee} sats of leftover too small to return as change` : ''}`} />
                 <Row k="Leaves your address" v={btcShown(plan.amount + plan.fee)} />
+                {sweep && plan.uneconomic?.count > 0 && plan.uneconomic.included && <Row k="Small coins included" v={`${plan.uneconomic.count} (${String(plan.uneconomic.sats)} sats)`} sub="they cost about as much fee to spend as they are worth; included so nothing stays behind (Advanced can leave them out)" />}
+                {sweep && (plan.leftBehind?.reserved > 0n || plan.leftBehind?.uneconomic > 0n) && <Row k="Stays behind" v={btcShown(plan.leftBehind.reserved + plan.leftBehind.uneconomic)} sub={`${plan.leftBehind.reserved > 0n ? `${formatAmountShown(plan.leftBehind.reserved, 8)} reserved by pending sends` : ''}${plan.leftBehind.reserved > 0n && plan.leftBehind.uneconomic > 0n ? ', ' : ''}${plan.leftBehind.uneconomic > 0n ? `${formatAmountShown(plan.leftBehind.uneconomic, 8)} in small coins left out` : ''}`} />}
                 {plan.change > 0n && <Row k="Change back to you" v={btcShown(plan.change)} />}
                 <Row k="Signing cost" v={<>{formatCycles(totalCycles)} cycles{value(cycUsd(totalCycles))}</>}
-                    sub={`signer ${formatCycles(signCycles)} (${plan.nInputs} coin${plan.nInputs === 1 ? '' : 's'})${verified ? '' : ` + one-time address check ${formatCycles(ADDRESS_CYCLES)}`} + cycles-ledger fees up to ${formatCycles(ledgerFees)}; paid from your signing credit`} />
+                    sub={`signer ${formatCycles(signCycles)} (${plan.nInputs} coin${plan.nInputs === 1 ? '' : 's'})${verified ? '' : ` + one-time address check ${formatCycles(ADDRESS_CYCLES)}`}${ccRun ? ` + balance cross-check ${formatCycles(BALANCE_CYCLES)}` : ''} + cycles-ledger fees up to ${formatCycles(ledgerFees)}; paid from your signing credit`} />
+                {cc.needed && (
+                    <Row k="Balance cross-check" v={ccFresh ? 'done a moment ago' : skipCheck ? 'skipped' : `${formatCycles(BALANCE_CYCLES + CYCLES_LEDGER_FEE)} cycles`}
+                        sub={`because ${cc.reasons.join(' and ')}: before signing, the Bitcoin canister's replicated balance must match the coins this page read`} />
+                )}
+                {sweep && (
+                    <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 13, color: c.primaryText, fontWeight: 600 }} htmlFor="sweep-confirm">Type the last {CONFIRM_TAIL} characters of the destination address to confirm: <span style={mono}>…{confirmTailOf(dest)}</span></label>
+                        <input id="sweep-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} disabled={sending} spellCheck={false} autoComplete="off" style={{ ...inputStyle(c, confirmText && !sweepConfirmed), ...mono, maxWidth: 220, marginTop: 4 }} />
+                    </div>
+                )}
                 {extraReasons.length > 0 && (
                     <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, fontSize: 13, color: c.warning }}>
                         <input type="checkbox" checked={extraOk} onChange={(e) => setExtraOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
@@ -242,6 +300,14 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                         <input type="checkbox" checked={mainnetOk} onChange={(e) => setMainnetOk(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
                         <span>This sends REAL bitcoin on Bitcoin MAINNET (staging developer mode). It can't be undone. Tick to confirm.</span>
                     </label>
+                )}
+                {cc.needed && !ccFresh && (
+                    <Advanced title="Advanced: skip the balance cross-check">
+                        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: c.warning }}>
+                            <input type="checkbox" checked={skipCheck} onChange={(e) => setSkipCheck(e.target.checked)} disabled={sending} style={{ marginTop: 3 }} />
+                            <span>Skip it for this send. Not recommended: the coins shown come from one IC replica's unverified answer. A wrong answer can't make you overpay (signatures commit to each coin's value), but it can make this send fail after the signing cycles are spent, or hide coins.</span>
+                        </label>
+                    </Advanced>
                 )}
                 <Advanced title="Advanced: the exact request">
                     {move && (
@@ -264,8 +330,8 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                 )}
                 {sending && <Notice style={{ marginTop: 10 }}>{progress}</Notice>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (realBtc && !mainnetOk)}>
-                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `${move ? 'Move' : 'Send'} ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${move ? ` to ${ckSym}` : ''}${cfg.devMode ? ' on MAINNET' : ''}`}
+                    <Button onClick={doSend} disabled={sending || (extraReasons.length > 0 && !extraOk) || (realBtc && !mainnetOk) || !sweepConfirmed}>
+                        <FaPaperPlane size={12} /> {sending ? 'Sending…' : `${move ? 'Move' : sweep ? 'Sweep' : 'Send'} ${formatAmountShown(plan.amount, 8)} ${cfg.symbol}${move ? ` to ${ckSym}` : ''}${cfg.devMode ? ' on MAINNET' : ''}`}
                     </Button>
                 </div>
             </Card>
@@ -305,6 +371,23 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                     <div style={{ ...mono, fontSize: 12, color: c.mutedText, marginTop: 4 }}>Deposit address {dest}</div>
                 </div>
             ) : (<>
+            {sweep && (
+                <Notice tone="warning" style={{ marginBottom: 12 }}>
+                    <b>Sweep:</b> sends every confirmed coin at your address to one destination, minus the network fee. Nothing comes back as change.
+                    {!sweepTo && <div style={{ marginTop: 6 }}><Button variant="ghost" onClick={() => { setSweepMode(false); setConfirmText(''); }}>Back to a normal send</Button></div>}
+                    <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap', fontSize: 13 }}>
+                        <label><input type="radio" checked={sweepKind === 'address'} onChange={() => setSweepKind('address')} disabled={Boolean(sweepTo)} /> to a Bitcoin address</label>
+                        <label><input type="radio" checked={sweepKind === 'principal'} onChange={() => setSweepKind('principal')} disabled={Boolean(sweepTo)} /> to another principal's Sneed Wallet</label>
+                    </div>
+                </Notice>
+            )}
+            {sweep && sweepKind === 'principal' ? (<>
+                <Label hint="the address is computed here, offline, the way the signer computes it">To (principal)</Label>
+                <input value={principalText} onChange={(e) => setPrincipalText(e.target.value)} placeholder="aaaaa-…-cai" spellCheck={false} autoComplete="off" disabled={Boolean(sweepTo)}
+                    style={{ ...inputStyle(c, principalText && !target?.ok), ...mono }} aria-label="Principal to sweep to" />
+                {principalText && !target?.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{target?.error}</div>}
+                {target?.ok && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4, ...mono }}>Its Sneed Wallet address: {target.address}</div>}
+            </>) : (<>
             <Label hint={cfg.testnet ? 'testnet4 addresses (tb1…, m…, n…, 2…)' : null}>To (Bitcoin address)</Label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input value={to} onChange={(e) => { setTo(e.target.value); setScanNote(null); }} placeholder={cfg.testnet ? 'tb1q…' : 'bc1q…'} spellCheck={false} autoComplete="off"
@@ -315,7 +398,13 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
             {parsedTo?.ok && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>{btcAddressTypeLabel(parsedTo.type)}{ownAddress ? ' · your own address' : ''}</div>}
             {scanNote && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>{scanNote}</div>}
             </>)}
+            </>)}
 
+            {sweep ? (
+                <div style={{ marginTop: 14, fontSize: 13, color: c.secondaryText }}>
+                    Amount: <b style={{ color: c.primaryText }}>{plan?.ok ? <>{formatAmountShown(plan.amount, 8)} {cfg.symbol}</> : 'everything'}</b> after the network fee{plan?.ok ? ` (${plan.nInputs} coin${plan.nInputs === 1 ? '' : 's'})` : ''}.
+                </div>
+            ) : (
             <div style={{ marginTop: 14 }}>
                 <Label hint={amount?.ok && !max ? `${amount.sats} sats` : move ? `at least ${String(depositMin(move.terms))} sats` : null}>Amount ({cfg.symbol})</Label>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -326,6 +415,7 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                 {!max && amountText && !amount?.ok && <div style={{ color: c.error, fontSize: 12, marginTop: 4 }}>{amount.error}</div>}
                 {max && <div style={{ color: c.mutedText, fontSize: 12, marginTop: 4 }}>Sends every spendable coin{chosenList ? ' you chose' : ''}, minus the network fee. No change comes back.</div>}
             </div>
+            )}
 
             <div style={{ marginTop: 14 }}>
                 <Label>Network fee</Label>
@@ -362,7 +452,19 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                     <input type="checkbox" checked={noLookup} onChange={(e) => setNoLookup(e.target.checked)} />
                     Don't look up fees (enter my own). Remembered in this browser.
                 </label>
-                <div>
+                {!move && !sweep && (
+                    <div>
+                        <Button variant="ghost" onClick={() => { setSweepMode(true); setMax(false); setChosen(null); }}>Sweep: empty this address…</Button>
+                        <div style={{ fontSize: 12, color: c.mutedText, marginTop: 4 }}>Every confirmed coin to one address, or to another principal's Sneed Wallet. Unlike Max, it also takes the tiny coins that cost about as much to spend as they are worth.</div>
+                    </div>
+                )}
+                {sweep && (
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: c.secondaryText }}>
+                        <input type="checkbox" checked={dropUneconomic} onChange={(e) => setDropUneconomic(e.target.checked)} />
+                        Leave out coins that cost more to spend than they are worth{plan?.uneconomic?.count ? ` (${plan.uneconomic.count} now, ${String(plan.uneconomic.sats)} sats)` : ''}.
+                    </label>
+                )}
+                {!sweep && <div>
                     <div style={{ fontSize: 13, color: c.secondaryText, fontWeight: 600, marginBottom: 4 }}>Coin control {chosen ? <Pill tone="pending">manual</Pill> : <Pill>automatic</Pill>}</div>
                     <div style={{ fontSize: 12, color: c.mutedText, marginBottom: 6 }}>Automatic picks the largest coins first and as few as possible (each coin costs 37B cycles to sign). Coins reserved by pending sends and unconfirmed coins are not listed.</div>
                     {coins.map((u) => {
@@ -381,11 +483,11 @@ export default function BtcSend({ w, onGoCredit, onGoActivity, move = null }) {
                         );
                     })}
                     {!coins.length && <div style={{ fontSize: 12, color: c.mutedText }}>No spendable coins.</div>}
-                </div>
+                </div>}
             </Advanced>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Button onClick={() => { setExtraOk(false); setError(null); setStep('review'); }} disabled={!canReview}>Review</Button>
+                <Button onClick={() => { setExtraOk(false); setError(null); setConfirmText(''); setStep('review'); }} disabled={!canReview}>Review</Button>
                 {!btc.data && !btc.error && <span style={{ fontSize: 12, color: c.mutedText }}>Reading your coins…</span>}
                 {btc.error && <span style={{ fontSize: 12, color: c.warning }}>Couldn't read Bitcoin: {btc.error}</span>}
             </div>

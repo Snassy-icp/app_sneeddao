@@ -240,6 +240,6 @@ describe('Bitcoin beta: receive and send surfaces honour the switch', () => {
         const send = src('components/btc/BtcSend.jsx');
         expect(send).toMatch(/const realBtc = Boolean\(cfg\.devMode \|\| cfg\.beta\);/);
         expect(send).toMatch(/if \(realBtc && !mainnetOk\) return;/);
-        expect(send).toMatch(/\(realBtc && !mainnetOk\)\}>/);
+        expect(send).toMatch(/\(realBtc && !mainnetOk\)( \|\| !sweepConfirmed)?\}>/); // A4: a sweep also needs its typed confirmation
     });
 });

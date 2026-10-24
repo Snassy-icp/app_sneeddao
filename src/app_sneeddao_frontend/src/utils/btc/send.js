@@ -12,11 +12,16 @@
 //   4. verifySignerAddress: once per principal and network, before the first send, ask the
 //      signer for our address (0.079B cycles) and refuse to send if it differs from the one we
 //      derive offline (§5.2 step 1).
+//   5. executeReplacement / executeCpfp (phase A4, utils/btc/speedup.js plans): a speed-up is a
+//      send like any other (record first, expected txid, same outcomes), linked to the stuck
+//      record in the same atomic write: an RBF replacement joins its supersede group and marks the
+//      original `supersededBy` (cleared again if the replacement fails); a CPFP child names its
+//      `parent`, which gets `cpfpBy`.
 import { Principal } from '@dfinity/principal';
 import { expectedTxid, txidToInternal } from './txid.js';
 import { networkVariant } from './utxos.js';
 import { sendCycles } from './credit.js';
-import { newRecord, updateRecord, loadRecords, saveRecords, canReissue } from './pending.js';
+import { newRecord, updateRecord, loadRecords, saveRecords, canReissue, groupId, recordTxid } from './pending.js';
 import { sendErrorInfo, callFailureText, addressErrorText } from './errors.js';
 
 export const PAY_WITH_CYCLES = Object.freeze([{ CallerPaysIcrc2Cycles: null }]);
@@ -57,24 +62,76 @@ export function makeStore(storage, key) {
  *   signer       actor with btc_caller_send
  *   store        makeStore(...)
  *   ownAddress   our P2WPKH address (for the change output and the txid)
- *   kind/extra   'send', or 'toCkbtc' with extra = { ckbtc } (moves.js newDepositInfo)
+ *   kind/extra   'send', or 'toCkbtc' with extra = { ckbtc } (moves.js newDepositInfo), 'sweep', ...
+ *   outputs      [{ address, value }] instead of one output of plan.amount to toAddress
+ *   link         (records, rec) → records: patch related records in the same write (speed-ups)
+ *   tipHeight    the Bitcoin tip now, kept as tipAtSend (speed-up counts blocks from it)
  * Returns { state: 'broadcast'|'failed'|'unknown'|'not_sent', record, txid?, error?, info? }.
  * 'not_sent' means the record could not be written, so the signer was never called.
  */
-export async function executeSend({ signer, store, plan, toAddress, network, ownAddress, id, kind = 'send', extra = null, now = Date.now, onSubmitting = null }) {
-    const outputs = [{ address: toAddress, value: plan.amount }];
+export async function executeSend({ signer, store, plan, toAddress = null, outputs: outs = null, network, ownAddress, id, kind = 'send', extra = null, link = null, tipHeight = null, now = Date.now, onSubmitting = null }) {
+    const outputs = outs || [{ address: toAddress, value: plan.amount }];
     const expected = expectedTxid({ inputs: plan.inputs, outputs, change: plan.change, ownAddress, network });
     const t0 = now();
     const rec = newRecord({ id, network, kind, plan, outputs, ownAddress, expected, signingCycles: sendCycles(plan.inputs.length, outputs.length), now: t0 });
     // a move to ckBTC carries its conversion record (utils/btc/moves.js) in the same pending record
     if (extra) Object.assign(rec, extra);
+    if (tipHeight != null) rec.tipAtSend = Number(tipHeight);
     rec.attempts = 1;
     rec.lastAttemptAt = t0;
-    if (!store.mutate((rs) => [...rs, rec])) {
+    if (!store.mutate((rs) => (link ? link([...rs, rec], rec) : [...rs, rec]))) {
         return { state: 'not_sent', record: rec, error: "Couldn't save the pending send on this device, so nothing was sent. Allow site storage and try again." };
     }
     onSubmitting?.(rec);
     return callSigner({ signer, store, record: rec, request: buildSendRequest({ inputs: plan.inputs, outputs, fee: plan.fee, network }), now });
+}
+
+/**
+ * RBF: replace the broadcast `original` with `plan` (speedup.js planRbf, ok): the same inputs, the
+ * same recipients (or, with consent, a smaller amount), a higher fee. Refused unless the original
+ * is still broadcast in the store. The original stays pending until one version is mined.
+ */
+export async function executeReplacement({ signer, store, original, plan, network, ownAddress, id, tipHeight = null, now = Date.now, onSubmitting = null }) {
+    const cur = store.load();
+    const live = cur.ok ? cur.records.find((r) => r.id === original.id) : null;
+    if (!live || live.state !== 'broadcast') return { state: 'refused', error: 'This send is no longer waiting for a block, so it was not replaced. Nothing was sent.' };
+    const extra = {
+        group: groupId(original),
+        replaces: original.id,
+        replacesTxid: recordTxid(original),
+        speedUp: 'rbf',
+        ...(plan.reduced ? { reducedBy: String(plan.reducedBy) } : {}),
+    };
+    // a move to ckBTC keeps its conversion on the version that wins
+    if (original.ckbtc) {
+        extra.ckbtc = { ...original.ckbtc, status: 'waiting', confirmations: null, checks: 0, lastCheckAt: null, nextCheckAt: null, message: null, ...(plan.reduced ? { expectedMint: String(plan.amount - BigInt(original.ckbtc.checkFee || 0)) } : {}) };
+    }
+    const t = now();
+    const res = await executeSend({
+        signer, store, plan, outputs: plan.outputs, network, ownAddress, id, kind: original.kind || 'send', extra, tipHeight, now, onSubmitting,
+        link: (rs, rec) => updateRecord(rs, original.id, { supersededBy: rec.id }, { now: t, event: 'replacement', detail: `replaced by ${rec.expectedTxid} (fee ${rec.fee} sats)` }),
+    });
+    if (res.state === 'failed') {
+        store.mutate((rs) => updateRecord(rs, original.id, { supersededBy: null }, { now: now(), event: 'replacement failed', detail: res.error }));
+    }
+    return res;
+}
+
+/**
+ * CPFP: a child (speedup.js planCpfp, ok) that spends `parent`'s unconfirmed change back to our
+ * own address. Refused unless the parent is still broadcast.
+ */
+export async function executeCpfp({ signer, store, parent, plan, network, ownAddress, id, tipHeight = null, now = Date.now, onSubmitting = null }) {
+    const cur = store.load();
+    const live = cur.ok ? cur.records.find((r) => r.id === parent.id) : null;
+    if (!live || live.state !== 'broadcast') return { state: 'refused', error: 'The stuck send is no longer waiting for a block, so no speed-up was sent.' };
+    const t = now();
+    const res = await executeSend({
+        signer, store, plan, outputs: [plan.output], network, ownAddress, id, kind: 'cpfp', tipHeight, now, onSubmitting,
+        extra: { parent: parent.id, parentTxid: recordTxid(parent), speedUp: 'cpfp', changeVout: 0, packageRate: plan.packageRate },
+        link: (rs, rec) => updateRecord(rs, parent.id, { cpfpBy: rec.id }, { now: t, event: 'cpfp', detail: `child ${rec.expectedTxid} (fee ${rec.fee} sats, package ${plan.packageRate.toFixed(2)} sat/vB)` }),
+    });
+    return res;
 }
 
 async function callSigner({ signer, store, record, request, now }) {

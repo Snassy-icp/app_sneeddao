@@ -4,8 +4,10 @@
 //   2. receives: every UTXO not created by one of our sends is "received at height h". Receives
 //      are remembered in this browser (localStorage, per network and principal), so they stay
 //      listed after they are spent.
-// Explorer history (mempool.space address API) is opt-in and comes later (A4). Pure apart from
-// the storage helpers.
+// 3. explorer history (phase A4, Advanced, opt-in): mempool.space's address API. It tells
+//    mempool.space which address the user looks up, so the page asks once (remembered per browser,
+//    EXPLORER_OK_KEY) and never calls it before that; after the yes it is fetched only when the
+//    Activity tab is open. Pure apart from the storage helpers and the fetch (fetchImpl injected).
 export const RECEIVES_MAX = 500;
 export const receivesKey = (network, principal) => `sneed_btc_receives_v1:${network}:${String(principal)}`;
 
@@ -70,5 +72,57 @@ export async function checkTxOnMempool(network, txid, { fetchImpl = (typeof fetc
         return { seen: true, confirmed: Boolean(j?.status?.confirmed) };
     } catch (e) {
         return { error: `Couldn't reach mempool.space (${e?.message || e})` };
+    }
+}
+
+// ---------------------------------------------------------------- explorer history (opt-in, A4)
+
+export const MEMPOOL_BASE = Object.freeze({ mainnet: 'https://mempool.space/api', testnet: 'https://mempool.space/testnet4/api' });
+/// The user agreed (once, per browser) that Activity may ask mempool.space for this address's history.
+export const EXPLORER_OK_KEY = 'sneed_btc_explorer_history_ok_v1';
+export function explorerHistoryAllowed(storage) {
+    try { return storage?.getItem(EXPLORER_OK_KEY) === '1'; } catch { return false; }
+}
+export function setExplorerHistoryAllowed(on, storage) {
+    try { if (on) storage?.setItem(EXPLORER_OK_KEY, '1'); else storage?.removeItem(EXPLORER_OK_KEY); } catch { /* storage blocked: asked again next time */ }
+}
+
+/// One mempool.space transaction as seen from `address`: { txid, net (sats, + in / − out), fee,
+/// confirmed, height, time }. Values that are not finite non-negative integers make it null (the
+/// answer is third-party data).
+export function parseExplorerTx(tx, address) {
+    if (!tx || typeof tx.txid !== 'string' || !/^[0-9a-f]{64}$/.test(tx.txid)) return null;
+    const amt = (v) => (Number.isSafeInteger(v) && v >= 0 ? BigInt(v) : null);
+    let net = 0n;
+    for (const o of Array.isArray(tx.vout) ? tx.vout : []) {
+        if (o?.scriptpubkey_address !== address) continue;
+        const v = amt(o.value); if (v == null) return null; net += v;
+    }
+    for (const i of Array.isArray(tx.vin) ? tx.vin : []) {
+        if (i?.prevout?.scriptpubkey_address !== address) continue;
+        const v = amt(i.prevout.value); if (v == null) return null; net -= v;
+    }
+    const fee = amt(tx.fee);
+    const st = tx.status || {};
+    return { txid: tx.txid, net, fee, confirmed: Boolean(st.confirmed), height: Number.isSafeInteger(st.block_height) ? st.block_height : null, time: Number.isSafeInteger(st.block_time) ? st.block_time * 1000 : null };
+}
+
+/// mempool.space history of `address` (first page: unconfirmed + newest confirmed; `afterTxid`
+/// pages back through confirmed ones). { ok, txs, more, last } or { ok: false, error }.
+export async function fetchExplorerHistory(network, address, { afterTxid = null, fetchImpl = (typeof fetch !== 'undefined' ? fetch : null) } = {}) {
+    const base = MEMPOOL_BASE[network];
+    if (!base || !fetchImpl || !/^[a-z0-9]{14,90}$/i.test(String(address || ''))) return { ok: false, error: 'Not available' };
+    if (afterTxid != null && !/^[0-9a-f]{64}$/.test(afterTxid)) return { ok: false, error: 'Bad page' };
+    const url = afterTxid ? `${base}/address/${address}/txs/chain/${afterTxid}` : `${base}/address/${address}/txs`;
+    try {
+        const res = await fetchImpl(url, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' });
+        if (!res.ok) return { ok: false, error: `mempool.space answered ${res.status}` };
+        const j = await res.json();
+        if (!Array.isArray(j)) return { ok: false, error: 'Unexpected answer from mempool.space' };
+        const txs = j.map((t) => parseExplorerTx(t, address)).filter(Boolean);
+        const confirmed = txs.filter((t) => t.confirmed);
+        return { ok: true, txs, more: confirmed.length >= 25, last: confirmed.length ? confirmed[confirmed.length - 1].txid : null };
+    } catch (e) {
+        return { ok: false, error: `Couldn't reach mempool.space (${e?.message || e})` };
     }
 }
