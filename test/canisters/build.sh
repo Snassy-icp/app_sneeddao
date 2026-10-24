@@ -12,6 +12,21 @@ DFX_VERSION="${DFX_VERSION:-0.28.0}"
 mkdir -p "$OUT"
 
 cd "$ROOT"
+# Frontend modules the tests import (NamingService, SneedMonService, agentConnect, …) use
+# src/declarations/<canister>. Newer canisters' declarations are gitignored, so a fresh
+# checkout (CI) lacks them: generate the missing ones, then rewrite their imports to
+# @dfinity/* as the frontend's prebuild does.
+MISSING=()
+for c in app_sneeddao_backend mr_sneed rll sneed_avatars sneed_icp_staking_bot sneed_lock sneed_mon \
+         sneed_neuron_names sneed_neuron_nicknames sneed_notifications sneed_pid_names sneed_pid_nicknames \
+         sneed_premium sneed_profiles sneed_proxy sneed_sms sneed_sns_forum sneedapp sneedex; do
+  [ -f "src/declarations/$c/index.js" ] || MISSING+=("$c")
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo "== declarations for: ${MISSING[*]} (dfx +$DFX_VERSION generate)"
+  for c in "${MISSING[@]}"; do dfx +"$DFX_VERSION" generate "$c" 2>&1 | tail -1; done
+  node src/app_sneeddao_frontend/scripts/fix-declaration-imports.mjs
+fi
 echo "== sneed_lock (dfx +$DFX_VERSION build --network ic)"
 dfx +"$DFX_VERSION" build --network ic sneed_lock 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
 cp .dfx/ic/canisters/sneed_lock/sneed_lock.wasm "$OUT/sneed_lock.wasm"
