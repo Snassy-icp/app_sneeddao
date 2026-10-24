@@ -568,3 +568,20 @@ it('recordTxid prefers the signer\'s txid', () => {
     expect(recordTxid({ txid: 'b', expectedTxid: 'a' })).toBe('b');
     expect(recordTxid({ txid: null, expectedTxid: 'a' })).toBe('a');
 });
+
+// Found in the real-sats test (2026-10-24): the original 1 sat/vB send was mined before its
+// 3 sat/vB replacement, and the replacement's note called the mined original "your faster version".
+import { minedVersionNote } from '../../../src/app_sneeddao_frontend/src/utils/btc/pending.js';
+describe('the note on a replaced send names the version that was mined', () => {
+    const original = { id: 'a', txid: 'aa'.repeat(32), fee: '141' };
+    const replacement = { id: 'b', group: 'a', txid: 'bb'.repeat(32), fee: '423' };
+    it('the original was mined: the replacement says so', () => {
+        expect(minedVersionNote({ ...replacement, replacedBy: original.txid }, [original, replacement])).toBe(' (your original version)');
+    });
+    it('the replacement was mined: the original says the faster version won', () => {
+        expect(minedVersionNote({ ...original, replacedBy: replacement.txid }, [original, replacement])).toBe(' (your faster version)');
+    });
+    it('a version we never made: no note', () => {
+        expect(minedVersionNote({ ...original, replacedBy: 'cc'.repeat(32) }, [original, replacement])).toBe('');
+    });
+});

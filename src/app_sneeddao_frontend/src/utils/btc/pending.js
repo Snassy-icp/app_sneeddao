@@ -284,3 +284,10 @@ export function newId() {
         return `${Date.now().toString(16)}${Math.floor(Math.random() * 1e9).toString(16)}`;
     }
 }
+
+/** The note on a replaced send naming the version that was mined: the faster one, or the original. */
+export function minedVersionNote(record, records) {
+    const mined = records.find((x) => recordTxid(x) === record.replacedBy);
+    if (!mined) return '';
+    return BigInt(mined.fee ?? 0) > BigInt(record.fee ?? 0) ? ' (your faster version)' : ' (your original version)';
+}

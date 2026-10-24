@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaExternalLinkAlt, FaCopy, FaSync, FaBolt } from 'react-icons/fa';
 import { formatAmount } from '../../utils/StringUtils';
-import { reconcile, reconcileAll, updateRecord, canReissue, groupMembers, markMined, recordTxid, LOCKING_STATES } from '../../utils/btc/pending';
+import { reconcile, reconcileAll, updateRecord, canReissue, groupMembers, markMined, recordTxid, minedVersionNote, LOCKING_STATES } from '../../utils/btc/pending';
 import { speedUpStatus } from '../../utils/btc/speedup';
 import BtcSpeedUp from './BtcSpeedUp';
 import {
@@ -389,7 +389,7 @@ export default function BtcActivity({ w, mv = null }) {
                         {s.state !== 'failed' && <a href={`${cfg.explorer}/tx/${s.txid}`} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }} aria-label="Open on mempool.space"><FaExternalLinkAlt size={10} /></a>}
                     </span>
                     {s.state === 'failed' && s.record.error && <div style={{ width: '100%', fontSize: 12, color: c.mutedText }}>{s.record.error}</div>}
-                    {s.state === 'replaced' && s.record.replacedBy && <div style={{ width: '100%', fontSize: 12, color: c.mutedText }}>Another version was mined instead: <span style={mono}>{short(s.record.replacedBy)}</span>{recs.some((x) => recordTxid(x) === s.record.replacedBy) ? ' (your faster version)' : ''}. These coins were spent only once.</div>}
+                    {s.state === 'replaced' && s.record.replacedBy && <div style={{ width: '100%', fontSize: 12, color: c.mutedText }}>Another version was mined instead: <span style={mono}>{short(s.record.replacedBy)}</span>{minedVersionNote(s.record, recs)}. These coins were spent only once.</div>}
                 </div>
             ))}
 
