@@ -27,12 +27,19 @@ jobs:
   canisters:
     name: Canister tests (PocketIC)
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # build about 12 min and suite about 21 min on a 20-core dev machine; a 4-core runner is slower
+    timeout-minutes: 90
     steps:
+      # build.sh compiles older production versions (git archive <commit>) for the upgrade tests,
+      # so the checkout needs the full history, not the default depth-1 clone
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: dfx ${{ env.DFX_VERSION }} and mops
         run: |
           DFXVM_INIT_YES=true DFX_VERSION=$DFX_VERSION sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
@@ -40,6 +47,13 @@ jobs:
           npm install -g ic-mops
       - name: Motoko packages
         run: mops install
+      # Many tests run frontend modules (src/app_sneeddao_frontend) against PocketIC, and build.sh fetches
+      # the ledger-suite wasms with the root @dfinity/agent: both resolve packages from the root node_modules
+      - name: Frontend packages (used by the tests)
+        run: npm install --no-audit --no-fund
+      - name: MCP server packages (tests/mcp-writes.test.js runs mcp/sneed-hub)
+        working-directory: mcp/sneed-hub
+        run: npm install --no-audit --no-fund
       - name: Test dependencies (pic-js downloads its PocketIC server)
         working-directory: test/canisters
         run: npm install --no-audit --no-fund
@@ -59,6 +73,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: dfx ${{ env.DFX_VERSION }} (declarations are generated with it)
         run: |
           DFXVM_INIT_YES=true DFX_VERSION=$DFX_VERSION sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
@@ -68,8 +84,16 @@ jobs:
         run: |
           mops install
           npm install --no-audit --no-fund
+      # dfx generate reads the asset canister's interface from .dfx/<network>/canisters/app_sneeddao_frontend/
+      # assetstorage.did, which only a dfx build or deploy writes (a fresh checkout has none), so seed it
+      # from the committed declaration (the same file). On network local, dfx generate drops that
+      # directory again, so generate for ic as the production build's prebuild does.
       - name: Declarations
+        env:
+          DFX_NETWORK: ic
         run: |
+          mkdir -p .dfx/ic/canisters/app_sneeddao_frontend
+          cp src/declarations/app_sneeddao_frontend/app_sneeddao_frontend.did .dfx/ic/canisters/app_sneeddao_frontend/assetstorage.did
           dfx generate
           node src/app_sneeddao_frontend/scripts/fix-declaration-imports.mjs
       - name: npm run check
