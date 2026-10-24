@@ -91,6 +91,7 @@ describe('forum client bug pass', () => {
     expect(orderTopicThreads(byActivity, 'activity-oldest').map((t) => t.id)).toEqual([4n, 5n, 3n]);
     expect(orderTopicThreads(byActivity, 'newest').map((t) => t.id)).toEqual([5n, 4n, 3n]);
     expect(orderTopicThreads(byActivity, 'oldest').map((t) => t.id)).toEqual([3n, 4n, 5n]);
+    expect(orderTopicThreads(byActivity, 'hot').map((t) => t.id)).toEqual([3n, 5n, 4n]); // hot: the forum's order as given (get_threads_by_hot)
     expect(byActivity.map((t) => t.id)).toEqual([3n, 5n, 9n, 4n]); // not mutated
   });
 

@@ -71,12 +71,13 @@ export function tipDecimals(metadata) {
     return { decimals: metadata.decimals };
 }
 
-/// A topic's live threads in the order the topic page shows them. `threads` come most recently
-/// active first (get_threads_by_activity_with_unread_counts, reverse); sortBy is 'newest', 'oldest',
+/// A topic's live threads in the order the topic page shows them. `threads` come in the forum's
+/// order: hottest first for 'hot' (get_threads_by_hot, reverse), else most recently active first
+/// (get_threads_by_activity_with_unread_counts, reverse); sortBy is 'hot', 'newest', 'oldest',
 /// 'activity-newest' or 'activity-oldest'.
 export function orderTopicThreads(threads, sortBy) {
     const live = threads.filter((t) => !t.deleted);
-    if (sortBy === 'activity-newest') return live; // the forum's order
+    if (sortBy === 'hot' || sortBy === 'activity-newest') return live; // the forum's order
     if (sortBy === 'activity-oldest') return live.reverse();
     const asc = sortBy === 'oldest';
     return live.sort((a, b) => {

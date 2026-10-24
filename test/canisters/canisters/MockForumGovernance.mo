@@ -4,7 +4,9 @@
 /// tests; the parameters make voting power = stake (no bonuses) with a
 /// minimum dissolve delay of 100 s to vote, so a neuron below it has none.
 import Array "mo:base/Array";
+import Blob "mo:base/Blob";
 import Debug "mo:base/Debug";
+import Nat8 "mo:base/Nat8";
 
 persistent actor MockForumGovernance {
   public type NeuronId = { id : Blob };
@@ -103,6 +105,21 @@ persistent actor MockForumGovernance {
       voting_power_percentage_multiplier = 100; vesting_period_seconds = null; disburse_maturity_in_progress = []; followees = []; neuron_fees_e8s = 0;
     };
     neurons := Array.append(Array.filter<Neuron>(neurons, func(x) { x.id != ?{ id } }), [n]);
+  };
+  /// `count` neurons owned by `owner`, with ids [prefix, i / 256, i % 256, 0, ...] (32 bytes), for
+  /// tests that need many votes.
+  public shared func add_neurons(prefix : Nat8, count : Nat, owner : Principal, stake_e8s : Nat64, dissolve_delay_seconds : Nat64) : async () {
+    let owner_perm : NeuronPermission = { principal = ?owner; permission_type = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] };
+    let more = Array.tabulate<Neuron>(count, func(i) {
+      let id = Blob.fromArray(Array.tabulate<Nat8>(32, func(k) { if (k == 0) prefix else if (k == 1) Nat8.fromNat(i / 256) else if (k == 2) Nat8.fromNat(i % 256) else 0 }));
+      {
+        id = ?{ id }; staked_maturity_e8s_equivalent = null; permissions = [owner_perm];
+        maturity_e8s_equivalent = 0; cached_neuron_stake_e8s = stake_e8s; created_timestamp_seconds = 0; source_nns_neuron_id = null;
+        auto_stake_maturity = null; aging_since_timestamp_seconds = 0; dissolve_state = ?#DissolveDelaySeconds(dissolve_delay_seconds);
+        voting_power_percentage_multiplier = 100; vesting_period_seconds = null; disburse_maturity_in_progress = []; followees = []; neuron_fees_e8s = 0;
+      }
+    });
+    neurons := Array.append(neurons, more);
   };
   public shared func set_stake(id : Blob, stake_e8s : Nat64) : async () {
     neurons := Array.map<Neuron, Neuron>(neurons, func(n) { if (n.id == ?{ id }) { { n with cached_neuron_stake_e8s = stake_e8s } } else { n } });
