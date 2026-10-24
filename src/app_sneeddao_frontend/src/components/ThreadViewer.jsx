@@ -43,7 +43,7 @@ import './ThreadViewer.css';
 import ReactionBar from './ReactionBar';
 import { forumExtrasActor, loadReactionCounts, loadMyReactions, isMissingMethod } from '../utils/forumReactions';
 import { toggleEmoji, applyReactionChange, postTarget, threadTarget, targetKey, MAX_PER_USER } from '../utils/reactionsModel';
-import { scoreLabel, threadDisplayTitle, planReadTracking, tipExceptionMessage, predictThreadVote } from '../utils/forumModel';
+import { scoreLabel, threadDisplayTitle, planReadTracking, isPostNew, tipExceptionMessage, predictThreadVote } from '../utils/forumModel';
 import MentionTextarea from './MentionTextarea';
 import { smsMentioned } from '../utils/mentions';
 import { icrc1Transfer } from '../utils/icrcTx';
@@ -935,13 +935,7 @@ function ThreadViewer({
     }, [forumActor, identity]);
 
     // Helper function to check if a post is unread (new since last visit)
-    const isPostUnread = (post) => {
-        const postId = Number(post.id);
-        // A post is unread if:
-        // 1. It's newer than the user's last read position, AND
-        // 2. It was present when we loaded the thread (not added during this session)
-        return postId > stashedLastReadPostId && postId <= stashedHighestPostId;
-    };
+    const isPostUnread = (post) => isPostNew({ post, me: identity?.getPrincipal().toText(), lastRead: stashedLastReadPostId, highest: stashedHighestPostId });
 
     // Helper function to derive display title for presentation (from original Discussion.jsx)
     const getDerivedTitle = (post, parentPost = null) => {

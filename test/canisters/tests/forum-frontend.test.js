@@ -18,8 +18,10 @@
 //      method that does not exist, get_threads_paginated, so unread markers never showed)
 //   9. predictThreadVote: a vote on a thread showed nothing until the forum answered (post votes
 //      update at once)
+//  10. isPostNew: my own new post showed as new since my last visit (a thread without posts when I
+//      came stashes its read marks only once my post loads, with it as the highest)
 import { describe, it, expect } from 'vitest';
-import { scoreLabel, winningOptionIds, threadDisplayTitle, planReadTracking, createTipArgs, tipExceptionMessage, tipDecimals, orderTopicThreads, predictThreadVote } from '../../../src/app_sneeddao_frontend/src/utils/forumModel.js';
+import { scoreLabel, winningOptionIds, threadDisplayTitle, planReadTracking, isPostNew, createTipArgs, tipExceptionMessage, tipDecimals, orderTopicThreads, predictThreadVote } from '../../../src/app_sneeddao_frontend/src/utils/forumModel.js';
 import { isSingleEmoji, toggleEmoji, applyReactionChange, COMMON_EMOJIS, searchEmojis } from '../../../src/app_sneeddao_frontend/src/utils/reactionsModel.js';
 
 const E8 = 100_000_000;
@@ -144,5 +146,22 @@ describe('predictThreadVote', () => {
     it('keeps big e8s amounts exact and handles no voting power', () => {
         expect(predictThreadVote(s(2n ** 60n, 0), null, 'up', 2 ** 40)).toEqual({ score: { up: 2n ** 60n + 2n ** 40n, down: 0n }, myVote: 'up' });
         expect(predictThreadVote(s(5, 5), null, 'up', NaN)).toEqual({ score: s(5, 5), myVote: 'up' });
+    });
+});
+
+describe('isPostNew', () => {
+    it('10. my own posts are never new to me, others\' are within the stashed marks', () => {
+        // a thread with no posts when I came: nothing is stashed until my post (id 7) loads
+        expect(planReadTracking({ threadId: 5, posts: [], me: 'me', serverLastRead: 0, stashedFor: null })).toEqual({ stash: null, write: null });
+        const mine = { id: 7n, thread_id: 5n, created_by: { toString: () => 'me' } };
+        const plan = planReadTracking({ threadId: 5, posts: [mine], me: 'me', serverLastRead: 0, stashedFor: null });
+        expect(plan.stash).toEqual({ lastRead: 0, highest: 7 });
+        expect(isPostNew({ post: mine, me: 'me', ...plan.stash })).toBe(false);
+        // someone else's post in the same range is new; above the stashed highest or at/below the mark it is not
+        expect(isPostNew({ post: { id: 6n, created_by: 'x' }, me: 'me', lastRead: 0, highest: 7 })).toBe(true);
+        expect(isPostNew({ post: { id: 8n, created_by: 'x' }, me: 'me', lastRead: 0, highest: 7 })).toBe(false);
+        expect(isPostNew({ post: { id: 3n, created_by: 'x' }, me: 'me', lastRead: 3, highest: 7 })).toBe(false);
+        // logged out: no "me", the marks decide
+        expect(isPostNew({ post: mine, me: null, lastRead: 0, highest: 7 })).toBe(true);
     });
 });
