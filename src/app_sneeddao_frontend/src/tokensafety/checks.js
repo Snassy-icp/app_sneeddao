@@ -26,6 +26,7 @@ import { DFINITY_LEDGER_RELEASES } from './dfinityReleases.js';
 import { REPACKAGED_BUILDS } from './repackaged.js';
 import { officialReleasesForRaw } from './wasmVerify.js';
 import { buildControllerTree, describeTreeNode, untrustedEnds } from './controllerTree.js';
+import { knownMintingOwner } from './mintingOwner.js';
 const NEVER_MS = Number(NEVER_NS / 1_000_000n);
 
 export const IDS = {
@@ -59,6 +60,7 @@ const HUB = {
     neuron: (root, id) => `/neuron?neuronid=${id}&sns=${root}`,
     proposals: (root) => `/proposals?sns=${root}`,
 };
+
 const T = 1e12;
 const SCAN_TIMEOUT_MS = 20 * 60 * 1000; // leaves that wait for the block scan
 
@@ -555,11 +557,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     if (!m.minting) return pass('No minting account: nothing can mint');
                     const owner = m.minting.owner.toText();
                     const details = { minting_account: owner, subaccount: opt(m.minting.subaccount) ? 'set' : 'default' };
-                    if (owner === ledgerId) return pass('The ledger itself: no one can transact as it', details, HUB.canister(ledgerId));
-                    if (owner === '2vxsx-fae') return pass('The anonymous principal: cannot hold or move tokens', details);
-                    if (NNS_SYSTEM[owner]) return pass(`The ${NNS_SYSTEM[owner]}: an NNS system canister that never transfers tokens`, details, HUB.canister(owner));
-                    if (BLACKHOLES[owner]) return pass(`The ${BLACKHOLES[owner]} canister: it never transfers tokens`, details, HUB.canister(owner));
-                    if (owner.length !== 27) return fail('A user principal: its holder can mint without limit', details, HUB.principal(owner));
+                    const known = knownMintingOwner(owner, ledgerId, NNS_SYSTEM, BLACKHOLES);
+                    if (known) {
+                        const link = known.link === 'canister' ? HUB.canister(owner) : known.link === 'principal' ? HUB.principal(owner) : undefined;
+                        return known.grade === 'pass' ? pass(known.label, details, link) : fail(known.label, details, link);
+                    }
                     const snsw = await ctx.load('snsw', loaders.snsw);
                     const sns = snsw.snses.find((s) => s.governance === owner);
                     if (sns) return pass(`The SNS governance of ${await daoLabel(sns, ctx)}: minting takes a proposal`, details, HUB.sns(sns.root));
