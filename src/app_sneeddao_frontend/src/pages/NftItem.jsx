@@ -18,6 +18,7 @@ import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '..
 import { accountId as extAccountId, isSavedExtCollection, addExtCollection } from '../utils/ExtUtils';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
+import { SneedLockNftSummary } from '../components/SneedLockAssetView';
 import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { namingServiceEnabled, setMyNftAvatar, setMyExtNftAvatar } from '../utils/NamingService';
 import { useNaming } from '../NamingContext';
@@ -143,6 +144,14 @@ function NftItem() {
                                 {desc && <p style={{ margin: '12px 0 0', color: theme.colors.secondaryText, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{desc}</p>}
                                 {token && <SoulboundNote metadata={token.metadata} theme={theme} />}
                             </div>
+
+                            {/* a Sneed Lock NFT is a lock: what it holds, what that is worth, and its /lock page */}
+                            {collection === sneedLockCanisterId && /^\d+$/.test(idText) && (
+                                <div style={card}>
+                                    <div style={label}>Sneed Lock</div>
+                                    <SneedLockNftSummary lockId={idText} />
+                                </div>
+                            )}
 
                             <div style={card}>
                                 <div style={label}>Owner</div>
