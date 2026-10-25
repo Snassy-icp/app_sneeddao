@@ -8,8 +8,9 @@
 //      value unknown (null), never a wrong number; a side without tokens needs no price
 //   3. lockStatus: fixed expiry, expired, dissolve delay not dissolving, dissolving
 //   4. lockAssets: token and position locks from a LockState; lockPageUrl is /lock/<id>
+//   5. offerLockIds / lockValuesUsd: the offer value estimate (good-deal badge) left Sneed Lock NFTs out
 import { describe, it, expect } from 'vitest';
-import { tokenLockValue, positionLockValue, amountsForLiquidity, sqrtAtTick, lockStatus, lockAssets, lockPageUrl, knownPrice, fmtWhole } from '../../../src/app_sneeddao_frontend/src/utils/sneedLockNftModel.js';
+import { tokenLockValue, positionLockValue, amountsForLiquidity, sqrtAtTick, lockStatus, lockAssets, lockPageUrl, knownPrice, fmtWhole, offerLockIds, lockValuesUsd } from '../../../src/app_sneeddao_frontend/src/utils/sneedLockNftModel.js';
 
 const NEVER = 18_446_744_073_709_551_615n;
 const Q96 = 2n ** 96n;
@@ -93,5 +94,28 @@ describe('Sneed Lock NFT card model', () => {
     expect(fmtWhole(1234.56789, 8)).toBe('1,234.5679');
     expect(fmtWhole(0.000123456, 8)).toBe('0.000123');
     expect(fmtWhole(5, 0)).toBe('5');
+  });
+
+  it('5. the offer value estimate counts Sneed Lock NFTs and SneedLock assets (good-deal badge)', () => {
+    const SL = 'pqsms-lqaaa-aaaal-ajjza-cai';
+    // offer #67 as Sneedex answers it: one ICRC7NFT asset of the Sneed Lock collection, tokens 340 and 339
+    const offer67 = [{ asset: { ICRC7NFT: { collection_canister_id: P(SL), token_ids: [340n, 339n] } }, escrowed: true }];
+    expect(offerLockIds(offer67, SL)).toEqual(['340', '339']);
+    // other NFT collections, tokens and neurons hold no locks; a SneedLock asset holds its lock
+    const mixed = [
+      { asset: { ICRC7NFT: { collection_canister_id: P('tsdbx-ayaaa-aaaal-qxogq-cai'), token_ids: [1n] } } },
+      { asset: { ICRC1Token: { ledger_canister_id: P('ryjl3-tyaaa-aaaaa-aaaba-cai'), amount: 5n } } },
+      { asset: { SneedLock: { lock_id: 77n, lock: { Token: {} } } } },
+    ];
+    expect(offerLockIds(mixed, SL)).toEqual(['77']);
+    expect(offerLockIds([], SL)).toEqual([]);
+    // the values the card computes (fees included), summed; prod 2026-10-25: #340 $493.38, #339 $119.05
+    const pos6 = positionLockValue({ liquidity: 0n, tickLower: 0, tickUpper: 1, tokensOwed0: 347_088_946_373n, tokensOwed1: 0n }, Q96, 8, 8, 2e-6, 2.5);
+    close(pos6.usd, 3470.88946373 * 2e-6); // fees alone are counted
+    const r = lockValuesUsd(['340', '339'], { 340: 493.38, 339: 119.05 });
+    close(r.usd, 612.43); expect(r.unknown).toBe(0);
+    // no price (null) or not read yet (undefined): adds nothing, as an ICRC-1 token without a price
+    expect(lockValuesUsd(['340', '339'], { 340: 493.38, 339: null })).toEqual({ usd: 493.38, unknown: 1 });
+    expect(lockValuesUsd(['340'], {})).toEqual({ usd: 0, unknown: 1 });
   });
 });

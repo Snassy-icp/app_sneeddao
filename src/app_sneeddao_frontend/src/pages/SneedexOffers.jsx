@@ -5,7 +5,9 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine, FaImage } from 'react-icons/fa';
 import { NftAssetIcon, ExtBadge } from '../components/NftAssetView';
-import { SneedLockAssetIcon, SneedLockAssetTitle } from '../components/SneedLockAssetView';
+import { SneedLockAssetIcon, SneedLockAssetTitle, SneedLockNftsCompact, useSneedLockNfts, lockUsdMap } from '../components/SneedLockAssetView';
+import { offerLockIds, lockValuesUsd } from '../utils/sneedLockNftModel';
+import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
@@ -631,9 +633,13 @@ function SneedexOffers() {
         return null;
     }, [snsList]);
     
+    // Sneed Lock NFTs and SneedLock assets: what each lock holds is worth (fees included), read once per lock
+    const sneedLockNfts = useSneedLockNfts(useMemo(() => offers.flatMap((o) => offerLockIds(o.assets, sneedLockCanisterId)), [offers]));
+    const lockUsd = useMemo(() => lockUsdMap(sneedLockNfts), [sneedLockNfts]);
+
     // Calculate estimated USD value of an offer's assets
     const getOfferEstimatedValue = useCallback((offer) => {
-        let totalUsd = 0;
+        let totalUsd = lockValuesUsd(offerLockIds(offer.assets, sneedLockCanisterId), lockUsd).usd;
         
         for (const assetEntry of offer.assets) {
             const details = getAssetDetails(assetEntry);
@@ -676,7 +682,7 @@ function SneedexOffers() {
         }
         
         return totalUsd;
-    }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo]);
+    }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo, lockUsd]);
     
     // Check if any filters are active (the asset pills count when any is picked; sortBy doesn't)
     const hasActiveFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter || searchOfferId || searchSellerPrincipal || assetCats.length > 0;
@@ -2466,7 +2472,10 @@ function SneedexOffers() {
                                                             <ExtBadge />{details.token_indices.length === 1 ? `Card #${details.token_indices[0]}` : `${details.token_indices.length} cards`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{details.collection_id.slice(0, 5)}…</span>
                                                         </>
                                                     )}
-                                                    {details.type === 'ICRC7NFT' && (
+                                                    {details.type === 'ICRC7NFT' && details.collection_id === sneedLockCanisterId && (
+                                                        <SneedLockNftsCompact lockIds={details.token_ids.map(String)} nfts={sneedLockNfts} />
+                                                    )}
+                                                    {details.type === 'ICRC7NFT' && details.collection_id !== sneedLockCanisterId && (
                                                         <>
                                                             <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_ids} size={18} radius={4} />
                                                             {details.token_ids.length === 1 ? `NFT #${details.token_ids[0]}` : `${details.token_ids.length} NFTs`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{details.collection_id.slice(0, 5)}…</span>

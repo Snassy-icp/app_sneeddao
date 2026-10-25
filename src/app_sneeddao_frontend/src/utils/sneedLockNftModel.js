@@ -85,5 +85,35 @@ export function lockAssets(state) {
 /** Formats a whole-token number: up to `max` decimals (never more than the token's), grouped. */
 export const fmtWhole = (n, decimals = 8, max = 4) => Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.min(decimals, n !== 0 && Math.abs(n) < 1 ? Math.max(max, 6) : max) });
 
+/**
+ * The lock ids an offer's assets (offer.assets, raw Sneedex AssetEntry or Asset) hold: ICRC-7 NFTs
+ * of the Sneed Lock collection (token id = lock id) and SneedLock assets. Strings.
+ */
+export function offerLockIds(assets, sneedLockCanisterId) {
+    const ids = [];
+    for (const e of assets || []) {
+        const a = e?.asset || e;
+        if (!a || typeof a !== 'object') continue;
+        if ('ICRC7NFT' in a) {
+            const c = a.ICRC7NFT.collection_canister_id;
+            if ((c?.toText ? c.toText() : String(c)) === String(sneedLockCanisterId)) for (const t of a.ICRC7NFT.token_ids || []) ids.push(big(t).toString());
+        } else if ('SneedLock' in a) ids.push(big(a.SneedLock.lock_id).toString());
+    }
+    return ids;
+}
+
+/**
+ * The value of some locks for an offer's estimate: values maps lock id -> USD (number), null (no
+ * price) or undefined (not read yet). Unknown ones add nothing, as an ICRC-1 token without a price.
+ */
+export function lockValuesUsd(ids, values) {
+    let usd = 0; let unknown = 0;
+    for (const id of ids) {
+        const v = values?.[id];
+        if (typeof v === 'number' && Number.isFinite(v)) usd += v; else unknown += 1;
+    }
+    return { usd, unknown };
+}
+
 /** /lock/<id>, the lock's own page. */
 export const lockPageUrl = (lockId) => `/lock/${big(lockId).toString()}`;

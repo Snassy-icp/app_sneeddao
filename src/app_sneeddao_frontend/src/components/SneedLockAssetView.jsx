@@ -15,7 +15,7 @@ import { LockUntil, LockAge } from './LockUntil';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { lockAssets, lockStatus, tokenLockValue, positionLockValue, fmtWhole, lockPageUrl } from '../utils/sneedLockNftModel';
+import { lockAssets, lockStatus, tokenLockValue, positionLockValue, fmtWhole, lockPageUrl, lockValuesUsd } from '../utils/sneedLockNftModel';
 
 const poolCache = new Map();
 const describePoolCached = (id) => { if (!poolCache.has(id)) { const p = describeSwapPool(id); p.catch(() => poolCache.delete(id)); poolCache.set(id, p); } return poolCache.get(id); };
@@ -72,8 +72,11 @@ function LogoCircle({ logo, symbol, size, style }) {
     );
 }
 
-export function SneedLockAssetIcon({ details, size = 36 }) {
-    const { token, pool } = useSneedLockAsset(details);
+/// `token` / `pool`: logos the caller already has (they win over the token cache, which may not know the token).
+export function SneedLockAssetIcon({ details, size = 36, token: knownToken = null, pool: knownPool = null }) {
+    const own = useSneedLockAsset(details);
+    const token = knownToken || own.token;
+    const pool = knownPool || own.pool;
     const badgeAt = (side) => <FaLock style={{ position: 'absolute', bottom: -2, [side]: -2, fontSize: Math.max(10, size * 0.38), color: '#f59e0b', background: '#1f2937', borderRadius: '50%', padding: 2 }} />;
     const badge = badgeAt('right');
     if (details?.kind === 'position') {
@@ -163,7 +166,44 @@ const describeLedgerCached = (id) => {
 };
 const priceOf = (ledgerId, decimals) => get_token_conversion_rate(ledgerId, decimals).catch(() => 0);
 
-/// { loading, error, state, assets, token, pool, value } for the lock behind a Sneed Lock NFT. All reads are anonymous queries.
+/**
+ * What the lock behind a Sneed Lock NFT holds and is worth: { state, assets, token | pool, value }, or
+ * { error } (never rejects). Anonymous queries, cached for a minute, so the card, the list cards and
+ * the offers' value estimate share one read.
+ */
+const lockNftCache = new Map(); // lock id -> { at, p }
+export function loadSneedLockNft(lockId) {
+    const key = lockId.toString();
+    const hit = lockNftCache.get(key);
+    if (hit && Date.now() - hit.at < 60_000) return hit.p;
+    const p = (async () => {
+        try {
+            const r = await createSneedLockActor(sneedLockCanisterId).get_lock_state(BigInt(key));
+            if (!r.length) return { missing: true, error: 'This lock is no longer in Sneed Lock (it may have unlocked and been withdrawn).' };
+            const state = r[0];
+            const assets = lockAssets(state);
+            if (assets.kind === 'token') {
+                const token = await describeLedgerCached(assets.ledger);
+                const value = tokenLockValue(assets.amount, token.decimals, await priceOf(assets.ledger, token.decimals));
+                return { state, assets, token, value };
+            }
+            const swap = createIcpSwapActor(assets.swap);
+            const [pool, meta, pos] = await Promise.all([describePoolCached(assets.swap), swap.metadata(), swap.getUserPosition(assets.positionId)]);
+            if (!meta || !('ok' in meta)) throw new Error('the pool did not answer its metadata');
+            if (!pos || !('ok' in pos)) throw new Error(`the pool did not answer position #${assets.positionId}`);
+            const [p0, p1] = await Promise.all([priceOf(pool.token0.ledgerId, pool.token0.decimals), priceOf(pool.token1.ledgerId, pool.token1.decimals)]);
+            const value = positionLockValue(pos.ok, meta.ok.sqrtPriceX96, pool.token0.decimals, pool.token1.decimals, p0, p1);
+            return { state, assets, pool, value };
+        } catch (e) {
+            lockNftCache.delete(key);
+            return { error: `Could not read the lock: ${e?.message || e}` };
+        }
+    })();
+    lockNftCache.set(key, { at: Date.now(), p });
+    return p;
+}
+
+/// { loading, error, state, assets, token, pool, value } for the lock behind a Sneed Lock NFT.
 export function useSneedLockNft(lockId) {
     const key = lockId === undefined || lockId === null ? '' : lockId.toString();
     const [st, setSt] = useState({ loading: true, error: '', state: null });
@@ -171,33 +211,52 @@ export function useSneedLockNft(lockId) {
         let alive = true;
         if (!key) return undefined;
         setSt({ loading: true, error: '', state: null });
-        (async () => {
-            try {
-                const r = await createSneedLockActor(sneedLockCanisterId).get_lock_state(BigInt(key));
-                if (!r.length) { if (alive) setSt({ loading: false, error: 'This lock is no longer in Sneed Lock (it may have unlocked and been withdrawn).', state: null }); return; }
-                const state = r[0];
-                const assets = lockAssets(state);
-                if (alive) setSt((o) => ({ ...o, state, assets }));
-                if (assets.kind === 'token') {
-                    const token = await describeLedgerCached(assets.ledger);
-                    const value = tokenLockValue(assets.amount, token.decimals, await priceOf(assets.ledger, token.decimals));
-                    if (alive) setSt({ loading: false, error: '', state, assets, token, value });
-                } else {
-                    const swap = createIcpSwapActor(assets.swap);
-                    const [pool, meta, pos] = await Promise.all([describePoolCached(assets.swap), swap.metadata(), swap.getUserPosition(assets.positionId)]);
-                    if (!meta || !('ok' in meta)) throw new Error('the pool did not answer its metadata');
-                    if (!pos || !('ok' in pos)) throw new Error(`the pool did not answer position #${assets.positionId}`);
-                    const [p0, p1] = await Promise.all([priceOf(pool.token0.ledgerId, pool.token0.decimals), priceOf(pool.token1.ledgerId, pool.token1.decimals)]);
-                    const value = positionLockValue(pos.ok, meta.ok.sqrtPriceX96, pool.token0.decimals, pool.token1.decimals, p0, p1);
-                    if (alive) setSt({ loading: false, error: '', state, assets, pool, value });
-                }
-            } catch (e) {
-                if (alive) setSt((o) => ({ ...o, loading: false, error: `Could not read the lock: ${e?.message || e}` }));
-            }
-        })();
+        loadSneedLockNft(key).then((r) => { if (alive) setSt({ loading: false, error: '', ...r }); });
         return () => { alive = false; };
     }, [key]);
     return st;
+}
+
+/// lock id -> what loadSneedLockNft answered (undefined while reading), for several locks at once.
+export function useSneedLockNfts(lockIds) {
+    const key = [...new Set((lockIds || []).map(String))].sort().join(',');
+    const [map, setMap] = useState({});
+    useEffect(() => {
+        let alive = true;
+        // a failed read (a busy page can time calls out) is tried twice more before it counts as unknown
+        const go = (id, tries) => loadSneedLockNft(id).then((r) => {
+            if (!alive) return;
+            if (r.error && !r.missing && tries < 2) setTimeout(() => { if (alive) go(id, tries + 1); }, 5000);
+            else setMap((m) => (m[id] === r ? m : { ...m, [id]: r }));
+        });
+        for (const id of key ? key.split(',') : []) go(id, 0);
+        return () => { alive = false; };
+    }, [key]);
+    return map;
+}
+
+/// lock id -> USD value (null: no price or unreadable), for offerLockIds / lockValuesUsd.
+export const lockUsdMap = (nfts) => Object.fromEntries(Object.entries(nfts).map(([id, r]) => [id, r?.value ? r.value.usd : null]));
+
+/// One line for a list card: the first lock's logos, "2 Sneed Lock NFTs · ICP1/ICP · worth X".
+export function SneedLockNftsCompact({ lockIds, nfts }) {
+    const { theme } = useTheme();
+    const { formatValue } = useDenomination();
+    const first = lockIds.map((id) => nfts[id]).find((r) => r?.assets) || null;
+    const a = first?.assets;
+    const details = a ? (a.kind === 'token' ? { kind: 'token', ledger_id: a.ledger } : { kind: 'position', swap_id: a.swap }) : null;
+    const what = first?.pool ? `${first.pool.token0.symbol}/${first.pool.token1.symbol}` : first?.token ? first.token.symbol : null;
+    const allRead = lockIds.every((id) => nfts[id] !== undefined);
+    const { usd, unknown } = lockValuesUsd(lockIds, lockUsdMap(nfts));
+    return (
+        <>
+            {details ? <SneedLockAssetIcon details={details} token={first.token} pool={first.pool} size={18} /> : <FaLock style={{ color: '#f59e0b' }} />}
+            {lockIds.length === 1 ? 'Sneed Lock NFT' : `${lockIds.length} Sneed Lock NFTs`}{what ? ` · ${what}` : ''}
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                {' · '}{!allRead ? 'reading…' : unknown === lockIds.length ? 'value unknown' : `worth ${formatValue(usd)}${unknown ? ' + unknown' : ''}`}
+            </span>
+        </>
+    );
 }
 
 /// "Locked until 7/25/2035 (3,195 days left)" and the like, from lockStatus.
@@ -236,7 +295,7 @@ export function SneedLockNftSummary({ lockId, style = {} }) {
             ) : (
                 <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <SneedLockAssetIcon details={details} size={30} />
+                        <SneedLockAssetIcon details={details} token={token} pool={pool} size={30} />
                         <div style={{ minWidth: 0, flex: 1 }}>
                             {assets.kind === 'token' ? (
                                 <div style={strong}>{value ? `${fmtWhole(value.whole, token.decimals)} ${token.symbol}` : 'Token lock'}</div>
