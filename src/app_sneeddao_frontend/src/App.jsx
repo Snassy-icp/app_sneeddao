@@ -73,6 +73,7 @@ import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
 import RewardsAdmin from './pages/admin/Rewards';
 import RllAdmin from './pages/admin/Rll';
 import SneedMonAdmin from './pages/admin/SneedMon';
+import Drive from './pages/Drive';
 import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
 import ConnectAgent from './pages/ConnectAgent';
@@ -401,6 +402,7 @@ function App() {
                     <Route path="/admin/rewards" element={<RewardsAdmin />} />
                     <Route path="/admin/rll" element={<RllAdmin />} />
                     <Route path="/admin/mon" element={<SneedMonAdmin />} />
+                    <Route path="/drive" element={<Drive />} />
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>
