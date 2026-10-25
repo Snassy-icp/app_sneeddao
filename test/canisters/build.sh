@@ -76,7 +76,7 @@ cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.
 cp .dfx/local/canisters/sneed_guardian/service.did.js "$OUT/sneed_guardian.did.js"
 
 # every other canister under test: a check build with the release toolchain (no canister id needed)
-for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_pad sneed_icp_staking_bot sneed_trading_bot sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles mr_sneed sneed_notifications sneed_mon sneed_proxy; do
+for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_pad sneed_icp_staking_bot sneed_trading_bot sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles mr_sneed sneed_notifications sneed_mon sneed_proxy sneed_drive; do
   echo "== $c (dfx +$DFX_VERSION build --check)"
   dfx +"$DFX_VERSION" build --check "$c" 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke\|does not cover\|#Err\|#Ok" | tail -1
   cp ".dfx/local/canisters/$c/$c.wasm" "$OUT/$c.wasm"

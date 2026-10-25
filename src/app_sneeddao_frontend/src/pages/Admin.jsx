@@ -1,8 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAdminCheck } from '../hooks/useAdminCheck';
+import { DriveBetaSwitch } from './Drive';
+import { driveFlagOn } from '../utils/driveFlag';
+
+/// Sneed Drive phase 0 (spec/sneed_drive_phase0.md): the per-browser beta switch, and the way in once it is on.
+function DriveBetaCard() {
+    const [on, setOn] = useState(() => driveFlagOn());
+    return (
+        <div style={{ backgroundColor: '#1a2a2a', padding: '20px', borderRadius: '8px', color: '#ffffff', border: '1px solid #2dd4bf', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', textAlign: 'center' }}>
+            <h2 style={{ margin: 0 }}>Sneed Drive (beta)</h2>
+            <p style={{ color: '#99f6e4', margin: 0 }}>Notes-first drive canister: folders, versions, trash, tags, search, sharing</p>
+            <DriveBetaSwitch on={on} onChange={setOn} />
+            {on && <Link to="/drive" style={{ color: '#5eead4' }}>Open Sneed Drive</Link>}
+        </div>
+    );
+}
 
 function Admin() {
     const { isAuthenticated, identity } = useAuth();
@@ -611,6 +626,7 @@ function Admin() {
                         <h2 style={{ margin: 0 }}>Feedback</h2>
                         <p style={{ color: '#7dd3fc', margin: 0 }}>Forum topics and recipients of bug reports and ideas</p>
                     </Link>
+                    <DriveBetaCard />
                 </div>
             </main>
         </div>

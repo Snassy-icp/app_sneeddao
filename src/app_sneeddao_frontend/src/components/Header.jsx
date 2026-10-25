@@ -11,6 +11,7 @@ import ThemeToggle from './ThemeToggle';
 import PrivacyToggle from './PrivacyToggle';
 import { maskIfPrivate } from '../utils/privacyMode';
 import { useAdminCheck } from '../hooks/useAdminCheck';
+import { driveFlagOn } from '../utils/driveFlag';
 import usePremiumStatus from '../hooks/usePremiumStatus';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useSns } from '../contexts/SnsContext';
@@ -238,7 +239,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my', '/swap'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/sneedapp'].includes(path) || path.startsWith('/sneedapp/')) return 'Sneedapp';
         if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list', '/studio', '/custody'].includes(path) || path.startsWith('/tools/') || path.startsWith('/studio/')) return 'Tools';
-        if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
+        if (['/admin', '/drive'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/api', '/architecture'].includes(path) || location.pathname.startsWith('/help/') || location.pathname.startsWith('/api/')) return 'Help';
         return 'Sneed Hub';
     });
@@ -254,7 +255,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
 
     // Check if we're on an admin page
-    const isOnAdminPage = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
+    const isOnAdminPage = location.pathname === '/admin' || location.pathname === '/drive' || location.pathname.startsWith('/admin/');
 
     // Add click outside handler
     useEffect(() => {
@@ -706,7 +707,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Sneedex', path: '/admin/sneedex' },
                 { name: 'RLL Rewards', path: '/admin/rll' },
                 { name: 'Sneed Monitor', path: '/admin/mon' },
-                { name: 'SNS Jailbreak', path: '/admin/sns_jailbreak' }
+                { name: 'SNS Jailbreak', path: '/admin/sns_jailbreak' },
+                // Sneed Drive phase 0: only once the admin turned on its beta switch in this browser
+                ...(driveFlagOn() ? [{ name: 'Sneed Drive', path: '/drive' }] : [])
             ]
         };
     }

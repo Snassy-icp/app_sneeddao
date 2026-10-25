@@ -227,6 +227,11 @@
       "main": "src/sneed_proxy/main.mo",
       "type": "motoko",
       "args": "--enhanced-orthogonal-persistence"
+    },
+    "sneed_drive": {
+      "main": "src/sneed_drive/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     }
   },
   "networks": {
