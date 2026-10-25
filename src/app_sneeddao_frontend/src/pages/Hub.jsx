@@ -17,6 +17,9 @@ import useNeuronsCache from '../hooks/useNeuronsCache';
 import { getLogoSync } from '../hooks/useLogoCache';
 import { indexNeuronsByOwner } from '../utils/NeuronUtils';
 import OfferCard from '../components/OfferCard';
+import { useSneedLockNfts, lockUsdMap } from '../components/SneedLockAssetView';
+import { offerLockIds, lockValuesUsd } from '../utils/sneedLockNftModel';
+import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
 import { useDenomination } from '../contexts/DenominationContext';
@@ -1021,9 +1024,13 @@ function Hub() {
         return sns?.canisters?.ledger || null;
     }, [snsList]);
 
+    // Sneed Lock NFTs and SneedLock assets: what each lock holds is worth (fees included)
+    const sneedLockNfts = useSneedLockNfts(useMemo(() => offers.flatMap((o) => offerLockIds(o.assets, sneedLockCanisterId)), [offers]));
+    const lockUsd = useMemo(() => lockUsdMap(sneedLockNfts), [sneedLockNfts]);
+
     // Calculate estimated value for an offer
     const getOfferEstimatedValue = useCallback((offer) => {
-        let totalUsd = 0;
+        let totalUsd = lockValuesUsd(offerLockIds(offer.assets, sneedLockCanisterId), lockUsd).usd;
         
         for (const assetEntry of (offer.assets || [])) {
             const asset = assetEntry?.asset;
@@ -1069,7 +1076,7 @@ function Hub() {
         }
         
         return totalUsd;
-    }, [tokenPrices, prices.icpUsd, snsList, getTokenInfo, getSnsInfo, getSnsLedgerFromGovernance]);
+    }, [tokenPrices, prices.icpUsd, snsList, getTokenInfo, getSnsInfo, getSnsLedgerFromGovernance, lockUsd]);
 
     // Format price display
     const formatPrice = (price, decimals = 4) => {

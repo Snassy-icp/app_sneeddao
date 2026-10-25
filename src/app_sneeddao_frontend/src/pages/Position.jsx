@@ -33,6 +33,7 @@ import { FaWater, FaSpinner, FaLock, FaArrowUp, FaCoins, FaPlus, FaMinus, FaExch
 import { isUntilDissolved } from '../utils/lockTime';
 import { LockUntil } from '../components/LockUntil';
 import { getSwapPositionLocks } from '../utils/sneedLockLists';
+import { sqrtAtTick, amountsForLiquidity } from '../utils/sneedLockNftModel';
 
 const HOST = 'https://icp-api.io';
 const primary = '#06b6d4';
@@ -57,16 +58,9 @@ const calculatorIdl = ({ IDL }) => IDL.Service({
 const TICK_SPACING = { 500: 10, 3000: 60, 10000: 200 };
 
 // ---- v3 math: price <-> tick, amounts <-> liquidity (floats are fine for display and sizing; the pool decides) ----
-const sqrtAtTick = (t) => 1.0001 ** (t / 2);
 const tickAtPrice = (p) => Math.floor(Math.log(p) / Math.log(1.0001)); // p = token1 per token0, base units
 const alignDown = (t, s) => Math.floor(t / s) * s;
 const alignUp = (t, s) => Math.ceil(t / s) * s;
-function amountsForLiquidity(L, tickLower, tickUpper, sqrtP) {
-    const sl = sqrtAtTick(tickLower); const su = sqrtAtTick(tickUpper);
-    if (sqrtP <= sl) return { amount0: L * (su - sl) / (sl * su), amount1: 0, inRange: false };
-    if (sqrtP >= su) return { amount0: 0, amount1: L * (su - sl), inRange: false };
-    return { amount0: L * (su - sqrtP) / (sqrtP * su), amount1: L * (sqrtP - sl), inRange: true };
-}
 /// Liquidity a range can take for given base-unit amounts at the current price (the smaller side binds).
 function liquidityFor(amount0, amount1, tickLower, tickUpper, sqrtP) {
     const sl = sqrtAtTick(tickLower); const su = sqrtAtTick(tickUpper);

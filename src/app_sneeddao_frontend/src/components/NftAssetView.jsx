@@ -7,6 +7,8 @@ import { FaImage, FaExternalLinkAlt } from 'react-icons/fa';
 import { boundTo, SoulboundBadge } from './Soulbound';
 import { useTheme } from '../contexts/ThemeContext';
 import { isKnownExtCollection, isExtCollection, fetchExtCollectionInfo, fetchRegistry, tokenMetadata as extTokenMetadata, extTokenView } from '../utils/ExtUtils';
+import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { SneedLockNftSummary } from './SneedLockAssetView';
 import { anonymousNftAgent, verifyIcrc7Support, fetchCollectionInfo, fetchTokenDetails, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getNftMedia } from '../utils/NftUtils';
 
 const collectionCache = new Map(); // id -> Promise<info>
@@ -173,6 +175,8 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null, standard = 
                                     <Link to={nftItemUrl(collectionId, id)} style={{ fontWeight: 600, color: theme.colors.primaryText, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</Link>
                                     <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace', flexShrink: 0 }}>{t && boundTo(t.metadata) && <SoulboundBadge style={{ marginRight: 6, fontFamily: 'inherit' }} />}{media?.kind === 'model' && <span title="Has a 3D model - open it to turn it around" style={{ marginRight: 6, fontFamily: 'inherit', fontWeight: 700, color: theme.colors.accent }}>3D</span>}#{key}</span>
                                 </div>
+                                {/* a Sneed Lock NFT is a lock: what it holds and what that is worth, not just its picture */}
+                                {collectionId === sneedLockCanisterId && <SneedLockNftSummary lockId={id} />}
                                 {desc && <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{desc}</div>}
                                 {!ownerText && t?.ownerAccountId && (
                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
