@@ -1,0 +1,44 @@
+# Sneed release build environment: the one place Sneed DAO release wasms and frontend batches are built,
+# both for releases (tools/release-build.sh) and for the proposal verifier (tools/verifier/verify.mjs).
+#
+#   podman build -t sneed-release-build:1 -f tools/verifier/Containerfile tools/verifier
+#
+# Pinned: node 24.17.0 / npm 11.13.0 (the frontend release builds used these), dfx 0.28.0 (Motoko canisters,
+# bundles moc 0.14.13) and dfx 0.31.0 (the frontend; its bundled asset canister wasm 04e565b3… is the one
+# installed), mops 2.14.1. The dfx tarballs are checked against the sha256 files of their GitHub releases.
+# No identity, key or token is ever put into this image or mounted into its containers.
+FROM docker.io/library/node:24.17.0-bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl gzip \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG DFX_028_SHA256=c6a63cd9872062f3cbf226a6e7109bd1a2f0201cfa6955d012d0d0714a1c01bf
+ARG DFX_031_SHA256=548a0914fee5ecebe75719618d8d7ad96ba9e023cf91383bb546586b0e10931b
+
+# dfx versions side by side; the build script puts the one it needs first on PATH.
+RUN set -eu; \
+    for v in 0.28.0:${DFX_028_SHA256} 0.31.0:${DFX_031_SHA256}; do \
+      ver=${v%%:*}; sum=${v#*:}; \
+      curl -fsSL -o /tmp/dfx.tgz https://github.com/dfinity/sdk/releases/download/${ver}/dfx-x86_64-unknown-linux-gnu.tar.gz; \
+      echo "${sum}  /tmp/dfx.tgz" | sha256sum -c -; \
+      mkdir -p /opt/dfx/${ver}; tar -xzf /tmp/dfx.tgz -C /opt/dfx/${ver} --strip-components=1; rm /tmp/dfx.tgz; \
+    done
+
+RUN npm install -g npm@11.13.0 ic-mops@2.14.1 && npm cache clean --force
+
+# A fixed, image-owned home: dfx unpacks its cache (moc, the asset canister wasm, ...) here at image build,
+# so a build needs nothing from the host's home. At run time the container's root filesystem is read-only
+# and only the build directory, /cache and a /tmp tmpfs are writable.
+ENV HOME=/opt/home DFX_TELEMETRY=off DFX_WARNING=-version_check,-mainnet_plaintext_identity
+RUN mkdir -p /opt/home \
+ && for v in 0.28.0 0.31.0; do /opt/dfx/$v/dfx cache install; done \
+ && /opt/dfx/0.28.0/dfx --version && /opt/dfx/0.31.0/dfx --version && mops --version && node --version && npm --version
+
+# Caches that are worth keeping between builds live in /cache (a host directory mounted read-write).
+ENV npm_config_cache=/cache/npm npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false \
+    XDG_CACHE_HOME=/cache/xdg
+
+# The source tree is always mounted here, whatever its path on the host: moc records absolute source paths
+# in the wasm, so this path is part of every release hash. It is the path today's releases were built at.
+WORKDIR /home/snassy/app_sneeddao

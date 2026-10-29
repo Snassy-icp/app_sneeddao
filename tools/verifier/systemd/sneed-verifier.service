@@ -1,0 +1,17 @@
+[Unit]
+Description=Sneed proposal verifier: rebuild new Sneed DAO upgrade proposals and post the result in their forum threads
+Documentation=file:///home/snassy/sneed-verifier/tools/verifier/setup.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/snassy/sneed-verifier
+# SNEED_VERIFIER_PEM=/home/snassy/.config/sneed-verifier/identity.pem (and optional overrides, see setup.md)
+EnvironmentFile=/home/snassy/.config/sneed-verifier/env
+ExecStart=/usr/bin/node /home/snassy/sneed-verifier/tools/verifier/verify.mjs
+# a frontend rebuild takes a while; one run at a time (the timer never starts a second while this one runs)
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle
+# No systemd sandboxing here on purpose: rootless podman needs newuidmap (setuid) and its own namespaces. The
+# builds are sandboxed by the container (tools/release-build.sh); the verifier process only talks to the IC and git.
