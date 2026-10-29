@@ -135,7 +135,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null, standard = 
     const ids = tokenIds || [];
     const label = { fontSize: '0.72rem', fontWeight: 600, color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 };
     return (
-        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '1rem', padding: '1rem', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}` }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '1rem', padding: 'clamp(10px, 3vw, 1rem)', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
                 {info?.logo && <img src={info.logo} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }} />}
                 <div style={{ minWidth: 0 }}>
@@ -151,7 +151,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null, standard = 
             </div>
             {loading && <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Reading the token{ids.length === 1 ? '' : 's'}…</div>}
             {error && <div style={{ fontSize: '0.85rem', color: theme.colors.error }}>Could not read the collection: {error}</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))', gap: 12 }}>
                 {ids.map((id) => {
                     const t = tokens.find((x) => x.tokenId.toString() === id.toString());
                     const img = t ? getNftImage(t.metadata, t) : null;

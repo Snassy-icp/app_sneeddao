@@ -285,7 +285,11 @@ export function SneedLockNftSummary({ lockId, style = {} }) {
     const usdText = (usd) => (usd === null || usd === undefined ? <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>value unknown</span> : formatValue(usd));
     const spinner = (text) => <span style={{ ...muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}><style>{'@keyframes health-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .health-spin { animation: health-spin 1s linear infinite; }'}</style><FaSpinner className="health-spin" /> {text}</span>;
     const lockLink = <Link to={lockPageUrl(lockId)} style={{ color: theme.colors.accent, textDecoration: 'none', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>Open Sneed Lock #{lockId.toString()} <FaExternalLinkAlt size={9} /></Link>;
-    const row = (k, v) => (<React.Fragment key={k}><span style={muted}>{k}</span><span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, wordBreak: 'break-all' }}>{v}</span></React.Fragment>);
+    // label and value side by side, the value under its label when the card is too narrow (phones)
+    const row = (k, v) => (<div key={k} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: 12 }}><span style={{ ...muted, flex: '0 0 96px' }}>{k}</span><span style={{ flex: '1 1 150px', minWidth: 0, fontSize: '0.78rem', color: theme.colors.secondaryText, overflowWrap: 'anywhere' }}>{v}</span></div>);
+    // one token amount: wraps as a whole before it breaks inside the number
+    const amt = (whole, t, max) => <span style={{ display: 'inline-block', maxWidth: '100%' }}>{fmtWhole(whole, t.decimals, max)} {t.symbol}</span>;
+    const pair = (w0, w1, max) => <>{amt(w0, pool.token0, max)} + {amt(w1, pool.token1, max)}</>;
     const details = assets ? (assets.kind === 'token' ? { kind: 'token', ledger_id: assets.ledger } : { kind: 'position', swap_id: assets.swap }) : null;
     const status = state ? lockStatus(state, BigInt(Date.now()) * 1_000_000n) : null;
     return (
@@ -296,13 +300,13 @@ export function SneedLockNftSummary({ lockId, style = {} }) {
                 <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <SneedLockAssetIcon details={details} token={token} pool={pool} size={30} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ minWidth: 0, flex: 1, overflowWrap: 'anywhere' }}>
                             {assets.kind === 'token' ? (
                                 <div style={strong}>{value ? `${fmtWhole(value.whole, token.decimals)} ${token.symbol}` : 'Token lock'}</div>
                             ) : (
                                 <>
                                     <div style={strong}>{pool ? `${pool.token0.symbol}/${pool.token1.symbol}` : 'ICPSwap'} LP position #{assets.positionId.toString()}</div>
-                                    {value && pool && <div style={{ color: theme.colors.secondaryText }}>{fmtWhole(value.total0, pool.token0.decimals)} {pool.token0.symbol} + {fmtWhole(value.total1, pool.token1.decimals)} {pool.token1.symbol}</div>}
+                                    {value && pool && <div style={{ color: theme.colors.secondaryText }}>{pair(value.total0, value.total1)}</div>}
                                 </>
                             )}
                             {value ? <div style={{ color: theme.colors.secondaryText }}>Worth {usdText(value.usd)}</div> : loading && spinner('Reading the amounts…')}
@@ -315,15 +319,15 @@ export function SneedLockNftSummary({ lockId, style = {} }) {
                         <button type="button" onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.75rem', color: theme.colors.accent }}>{open ? 'Hide details' : 'Details'}</button>
                     </div>
                     {open && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 12px', alignItems: 'baseline' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {row('Lock', `#${lockId.toString()}`)}
                             {assets.kind === 'token' && row('Ledger', assets.ledger)}
                             {assets.kind === 'token' && value && row('Amount', `${fmtWhole(value.whole, token.decimals, 8)} ${token.symbol}`)}
                             {assets.kind === 'position' && row('Pool', assets.swap)}
                             {assets.kind === 'position' && row('Position', <Link to={`/position?swap=${assets.swap}&id=${assets.positionId}`} style={{ color: theme.colors.accent }}>#{assets.positionId.toString()} <FaExternalLinkAlt size={9} /></Link>)}
-                            {assets.kind === 'position' && value && pool && row('In the position', `${fmtWhole(value.amount0, pool.token0.decimals, 8)} ${pool.token0.symbol} + ${fmtWhole(value.amount1, pool.token1.decimals, 8)} ${pool.token1.symbol}${value.inRange ? '' : ' (out of range)'}`)}
-                            {assets.kind === 'position' && value && pool && row('Unclaimed fees', `${fmtWhole(value.fees0, pool.token0.decimals, 8)} ${pool.token0.symbol} + ${fmtWhole(value.fees1, pool.token1.decimals, 8)} ${pool.token1.symbol}`)}
-                            {assets.kind === 'position' && value && pool && row('Value per token', <>{pool.token0.symbol} {usdText(value.usd0)} · {pool.token1.symbol} {usdText(value.usd1)}</>)}
+                            {assets.kind === 'position' && value && pool && row('In the position', <>{pair(value.amount0, value.amount1, 8)}{value.inRange ? '' : ' (out of range)'}</>)}
+                            {assets.kind === 'position' && value && pool && row('Unclaimed fees', pair(value.fees0, value.fees1, 8))}
+                            {assets.kind === 'position' && value && pool && row('Value per token', <><span style={{ display: 'inline-block' }}>{pool.token0.symbol} {usdText(value.usd0)}</span> · <span style={{ display: 'inline-block' }}>{pool.token1.symbol} {usdText(value.usd1)}</span></>)}
                             {status?.delayNs > 0n && row('Dissolve delay', formatNsDuration(status.delayNs))}
                         </div>
                     )}

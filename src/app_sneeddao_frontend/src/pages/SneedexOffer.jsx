@@ -94,6 +94,18 @@ const RESPONSIVE_CSS = `
             order: 4 !important;
         }
     }
+    /* phones: less nested padding, so asset cards (e.g. Sneed Lock NFTs) keep room for their text */
+    @media (max-width: 600px) {
+        .sneedex-offer-container {
+            padding: 1rem !important;
+        }
+        .sneedex-offer-assets-card {
+            padding: 1rem !important;
+        }
+        .sneedex-offer-asset-item {
+            padding: 0.75rem !important;
+        }
+    }
 `;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
@@ -2749,7 +2761,7 @@ function SneedexOffer() {
                 </div>
                 
                 {/* Main Content */}
-                <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+                <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }} className="sneedex-offer-container">
                 {error && <div style={styles.errorText}>{error}</div>}
                 
                 <div style={styles.mainContent} className="sneedex-offer-main-content">
@@ -3052,7 +3064,7 @@ function SneedexOffer() {
                                     }
                                     
                                     return (
-                                        <div key={idx} style={{
+                                        <div key={idx} className="sneedex-offer-asset-item" style={{
                                             ...styles.assetItem,
                                             cursor: details.escrowed ? 'pointer' : 'default',
                                         }}
