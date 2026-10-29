@@ -12,6 +12,7 @@ import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, fetchSnsLogo } from './utils/SnsUtils';
 import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink, extractPrincipalString } from './utils/NeuronUtils';
 import { getNeuronFromCache, updateNeuronInCache } from './hooks/useNeuronsCache';
+import { planPermissionChange } from './utils/neuronPermissionPlan';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { setNeuronNickname } from './utils/BackendUtils';
@@ -86,6 +87,7 @@ function Neuron() {
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [votingHistory, setVotingHistory] = useState(null);
     const [error, setError] = useState('');
+    const [formError, setFormError] = useState(''); // shown next to the permission form's button
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [hideYes, setHideYes] = useState(false);
@@ -495,48 +497,35 @@ function Neuron() {
 
     const savePrincipalPermissions = async () => {
         try {
-            setActionBusy(true); setActionMsg('Updating permissions...'); setError('');
+            setActionBusy(true); setActionMsg('Updating permissions...'); setError(''); setFormError('');
             const principal = Principal.fromText(managePrincipalInput);
-            const userPrincipal = identity?.getPrincipal()?.toString();
-            if (userPrincipal && principal.toString() === userPrincipal) {
-                setError('You cannot modify your own permissions.');
-                setActionBusy(false); setActionMsg('');
-                return;
+            // Only the difference is sent, adds before removes, so a failed call never leaves the
+            // principal with fewer permissions than intended (planPermissionChange also refuses to
+            // give up the neuron's last Manage Principals).
+            const plan = planPermissionChange({
+                principal: principal.toString(),
+                me: identity?.getPrincipal()?.toString(),
+                existing: editingPrincipal?.permission_type || [],
+                wanted: getPermissionsArray(selectedPermissions),
+                permissions: (neuronData?.permissions || []).map(p => ({ principal: p.principal?.[0]?.toString?.() ?? p.principal?.toString(), permission_type: p.permission_type || [] })),
+            });
+            if (plan.error) { setFormError(plan.error); return; }
+            if (plan.add.length > 0) {
+                const result = await manageNeuron({ AddNeuronPermissions: { principal_id: [principal], permissions_to_add: [{ permissions: plan.add }] } });
+                if (!result.ok) { setFormError(result.err); return; }
             }
-            const newPerms = getPermissionsArray(selectedPermissions);
-            if (editingPrincipal) {
-                const existingPerms = editingPrincipal.permission_type || [];
-                if (existingPerms.length > 0) {
-                    const removeResult = await manageNeuron({
-                        RemoveNeuronPermissions: { principal_id: [principal], permissions_to_remove: [{ permissions: existingPerms }] }
-                    });
-                    if (!removeResult.ok) { setError(removeResult.err); setActionBusy(false); setActionMsg(''); return; }
-                }
+            if (plan.remove.length > 0) {
+                const result = await manageNeuron({ RemoveNeuronPermissions: { principal_id: [principal], permissions_to_remove: [{ permissions: plan.remove }] } });
+                if (!result.ok) { setFormError(result.err); await fetchNeuronData(); return; }
             }
-            if (newPerms.length > 0) {
-                const result = await manageNeuron({
-                    AddNeuronPermissions: { principal_id: [principal], permissions_to_add: [{ permissions: newPerms }] }
-                });
-                if (!result.ok) { setError(result.err); } 
-                else { 
-                    await fetchNeuronData(); 
-                    setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions();
-                    // Refresh hotkey neuron caches after permission change
-                    if (selectedSns?.canisters?.governance) {
-                        walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
-                        neuronsContext?.refreshNeurons?.(selectedSnsRoot);
-                    }
-                }
-            } else if (editingPrincipal) {
-                await fetchNeuronData(); setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions();
-                if (selectedSns?.canisters?.governance) {
-                    walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
-                    neuronsContext?.refreshNeurons?.(selectedSnsRoot);
-                }
-            } else {
-                setError('Please select at least one permission');
+            await fetchNeuronData();
+            setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions();
+            // Refresh hotkey neuron caches after permission change
+            if (selectedSns?.canisters?.governance) {
+                walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
+                neuronsContext?.refreshNeurons?.(selectedSnsRoot);
             }
-        } catch (e) { setError(e.message || String(e)); }
+        } catch (e) { setFormError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
     };
 
@@ -580,7 +569,7 @@ function Neuron() {
     };
 
     const cancelEditing = () => {
-        setEditingPrincipal(null);
+        setEditingPrincipal(null); setFormError('');
         setManagePrincipalInput('');
         resetPermissions();
     };
@@ -2201,6 +2190,15 @@ function Neuron() {
                                                         </button>
                                                     )}
                                                 </div>
+                                                {formError && (
+                                                    <div style={{
+                                                        marginTop: '0.75rem', padding: '0.6rem 0.9rem', borderRadius: '8px',
+                                                        background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`,
+                                                        color: theme.colors.error, fontSize: '0.85rem'
+                                                    }}>
+                                                        {formError}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
