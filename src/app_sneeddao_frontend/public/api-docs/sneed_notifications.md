@@ -64,7 +64,7 @@ Prices are per delivery, in ICP e8s, per channel kind (`get_config().prices_e8s`
 - **Withdrawals:** a user takes unused balance out at any time with `withdraw({ amount_e8s; to; created_at_time })` (4, 5.2): `amount_e8s` comes off the balance and the account `to` receives it less the ICP ledger fee (10,000 e8s), so the amount must be more than the fee. The transfer carries the memo `sneednotif:withdraw`. App balances cannot be withdrawn yet (open question: the app's owner, or the funders?); a removed app's balance goes to its owner as below.
 - **A removed app's balance** stays where it is when an admin removes the app: its recorded owner (or an admin for the owner) moves it to the owner's own notification balance with `claim_removed_app_balance(id)`.
 - **Old notifications** are deleted after `retention_ns`; a paid delivery that never became final by then is refunded to whoever paid for it.
-- **Where the money goes:** what is charged (deliveries and the per-call price, less refunds) is Sneed DAO revenue. The canister forwards it in one ICRC-1 transfer to `fee_destination` (by default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount `01 00 00 00 00 06` + 26 zero bytes, where Sneed Premium, Sneedex and Sneed Lock pay too) once `fee_sweep_threshold_e8s` (0.1 ICP) has accumulated; the ledger fee comes off the amount. A check runs from the delivery timer at most every 5 minutes. Balances are never touched: before every transfer the canister reads its ledger balance, and the transfer must leave at least every user and app balance, every paid delivery that may still be refunded, and top-ups in flight. The ICP spent before forwarding existed (the backlog) was measured once, at the first check after the upgrade, as the ledger balance minus all of that. Read it all with `get_fee_forwarding()` (5.3).
+- **Where the money goes:** what is charged (deliveries and the per-call price, less refunds) is Sneed DAO revenue. The canister forwards it in one ICRC-1 transfer to `fee_destination` (by default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount `01 00 00 00 00 06` + 26 zero bytes, where Sneed Premium, Sneedex and Sneed Lock pay too) once `fee_sweep_threshold_e8s` (0.1 ICP) has accumulated; the ledger fee comes off the amount. A check runs from the canister's timer at most every 5 minutes, and only while there is something to check (unforwarded fees at the threshold, a transfer to retry, the first measurement), about 30 s after it became due. Balances are never touched: before every transfer the canister reads its ledger balance, and the transfer must leave at least every user and app balance, every paid delivery that may still be refunded, and top-ups in flight. The ICP spent before forwarding existed (the backlog) was measured once, at the first check after the upgrade, as the ledger balance minus all of that. Read it all with `get_fee_forwarding()` (5.3).
 
 ### 1.5 Caps and repeats
 
@@ -295,7 +295,7 @@ A relay is a principal listed in `config.relays` with one channel kind. It loops
 2. Deliver each one.
 3. `relay_ack(vec (job_id, #ok | #err text))`: `#ok` marks the job delivered; `#err` retries it after 1, 2, 3, ... minutes and fails it (with refund) after `max_attempts` (5). Acks for jobs not out with this relay are ignored.
 
-A job not acknowledged within `relay_lease_ns` (10 minutes) goes back to the queue as a failed attempt (`relay did not answer`). Sneed SMS jobs are delivered by the canister's own timer (every 30 seconds and right after each `notify`, 20 per round) through Sneed SMS `send_system_notification`, with subject `[App name] title` and the body followed by the link and a footer that links to the notification centre.
+A job not acknowledged within `relay_lease_ns` (10 minutes) goes back to the queue as a failed attempt (`relay did not answer`). Sneed SMS jobs are delivered by the canister's own timer (right after each `notify`, and when a retry is due; 20 per run) through Sneed SMS `send_system_notification`, with subject `[App name] title` and the body followed by the link and a footer that links to the notification centre.
 
 ---
 
@@ -313,13 +313,22 @@ A job not acknowledged within `relay_lease_ns` (10 minutes) goes back to the que
 - the ledger confirms: `#ok({ ledger_block; amount_e8s; fee_e8s; sent_e8s; balance_e8s })`, a `sneednotif_withdraw` block;
 - the ledger answers an error (or the call surely did not reach it): `#refused(text)`, the amount is back on the balance;
 - the ledger already made this exact transfer (same `to`, amount, memo and `created_at_time`): `#duplicate({ ledger_block })`, the amount is back and nothing more moved;
-- the call fails in flight (unknown outcome): `#pending(PendingWithdrawal)`. The amount stays off the balance and is counted as owed. The canister sends the same transfer again (same memo and `created_at_time`, which the ICP ledger deduplicates for 24 hours) from its timer every 5 minutes and on the user's next `withdraw`, so it goes out at most once. If no retry got an answer within the ledger's window (`state = too_old`), support settles it from the ledger with `admin_resolve_withdraw`.
+- the call fails in flight (unknown outcome): `#pending(PendingWithdrawal)`. The amount stays off the balance and is counted as owed. The canister sends the same transfer again (same memo and `created_at_time`, which the ICP ledger deduplicates for 24 hours) from its timer every 5 minutes (until it is settled) and on the user's next `withdraw`, so it goes out at most once. If no retry got an answer within the ledger's window (`state = too_old`), support settles it from the ledger with `admin_resolve_withdraw`.
 
 Pass your own `created_at_time` (nanoseconds, within the last 24 hours) to make a retry after a timeout idempotent: the same amount, `to` and time answer the first withdrawal's result instead of withdrawing again. Without it, read `get_my_prepaid()` before calling again.
 
 **ICP top-up errors:** `Nothing to top up`, `Approve this canister for the amount first (allowance N)`, `Not enough ICP (balance N)`, `The ledger refused the transfer`, `The ledger did not answer: ...`. The approval must cover the amount plus the ICP ledger fee (10,000 e8s), both taken from the caller's default account.
 
 ---
+
+### 4.1 Timers
+
+The canister does its own work from timers that run only when there is something to do (it used to run every 30 seconds, which cost cycles while idle):
+
+- a **work timer**, armed for the earliest thing that is due: Sneed SMS deliveries (right after a `notify`, and when a retry's `not_before` comes), a relay lease that lapses, the fee check and withdrawal retries (at most every 5 minutes, only while they have work), and the activity log's archiving check (at most every 15 minutes, only while the live log is full). Nothing is armed when nothing is due;
+- an **hourly housekeeping** timer: deletes notifications past `retention_ns` (refunding paid deliveries that never became final) and expired dedupe keys, checks the log, and arms the work timer for anything due.
+
+`get_timer_status()` shows both. Admins can pause them (`admin_pause_timers`) and resume them (`admin_resume_timers`).
 
 ## 5. Method reference
 
@@ -372,7 +381,8 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_config()` | query | `Config` | Prices, caps, limits, relays, retention. |
 | `get_relay_keys()` | query | `vec (ChannelKind, text)` | Each relay kind's key document (JSON, see 2.4). |
 | `get_admins()` | query | `vec principal` | Listed admins (controllers are admins too). |
-| `stats()` | query | `{ apps; users; notifications; pending; last_tick_at : int; ticking : bool }` | `users` counts principals with a channel. `last_tick_at`: when the delivery timer (every 30 s) last ran; `ticking`: a run in progress. |
+| `stats()` | query | `{ apps; users; notifications; pending; last_tick_at : int; ticking : bool }` | `users` counts principals with a channel. `last_tick_at`: when the delivery timer last ran (it runs only when something is due, see `get_timer_status`); `ticking`: a run in progress. |
+| `get_timer_status()` | query | `TimerStatus` | The canister's timers (4.1): paused or not, when the work timer runs next (`null`: nothing due), its last run, the hourly housekeeping's last and next run. |
 | `get_rate_limits()` | query | `vec (text, record { capacity : nat; per_minute : nat })` | Each rate-limited action with its rule (1.5); capacity 0 = no limit. |
 | `get_fee_forwarding()` | query | `FeeForwarding` | Revenue: destination, threshold, fees earned, refunded and forwarded, the backlog, what is unforwarded and owed, the last forward and error, the last 20 events (1.4). |
 | `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([8](#8-activity-log-icrc-3)); not deployed yet. |
@@ -404,6 +414,7 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
 | `admin_set_fee_sweep_threshold(e8s)` | Forward once this much is unforwarded (default 10,000,000 = 0.1 ICP). |
 | `admin_forward_fees_now()` | Forwards what is unforwarded now, whatever the threshold (still minus the ledger fee, never below the liabilities). |
+| `admin_pause_timers()`, `admin_resume_timers()` | Stop and start the canister's timers (4.1). While paused, `notify` still records and queues and relays still pull and ack, but nothing the timers do happens: no Sneed SMS delivery, no lapsed lease, fee check, withdrawal retry, prune or log spill. Resuming runs at once whatever waited. Kept across upgrades; each change is a `sneednotif_config_update` block with key `timers_paused` (0 / 1). Answers `Already paused` / `Not paused` when there is nothing to change. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([8](#8-activity-log-icrc-3)). |
 
 ---
@@ -512,6 +523,17 @@ type FeeForwarding = record {
   last_error : opt text;
   retry_pending : bool;           // a transfer with an unknown outcome, retried with the same arguments
   events : vec record { int; text };
+};
+
+// get_timer_status (4.1)
+type TimerStatus = record {
+  paused : bool;                  // admins stopped the timers (admin_pause_timers)
+  paused_at : opt int;
+  next_run_at : opt int;          // when the work timer fires; null: nothing is due (or paused)
+  last_tick_at : int;             // when a work run last started
+  ticking : bool;                 // a work run in progress
+  last_housekeeping_at : int;     // 0: none since the last install or upgrade
+  next_housekeeping_at : opt int; // null: paused
 };
 
 // one ICP payment credited to a balance (admin_get_user)
