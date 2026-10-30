@@ -5,7 +5,7 @@
 //
 // Mocks: canisters/MockAttSnsGov.mo (SNS governance: get_proposal, list_nervous_system_functions,
 // installs into canisters it controls; a second instance plays SNS root), canisters/MockAttOhShii.mo
-// (ONS/SONS with OhShii's planned get_proposal_upgrade_steps, snapshot restores),
+// (ONS/SONS with OhShii's get_proposal_upgrade_steps (their published Candid), snapshot restores),
 // canisters/MockAttAssets.mo (an asset canister's list, paged or not), canisters/MockSnsWasm.mo
 // (SNS-W's list_deployed_snses, for the SNS root), canisters/MockAttTarget*.mo (modules to install).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -37,14 +37,14 @@ const OhArtifact = IDL.Variant({
 });
 const OhExecution = IDL.Variant({
   pending: IDL.Null, not_executed: IDL.Null, in_progress: IDL.Null, executed: IDL.Nat64, skipped: IDL.Nat64,
-  failed: IDL.Record({ at: IDL.Nat64, error: IDL.Text }),
+  failed: IDL.Record({ at: IDL.Opt(IDL.Nat64), error: IDL.Text }),
 });
 const OhStep = IDL.Record({
   index: IDL.Nat32, target: IDL.Principal, is_self: IDL.Bool, role: IDL.Opt(IDL.Text), artifact: OhArtifact,
   source: IDL.Record({ git_repo_url: IDL.Text, git_commit_hash: IDL.Text, build_instructions: IDL.Text, truncated: IDL.Bool }),
   execution: OhExecution, staged_at: IDL.Nat64,
 });
-const OhSteps = IDL.Record({ proposal_id: IDL.Nat64, kind: IDL.Text, status: IDL.Text, executed_at: IDL.Opt(IDL.Nat64), steps: IDL.Vec(OhStep) });
+const OhSteps = IDL.Record({ governance: IDL.Principal, proposal_id: IDL.Nat64, kind: IDL.Text, status: IDL.Text, executed_at: IDL.Opt(IDL.Nat64), steps: IDL.Vec(OhStep) });
 const ohIdl = ({ IDL }) => IDL.Service({
   set_steps: IDL.Func([IDL.Nat64, IDL.Opt(OhSteps)], [], []),
   set_missing_method: IDL.Func([IDL.Bool], [], []),
@@ -379,7 +379,7 @@ describe('SNS governance adapter and live checks after real installs', () => {
   });
 });
 
-describe('OhShii adapter (planned get_proposal_upgrade_steps)', () => {
+describe('OhShii adapter (get_proposal_upgrade_steps)', () => {
   let ta, tb, tc, td, snapId;
   const step = (index, tgt, artifact, execution) => ({
     index, target: tgt, is_self: false, role: [], artifact, execution, staged_at: 1n,
@@ -404,7 +404,7 @@ describe('OhShii adapter (planned get_proposal_upgrade_steps)', () => {
       step(2, tc, wasmA(H.v2), exec[2]),
       step(3, td, { snapshot_restore: { snapshot_id: new Uint8Array([0]) } }, exec[3]),
     ];
-    await oh.set_steps(10n, [{ proposal_id: 10n, kind: 'UpgradeFleet', status: 'open', executed_at: [], steps: steps([pending, pending, pending, pending]) }]);
+    await oh.set_steps(10n, [{ governance: ohId, proposal_id: 10n, kind: 'UpgradeFleet', status: 'open', executed_at: [], steps: steps([pending, pending, pending, pending]) }]);
     ok(await attAlice.attest(attestInput(pSubject(ohId, 10, 0), wasmArt(ta, H.v2, H.v2))));
     ok(await attAlice.attest(attestInput(pSubject(ohId, 10, 1), wasmArt(tb, H.v1, H.v1))));
     ok(await attBob.attest(attestInput(pSubject(ohId, 10, 2), wasmArt(tc, H.v2, H.v2))));
@@ -412,7 +412,7 @@ describe('OhShii adapter (planned get_proposal_upgrade_steps)', () => {
     let st = await status(ohId, 10);
     expect(st.kind).toEqual([{ ohshii: null }]);
     expect(st.read[0].steps).toHaveLength(4);
-    expect(st.read[0].steps.map((s) => s.index)).toEqual([0n, 1n, 2n, 3n]); // index sent as nat32: position used
+    expect(st.read[0].steps.map((s) => s.index)).toEqual([0n, 1n, 2n, 3n]); // index is a nat32 in OhShii's Candid
     expect(st.read[0].steps[0].source[0].commit).toEqual(['cd'.repeat(20)]);
     expect(st.read[0].proposal_kind).toEqual(['UpgradeFleet']);
     expect(st.steps.map((s) => s.step)).toEqual([0n, 1n, 2n, 3n]);
@@ -423,8 +423,8 @@ describe('OhShii adapter (planned get_proposal_upgrade_steps)', () => {
     expect(snap).toHaveProperty('ok');
     snapId = snap.ok;
     const t = BigInt(Math.floor(await pic.getTime())) * 1_000_000n;
-    const exec = [{ executed: t }, { skipped: t }, { failed: { at: t, error: 'install_code trapped' } }, { executed: t }];
-    await oh.set_steps(10n, [{ proposal_id: 10n, kind: 'UpgradeFleet', status: 'executed', executed_at: [t], steps: steps(exec).map((s, i) => (i === 3 ? { ...s, artifact: { snapshot_restore: { snapshot_id: snapId } } } : s)) }]);
+    const exec = [{ executed: t }, { skipped: t }, { failed: { at: [t], error: 'install_code trapped' } }, { executed: t }];
+    await oh.set_steps(10n, [{ governance: ohId, proposal_id: 10n, kind: 'UpgradeFleet', status: 'executed', executed_at: [t], steps: steps(exec).map((s, i) => (i === 3 ? { ...s, artifact: { snapshot_restore: { snapshot_id: snapId } } } : s)) }]);
     await settle(61);
     st = await status(ohId, 10);
     const [s0, s1, s2, s3] = st.steps;

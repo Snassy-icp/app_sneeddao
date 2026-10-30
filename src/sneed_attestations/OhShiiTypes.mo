@@ -1,78 +1,87 @@
 import Array "mo:base/Array";
+import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Text "mo:base/Text";
 import T "Types";
 
-/// PLANNED INTERFACE: VERIFY WHEN OHSHII SHIPS.
-///
-/// OhShii's planned read methods on ONS and every SONS governance canister, from their comment on
-/// PR #18 and spec/proposal_attestations.md v3 ("Reading proposals"). The exact Candid isn't
-/// published yet, so these are our expected types:
-/// - only what the adapter needs is required (the step list, each step's target, the wasm
-///   `module_hash`, `batch_id` + `evidence`, the failure error);
-/// - every other field is `opt`, so a missing field reads as null, and a field of another type
-///   (say `nat32` where we expect `nat`) also reads as null (Candid's opt rule) instead of failing
-///   the whole reply;
-/// - the variants (artifact, execution) sit inside `opt` for the same reason: a tag added later
-///   reads as null (shown as "unknown") instead of failing the reply.
-/// When OhShii publishes its .did: compare, adjust here, and keep the essentials required.
+/// OhShii's read interface on ONS and every SONS governance canister, and the fleet list on
+/// `dao_storage`: exactly the Candid OhShii published on PR #20 (2026-10-30, "match the canisters'
+/// .did field for field"). Live with OhShii's next upgrade of those canisters; then also in their
+/// `candid:service` metadata. OhShii keeps changes additive (new methods, new `opt` fields at the
+/// end of a record, new variant arms only on variants reached through `opt`), so these types keep
+/// decoding later replies: unknown fields are ignored, and an unknown artifact or execution arm
+/// reads as null (shown as "unknown").
 module {
-
   public type Artifact = {
-    #wasm : { module_hash : Blob; size_bytes : ?Nat64; chunked : ?Bool; upgrade_arg_sha256 : ?Blob };
+    #wasm : { module_hash : Blob; size_bytes : Nat64; chunked : Bool; upgrade_arg_sha256 : ?Blob };
     #asset_batch : { batch_id : Nat; evidence : Blob };
-    #snapshot_restore : { snapshot_id : ?Blob };
+    #snapshot_restore : { snapshot_id : Blob };
   };
-
-  /// Each text capped at 8 KiB by OhShii, with `truncated` set when one was cut.
+  /// Each text capped at 8 KiB by OhShii, with `truncated` set when one was cut. A SONS index-canister
+  /// upgrade carries no source text (empty texts, `size_bytes` 0).
   public type Source = {
-    git_repo_url : ?Text;
-    git_commit_hash : ?Text;
-    build_instructions : ?Text;
-    truncated : ?Bool;
+    git_repo_url : Text;
+    git_commit_hash : Text;
+    build_instructions : Text;
+    truncated : Bool;
   };
-
   public type Execution = {
     #pending;
     #not_executed;
     #in_progress;
     #executed : Nat64;
     #skipped : Nat64;
-    #failed : { at : Nat64; error : Text };
+    #failed : { at : ?Nat64; error : Text };
   };
-
   public type Step = {
-    index : ?Nat; // null (or another type): the step's position in `steps` is used
+    index : Nat32;
     target : Principal;
-    is_self : ?Bool; // the governance canister upgrading itself, always the last step
+    is_self : Bool; // the governance canister upgrading itself, always the last step
     role : ?Text;
     artifact : ?Artifact;
     source : ?Source;
     execution : ?Execution;
   };
-
   public type ProposalUpgradeSteps = {
-    proposal_id : ?Nat64;
-    kind : ?Text; // the proposal kind (type unknown yet: a variant reads as null)
-    status : ?Text; // the proposal status (same)
+    governance : Principal;
+    proposal_id : Nat64;
+    kind : Text;
+    status : Text;
     executed_at : ?Nat64;
     steps : [Step];
   };
-
   public type ListArgs = { after : ?Nat64; limit : Nat32 };
   public type ProposalListItem = {
-    id : Nat64;
-    kind : ?Text;
-    status : ?Text;
-    step_count : ?Nat;
-    finished_steps : ?Nat;
+    proposal_id : Nat64;
+    kind : Text;
+    status : Text;
+    step_count : Nat32;
+    finished_steps : Nat32;
+    executed_at : ?Nat64;
   };
   public type ListResult = { items : [ProposalListItem]; next : ?Nat64 };
+  public type DeployedSource = {
+    git_repo_url : Text;
+    git_commit_hash : Text;
+    proposal_id : Nat64;
+    wasm_module_hash : Blob;
+    recorded_at : Nat64;
+  };
 
-  /// The reads, as the registry calls them (both are queries, called as replicated calls).
+  /// The reads, as the registry calls them (queries, called as replicated calls; OhShii admits only
+  /// the registry's two principals, and only on these reads).
   public type Governance = actor {
     get_proposal_upgrade_steps : shared query Nat64 -> async ?ProposalUpgradeSteps;
-    list_upgrade_proposals : shared query ListArgs -> async ListResult; // not called yet (fleet listing later)
+    list_upgrade_proposals : shared query ListArgs -> async ListResult; // not called yet
+    get_deployed_source : shared query Principal -> async ?DeployedSource; // not called yet
+    list_deployed_sources : shared query () -> async [(Principal, DeployedSource)]; // not called yet
+  };
+  public type GovernanceCanisterEntry = { governance : Principal; campaign_id : Text; state : Text };
+  public type GovernanceCanisterPage = { items : [GovernanceCanisterEntry]; next : ?Text };
+  /// `dao_storage`: the SONS fleet, paged by campaign id (limit clamped to 1..200; keep paging
+  /// while `next` is set). Not called yet.
+  public type DaoStorage = actor {
+    list_governance_canisters : shared query (?Text, Nat32) -> async GovernanceCanisterPage;
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -80,9 +89,9 @@ module {
   // ---------------------------------------------------------------------------------------------
 
   func artifactOf(a : ?Artifact) : T.ProposedArtifact = switch a {
-    case (?#wasm(w)) #wasm({ module_hash = ?w.module_hash; upgrade_arg_sha256 = w.upgrade_arg_sha256; chunked = w.chunked; size_bytes = switch (w.size_bytes) { case (?n) ?Nat64.toNat(n); case null null } });
+    case (?#wasm(w)) #wasm({ module_hash = ?w.module_hash; upgrade_arg_sha256 = w.upgrade_arg_sha256; chunked = ?w.chunked; size_bytes = ?Nat64.toNat(w.size_bytes) });
     case (?#asset_batch(b)) #asset_batch({ batch_id = ?b.batch_id; evidence = ?b.evidence });
-    case (?#snapshot_restore(s)) #snapshot_restore({ snapshot_id = s.snapshot_id });
+    case (?#snapshot_restore(s)) #snapshot_restore({ snapshot_id = ?s.snapshot_id });
     case null #unknown("the governance canister reported no artifact this registry can read");
   };
 
@@ -92,11 +101,11 @@ module {
     case (?#in_progress) #in_progress;
     case (?#executed(t)) #executed(t);
     case (?#skipped(t)) #skipped(t);
-    case (?#failed(f)) #failed(f);
+    case (?#failed(f)) #failed({ at = switch (f.at) { case (?t) t; case null 0 }; error = f.error }); // 0: OhShii gave no time
     case null #unknown;
   };
 
-  func clip(t : ?Text, max : Nat) : (?Text, Bool) = switch t {
+  func clip(t : Text, max : Nat) : (?Text, Bool) = switch (if (t == "") null else ?t) {
     case (?s) if (s.size() > max) {
       var out = "";
       var n = 0;
@@ -117,14 +126,14 @@ module {
           let (repo, t1) = clip(src.git_repo_url, maxText);
           let (commit, t2) = clip(src.git_commit_hash, maxText);
           let (instructions, t3) = clip(src.build_instructions, maxText);
-          ?{ repo; commit; instructions; truncated = t1 or t2 or t3 or (switch (src.truncated) { case (?b) b; case null false }) };
+          ?{ repo; commit; instructions; truncated = t1 or t2 or t3 or src.truncated };
         };
         case null null;
       };
       {
-        index = switch (s.index) { case (?x) x; case null i };
+        index = Nat32.toNat(s.index);
         target = ?s.target;
-        is_self = switch (s.is_self) { case (?b) b; case null false };
+        is_self = s.is_self;
         role = s.role;
         artifact = artifactOf(s.artifact);
         source;
