@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { WriteGuard } from './safety.js';
 import { settings } from './config.js';
 import { activeIdentity } from './identity.js';
-import { signedActor, actor, CANISTERS, ptext } from './ic.js';
+import { signedActor, actor, CANISTERS, ptext, managementActor, canisterInfo } from './ic.js';
 import { plain, shortErr, formatUnits } from './format.js';
 
 let guard = null;
@@ -34,6 +34,8 @@ let ctxFactory = () => {
     who,
     principal: who.principal,
     signed: (idl, id) => signedActor(idl, id, who.identity),
+    management: (target) => managementActor(who.identity, target),
+    canisterInfo: (id) => canisterInfo(id),
     anon: (idl, id) => actor(idl, ptext(id)),
   };
 };
@@ -112,6 +114,9 @@ export const handleWrite = async (spec, args) => {
     if (problems.length) throw new Error(problems.join('\n'));
     g.consume(spec.name, input, confirm, plan);
   } catch (e) {
+    // a refused confirmation is audited too (never the token itself): it may be a replay or a
+    // confirm sent after the user's arguments or the chain changed
+    g.audit({ tool: spec.name, principal: ctx.principal, mode: ctx.who?.mode, input, refused: e.message, calls: plan.calls, spends: plan.spends });
     return text(`Not executed: ${e.message}`, true);
   }
   let outcome;

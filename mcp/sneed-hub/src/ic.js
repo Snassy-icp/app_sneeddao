@@ -1,7 +1,7 @@
 // Access to the Internet Computer. Reads use one anonymous agent; writes (and reads that need the
 // caller, like an SMS inbox) use an agent signed by the active identity (see identity.js).
 import { setDefaultResultOrder } from 'node:dns';
-import { HttpAgent, Actor } from '@dfinity/agent';
+import { HttpAgent, Actor, CanisterStatus } from '@dfinity/agent';
 
 // IPv6 routes to the boundary nodes time out on some networks; prefer IPv4.
 try { setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
@@ -114,6 +114,33 @@ export const actor = async (idl, canisterId) => {
 /// Actor signed by `identity` (writes, and reads that depend on the caller).
 export const signedActor = async (idl, canisterId, identity) =>
   Actor.createActor(idl, { agent: await getSignedAgent(identity, ptext(canisterId)), canisterId: ptext(canisterId) });
+
+/// Controllers and module hash (hex) of any canister, from the IC's public state tree.
+export const canisterInfo = async (canisterId) => {
+  const id = ptext(canisterId);
+  const r = await CanisterStatus.request({ canisterId: Principal.fromText(id), agent: await getAgent(id), paths: ['controllers', 'module_hash'] });
+  const hash = r.get('module_hash');
+  return { controllers: (r.get('controllers') ?? []).map((p) => p.toText()), moduleHash: hash ? String(hash).replace(/^0x/, '') : null };
+};
+
+const mgmtIdl = ({ IDL }) => IDL.Service({
+  install_code: IDL.Func([IDL.Record({
+    mode: IDL.Variant({ install: IDL.Null, reinstall: IDL.Null, upgrade: IDL.Opt(IDL.Record({ skip_pre_upgrade: IDL.Opt(IDL.Bool), wasm_memory_persistence: IDL.Opt(IDL.Variant({ keep: IDL.Null, replace: IDL.Null })) })) }),
+    canister_id: IDL.Principal,
+    wasm_module: IDL.Vec(IDL.Nat8),
+    arg: IDL.Vec(IDL.Nat8),
+  })], [], []),
+});
+/// The management canister (aaaaa-aa) signed by `identity`, addressed to `target` (the effective
+/// canister id the replica routes the call by).
+export const managementActor = async (identity, target) => {
+  const t = Principal.fromText(ptext(target));
+  return Actor.createActor(mgmtIdl, {
+    agent: await getSignedAgent(identity, ptext(target)),
+    canisterId: 'aaaaa-aa',
+    callTransform: (methodName, args, callConfig) => ({ ...callConfig, effectiveCanisterId: t }),
+  });
+};
 
 export const lockActor = () => actor(sneedLockIdl, CANISTERS.sneed_lock);
 export const sneedexActor = () => actor(sneedexIdl, CANISTERS.sneedex);

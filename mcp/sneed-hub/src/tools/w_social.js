@@ -7,9 +7,10 @@ import { idlFactory as forumIdl } from '../idl/sneed_sns_forum.did.js';
 import { idlFactory as smsIdl } from '../idl/sneed_sms.did.js';
 import { idlFactory as pidNamesIdl } from '../idl/sneed_pid_names.did.js';
 import { idlFactory as icrc1Idl } from '../idl/icrc1_ledger.did.js';
+import { idlFactory as govIdl } from '../idl/sns_governance.did.js';
 import { CANISTERS, opt, toPrincipal, ptext } from '../ic.js';
 import { defineWrite, unwrapResult } from '../writes.js';
-import { spend, toBaseUnits, ledgerFee, fmt, link } from '../chain.js';
+import { spend, toBaseUnits, ledgerFee, fmt, link, toHex, fromHex, governanceOfRoot } from '../chain.js';
 import { plain, shortErr } from '../format.js';
 
 const forumErr = (e) => { const k = Object.keys(e)[0]; return `${k}: ${e[k]}`; };
@@ -157,6 +158,93 @@ export const forumWrites = [
       const verified = tip ? opt(tip.verified) : null;
       steps.push(`tip ${r.ok} recorded${verified === true ? ' and verified on the ledger' : verified === false ? `, not verified yet (${opt(tip.verification_note) ?? ''})` : ''}`);
       return { ok: true, spent: true, summary: `tipped post ${post_id}`, steps, links: [link(`/post?postid=${post_id}`)] };
+    },
+  },
+  {
+    name: 'forum_vote',
+    title: 'Forum: vote on a post or thread',
+    description: 'Up- or downvote a forum post or thread with your neurons in the forum\'s SNS, or retract your vote, as Sneed Hub does: sneed_sns_forum.vote_on_post_with_neurons / vote_on_thread_with_neurons (or retract_vote_with_neurons / retract_thread_vote_with_neurons) with every neuron that lists you (e.g. as hotkey). Votes weigh by voting power and are public.',
+    inputSchema: {
+      post_id: z.number().int().min(0).optional().describe('Post id (or thread_id)'),
+      thread_id: z.number().int().min(0).optional().describe('Thread id (or post_id)'),
+      vote: z.enum(['up', 'down', 'retract']).describe('up, down, or retract your vote'),
+    },
+    async build({ post_id, thread_id, vote }, ctx) {
+      if ((post_id == null) === (thread_id == null)) throw new Error('Give either post_id or thread_id.');
+      const f = await ctx.anon(forumIdl, CANISTERS.sneed_sns_forum);
+      const problems = [];
+      let tid = thread_id;
+      let author = null;
+      if (post_id != null) {
+        const p = opt(await f.get_post(BigInt(post_id)));
+        if (!p) throw new Error(`No post ${post_id}.`);
+        tid = Number(p.thread_id);
+        author = p.created_by.toText();
+      } else {
+        const t = opt(await f.get_thread(BigInt(thread_id)));
+        if (!t) throw new Error(`No thread ${thread_id}.`);
+        author = t.created_by.toText();
+      }
+      const c = opt(await f.get_thread_context(BigInt(tid)));
+      const root = c ? opt(c.sns_root_canister_id) : null;
+      if (!root) throw new Error(`Thread ${tid} belongs to no SNS forum, so there are no neurons to vote with.`);
+      const gov = await ctx.anon(govIdl, await governanceOfRoot(ctx, root));
+      const neurons = (await gov.list_neurons({ of_principal: [toPrincipal(ctx.principal)], limit: 100, start_page_at: [] })).neurons
+        .filter((n) => n.permissions.some((p) => ptext(opt(p.principal)) === ctx.principal));
+      if (!neurons.length) problems.push(`${ctx.principal} is listed on no neuron of SNS ${root.toText()}, so it has no voting power on this forum. Add it as a hotkey on your neuron (${link('/neurons')}).`);
+      if (vote !== 'retract' && author === ctx.principal) problems.push('That is your own post or thread.');
+      const ids = neurons.map((n) => toHex(opt(n.id).id));
+      const kind = post_id != null ? 'post' : 'thread';
+      const id = post_id ?? thread_id;
+      const method = vote === 'retract' ? (kind === 'post' ? 'retract_vote_with_neurons' : 'retract_thread_vote_with_neurons') : (kind === 'post' ? 'vote_on_post_with_neurons' : 'vote_on_thread_with_neurons');
+      const args = vote === 'retract' ? [id, ids.map((x) => ({ id: x }))] : [id, vote === 'up' ? { upvote: null } : { downvote: null }, ids.map((x) => ({ id: x }))];
+      return {
+        summary: `${vote === 'retract' ? 'Retract your vote on' : vote === 'up' ? 'Upvote' : 'Downvote'} ${kind} ${id} with ${neurons.length} neuron(s)`,
+        calls: [{ canister: CANISTERS.sneed_sns_forum, method, args }],
+        notes: ['Forum votes are public and weigh by the neurons\' voting power; neurons without voting power are skipped.'],
+        problems,
+        _method: method, _ids: ids,
+      };
+    },
+    async run({ post_id, thread_id, vote }, ctx, plan) {
+      const f = await ctx.signed(forumIdl, CANISTERS.sneed_sns_forum);
+      const id = BigInt(post_id ?? thread_id);
+      const ids = plan._ids.map((x) => ({ id: fromHex(x) }));
+      const r = vote === 'retract' ? await f[plan._method](id, ids) : await f[plan._method](id, vote === 'up' ? { upvote: null } : { downvote: null }, ids);
+      forumOk(r, plan._method);
+      return { ok: true, summary: `${plan._method}(${id}) done with ${ids.length} neuron(s)`, links: [link(post_id != null ? `/post?postid=${post_id}` : `/thread?threadid=${thread_id}`)] };
+    },
+  },
+  {
+    name: 'forum_delete',
+    title: 'Forum: delete my post or thread',
+    description: 'Delete one of your own forum posts or threads (sneed_sns_forum.delete_post / delete_thread, as Sneed Hub\'s delete button). The forum keeps it hidden, not erased: admins can restore it and its text stays in the canister\'s history.',
+    inputSchema: {
+      post_id: z.number().int().min(0).optional().describe('Post id (or thread_id)'),
+      thread_id: z.number().int().min(0).optional().describe('Thread id (or post_id)'),
+    },
+    destructive: true,
+    async build({ post_id, thread_id }, ctx) {
+      if ((post_id == null) === (thread_id == null)) throw new Error('Give either post_id or thread_id.');
+      const f = await ctx.anon(forumIdl, CANISTERS.sneed_sns_forum);
+      const kind = post_id != null ? 'post' : 'thread';
+      const id = post_id ?? thread_id;
+      const item = opt(kind === 'post' ? await f.get_post(BigInt(id)) : await f.get_thread(BigInt(id)));
+      const problems = [];
+      if (!item) problems.push(`No ${kind} ${id} (or it is deleted already).`);
+      else if (item.created_by.toText() !== ctx.principal) problems.push(`${kind} ${id} was written by ${item.created_by.toText()}, not by ${ctx.principal}. Only your own (admins moderate on Sneed Hub).`);
+      return {
+        summary: `Delete your ${kind} ${id}${item && opt(item.title) ? ` ("${opt(item.title)}")` : ''}`,
+        calls: [{ canister: CANISTERS.sneed_sns_forum, method: kind === 'post' ? 'delete_post' : 'delete_thread', args: [id] }],
+        notes: item ? [`Text: ${item.body.length > 200 ? `${item.body.slice(0, 200)}…` : item.body}`, 'Hidden, not erased: the text stays in the forum\'s public history.'] : [],
+        problems,
+      };
+    },
+    async run({ post_id, thread_id }, ctx) {
+      const f = await ctx.signed(forumIdl, CANISTERS.sneed_sns_forum);
+      if (post_id != null) forumOk(await f.delete_post(BigInt(post_id)), 'delete_post');
+      else forumOk(await f.delete_thread(BigInt(thread_id)), 'delete_thread');
+      return { ok: true, summary: `${post_id != null ? `post ${post_id}` : `thread ${thread_id}`} deleted` };
     },
   },
   {

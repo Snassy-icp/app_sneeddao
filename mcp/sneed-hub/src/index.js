@@ -21,6 +21,11 @@ import { registerSocialWrites } from './tools/w_social.js';
 import { registerGovWrites } from './tools/w_gov.js';
 import { registerSneedexWrites } from './tools/w_sneedex.js';
 import { registerMiscWrites } from './tools/w_misc.js';
+import { registerLockWrites } from './tools/w_lock.js';
+import { registerMonWrites } from './tools/w_mon.js';
+import { registerNameWrites } from './tools/w_names.js';
+import { registerAccountWrites } from './tools/w_account.js';
+import { registerSneedappWrites } from './tools/w_sneedapp.js';
 import { settings } from './config.js';
 import { HUB_URL } from './ic.js';
 
@@ -55,6 +60,11 @@ if (WRITES) {
   registerGovWrites(server);
   registerSneedexWrites(server);
   registerMiscWrites(server);
+  registerLockWrites(server);
+  registerMonWrites(server);
+  registerNameWrites(server);
+  registerAccountWrites(server, { allowTransfers: settings().allowTransfers });
+  registerSneedappWrites(server);
 }
 registerDocResources(server);
 

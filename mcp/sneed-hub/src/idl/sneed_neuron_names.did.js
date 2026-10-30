@@ -139,7 +139,7 @@ export const idlFactory = ({ IDL }) => {
     'last_seq' : IDL.Nat,
   });
   const ValidationResult = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
-  const SneedNeuronNames = IDL.Service({
+  return IDL.Service({
     'admin_add_admin' : IDL.Func([IDL.Principal], [Result], []),
     'admin_clear_avatar' : IDL.Func([NeuronKey], [Result], []),
     'admin_finish_import' : IDL.Func([], [Result], []),
@@ -261,6 +261,5 @@ export const idlFactory = ({ IDL }) => {
     'verify_by_dao' : IDL.Func([NeuronKey, IDL.Text], [], []),
     'verify_by_sns' : IDL.Func([NeuronKey, IDL.Text], [Result], []),
   });
-  return SneedNeuronNames;
 };
 export const init = ({ IDL }) => { return []; };

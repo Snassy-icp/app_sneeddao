@@ -2,7 +2,7 @@
 // IDLs not shipped as files (ICRC-3, EXT), text output and token spends.
 import { createHash } from 'node:crypto';
 import { Principal } from '@dfinity/principal';
-import { toPrincipal, ptext, HUB_URL } from './ic.js';
+import { toPrincipal, ptext, HUB_URL, CANISTERS } from './ic.js';
 import { tokenInfo, formatUnits, plain, shortErr } from './format.js';
 import { parseUnits } from './safety.js';
 import { idlFactory as icrc1Idl } from './idl/icrc1_ledger.did.js';
@@ -119,4 +119,28 @@ export const extIdlFactory = ({ IDL }) => {
     bearer: IDL.Func([IDL.Text], [IDL.Variant({ ok: IDL.Text, err: CommonError })], ['query']),
     transfer: IDL.Func([TransferRequest], [TransferResponse], []),
   });
+};
+
+// ---- SNS ----
+export const snsRootIdlFactory = ({ IDL }) => IDL.Service({
+  list_sns_canisters: IDL.Func([IDL.Record({})], [IDL.Record({ root: IDL.Opt(IDL.Principal), governance: IDL.Opt(IDL.Principal), ledger: IDL.Opt(IDL.Principal), swap: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), archives: IDL.Vec(IDL.Principal), dapps: IDL.Vec(IDL.Principal) })], ['query']),
+});
+export const snsWasmIdlFactory = ({ IDL }) => IDL.Service({
+  list_deployed_snses: IDL.Func([IDL.Record({})], [IDL.Record({ instances: IDL.Vec(IDL.Record({ root_canister_id: IDL.Opt(IDL.Principal), governance_canister_id: IDL.Opt(IDL.Principal), index_canister_id: IDL.Opt(IDL.Principal), swap_canister_id: IDL.Opt(IDL.Principal), ledger_canister_id: IDL.Opt(IDL.Principal) })) })], ['query']),
+});
+/// The root canister of an SNS governance canister (Sneed DAO's without a call; others from SNS-W).
+export const rootOfGovernance = async (ctx, governance) => {
+  const g = ptext(governance);
+  if (g === CANISTERS.sneed_sns_governance) return CANISTERS.sneed_sns_root;
+  const { instances } = await (await ctx.anon(snsWasmIdlFactory, CANISTERS.sns_wasm)).list_deployed_snses({});
+  const hit = instances.find((i) => i.governance_canister_id.length && i.governance_canister_id[0].toText() === g);
+  return hit && hit.root_canister_id.length ? hit.root_canister_id[0].toText() : null;
+};
+/// The governance canister of an SNS root (Sneed DAO's without a call).
+export const governanceOfRoot = async (ctx, root) => {
+  const r = ptext(root);
+  if (r === CANISTERS.sneed_sns_root) return CANISTERS.sneed_sns_governance;
+  const g = (await (await ctx.anon(snsRootIdlFactory, r)).list_sns_canisters({})).governance;
+  if (!g.length) throw new Error(`${r} is not an SNS root (it names no governance canister).`);
+  return g[0].toText();
 };

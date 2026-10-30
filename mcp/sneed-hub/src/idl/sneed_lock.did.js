@@ -64,6 +64,33 @@ export const idlFactory = ({ IDL }) => {
     'spill_batch_size' : IDL.Nat,
     'archive_top_up_amount' : IDL.Nat,
   });
+  const StrandedStatus = IDL.Variant({
+    'Uncertain' : IDL.Null,
+    'Open' : IDL.Null,
+    'Paid' : IDL.Record({
+      'at' : Timestamp,
+      'by' : IDL.Principal,
+      'correlation_id' : IDL.Nat,
+      'accepted' : IDL.Nat,
+      'amount' : IDL.Nat,
+    }),
+  });
+  const StrandedHeldIn = IDL.Variant({
+    'deposit_subaccount' : IDL.Null,
+    'pool_account' : IDL.Null,
+  });
+  const Stranded = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : StrandedStatus,
+    'owner' : IDL.Principal,
+    'pool' : IDL.Principal,
+    'recorded_at' : Timestamp,
+    'ledger' : IDL.Principal,
+    'held_in' : StrandedHeldIn,
+    'correlation_id' : IDL.Nat,
+    'amount' : IDL.Nat,
+    'reason' : IDL.Text,
+  });
   const ClaimRequestId = IDL.Nat;
   const ClaimFeesResult = IDL.Variant({
     'Ok' : IDL.Record({
@@ -226,6 +253,11 @@ export const idlFactory = ({ IDL }) => {
     'swap_canister_id' : IDL.Opt(SwapCanisterId),
     'include_archived' : IDL.Bool,
   });
+  const LogEntriesQuery = IDL.Record({
+    'take' : IDL.Opt(IDL.Nat),
+    'errors' : IDL.Bool,
+    'before' : IDL.Opt(IDL.Nat),
+  });
   const SpecialLockPrices = IDL.Record({
     'token_lock_fee_icp_e8s' : IDL.Opt(IDL.Nat),
     'position_lock_fee_icp_e8s' : IDL.Opt(IDL.Nat),
@@ -240,6 +272,31 @@ export const idlFactory = ({ IDL }) => {
     'label' : IDL.Text,
     'prices' : SpecialLockPrices,
     'expires_at' : IDL.Opt(IDL.Int),
+  });
+  const StrandedQuery = IDL.Record({
+    'owner' : IDL.Opt(IDL.Principal),
+    'prev' : IDL.Opt(IDL.Nat),
+    'take' : IDL.Opt(IDL.Nat),
+    'unpaid_only' : IDL.Bool,
+  });
+  const UncertainMove = IDL.Record({
+    'to' : IDL.Principal,
+    'lock_id' : IDL.Nat,
+    'from' : IDL.Principal,
+    'memo' : IDL.Vec(IDL.Nat8),
+    'to_label' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'error' : IDL.Text,
+    'from_label' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'recorded_at' : IDL.Nat64,
+    'ledger' : IDL.Principal,
+    'correlation_id' : IDL.Nat,
+    'created_at_time' : IDL.Nat64,
+    'amount' : IDL.Nat,
+  });
+  const UncertainTokenLock = IDL.Record({
+    'lock_id' : IDL.Nat,
+    'move' : IDL.Opt(UncertainMove),
+    'holders' : IDL.Vec(IDL.Principal),
   });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
   const Account__1 = IDL.Record({
@@ -488,6 +545,10 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : IDL.Nat,
     'Err' : TransferError__1,
   });
+  const ReconcileResult = IDL.Variant({
+    'Ok' : IDL.Record({ 'owner' : IDL.Principal, 'evidence' : IDL.Text }),
+    'Err' : IDL.Text,
+  });
   const ClaimAndWithdrawResult = IDL.Variant({
     'Ok' : ClaimRequestId,
     'Err' : IDL.Text,
@@ -515,7 +576,7 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : IDL.Null,
     'Err' : TransferTokenLockOwnershipError,
   });
-  const SneedLock = IDL.Service({
+  return IDL.Service({
     'add_liquidity_to_locked_position' : IDL.Func(
         [SwapCanisterId, PositionId, IDL.Nat, IDL.Nat],
         [AddLiquidityResult],
@@ -647,6 +708,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
         [],
       ),
+    'admin_withdraw_stranded_to_owner' : IDL.Func(
+        [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Bool],
+        [IDL.Variant({ 'Ok' : Stranded, 'Err' : IDL.Text })],
+        [],
+      ),
     'claim_position' : IDL.Func([IDL.Principal, PositionId], [IDL.Bool], []),
     'claim_position_fees' : IDL.Func(
         [SwapCanisterId, PositionId],
@@ -705,6 +771,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ClaimRequest)],
         ['query'],
       ),
+    'get_claim_requests_page_for' : IDL.Func(
+        [IDL.Principal, ClaimRequestPageQuery],
+        [IDL.Vec(ClaimRequest)],
+        ['query'],
+      ),
     'get_claimed_positions_for_principal' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(ClaimedPosition)],
@@ -718,12 +789,12 @@ export const idlFactory = ({ IDL }) => {
     'get_error_entries' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [IDL.Vec(IDL.Opt(BufferEntry))],
-        [],
+        ['query'],
       ),
     'get_error_id_range' : IDL.Func(
         [],
         [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
-        [],
+        ['query'],
       ),
     'get_failed_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -733,12 +804,12 @@ export const idlFactory = ({ IDL }) => {
     'get_info_entries' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [IDL.Vec(IDL.Opt(BufferEntry))],
-        [],
+        ['query'],
       ),
     'get_info_id_range' : IDL.Func(
         [],
         [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
-        [],
+        ['query'],
       ),
     'get_lock_by_id' : IDL.Func([LockId], [IDL.Opt(LockInfo)], ['query']),
     'get_lock_fee_stats' : IDL.Func(
@@ -793,7 +864,26 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_lock_type' : IDL.Func([LockId], [IDL.Opt(LockType)], ['query']),
+    'get_log_entries_for' : IDL.Func(
+        [IDL.Principal, LogEntriesQuery],
+        [IDL.Variant({ 'Ok' : IDL.Vec(BufferEntry), 'Err' : IDL.Text })],
+        ['query'],
+      ),
     'get_my_claim_history' : IDL.Func([], [IDL.Vec(ClaimRequest)], ['query']),
+    'get_payment_log_for' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Nat],
+        [
+          IDL.Variant({
+            'Ok' : IDL.Record({
+              'payments' : IDL.Vec(PaymentLogEntry),
+              'total_count' : IDL.Nat,
+              'has_more' : IDL.Bool,
+            }),
+            'Err' : IDL.Text,
+          }),
+        ],
+        ['query'],
+      ),
     'get_position_lock_by_id' : IDL.Func(
         [LockId],
         [IDL.Opt(FullyQualifiedPositionLock)],
@@ -829,6 +919,7 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_stranded' : IDL.Func([StrandedQuery], [IDL.Vec(Stranded)], ['query']),
     'get_summed_locks' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(TokenType, Balance))],
@@ -842,6 +933,11 @@ export const idlFactory = ({ IDL }) => {
     'get_token_locks' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(LockId, TokenType, Balance, Expiry))],
+        ['query'],
+      ),
+    'get_uncertain_token_locks' : IDL.Func(
+        [],
+        [IDL.Vec(UncertainTokenLock)],
         ['query'],
       ),
     'has_expired_locks' : IDL.Func([], [IDL.Bool], ['query']),
@@ -982,6 +1078,11 @@ export const idlFactory = ({ IDL }) => {
         [LockOpResult],
         [],
       ),
+    'reconcile_token_lock' : IDL.Func(
+        [LockId, IDL.Opt(IDL.Principal)],
+        [ReconcileResult],
+        [],
+      ),
     'remove_partner_prices' : IDL.Func(
         [IDL.Principal],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
@@ -1035,7 +1136,16 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
         [],
       ),
+    'withdraw_payment_balance' : IDL.Func(
+        [],
+        [
+          IDL.Variant({
+            'Ok' : IDL.Record({ 'icp_tx' : IDL.Nat, 'amount' : IDL.Nat }),
+            'Err' : IDL.Text,
+          }),
+        ],
+        [],
+      ),
   });
-  return SneedLock;
 };
 export const init = ({ IDL }) => { return []; };

@@ -167,10 +167,14 @@ test('handleWrite: preview first, nothing executed; confirm executes once and au
   assert.ok(again.isError);
   assert.equal(s.calls.length, 1);
   const audit = readFileSync(join(d, 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(audit.length, 1);
+  // the executed write, then the refused replay (audited as refused, without the token)
+  assert.equal(audit.length, 2);
   assert.equal(audit[0].tool, 'fake_write');
   assert.equal(audit[0].input.text, 'hi');
   assert.equal(audit[0].outcome.ok, true);
+  assert.match(audit[1].refused, /Unknown or already used/);
+  assert.equal(audit[1].outcome, undefined);
+  assert.ok(!JSON.stringify(audit[1]).includes(token));
 });
 
 test('handleWrite: changed arguments with a valid token do not execute', async () => {

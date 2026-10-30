@@ -1,18 +1,6 @@
 export const idlFactory = ({ IDL }) => {
   const GetBlocksResult = IDL.Rec();
   const Value = IDL.Rec();
-  const Subaccount = IDL.Vec(IDL.Nat8);
-  const Account = IDL.Record({
-    'owner' : IDL.Principal,
-    'subaccount' : IDL.Opt(Subaccount),
-  });
-  const Config = IDL.Record({
-    'minClaimIntervalNs' : IDL.Nat,
-    'icpLedgerId' : IDL.Principal,
-    'admins' : IDL.Vec(IDL.Principal),
-    'paymentRecipient' : Account,
-    'sneedGovernanceId' : IDL.Principal,
-  });
   const AdminError = IDL.Variant({
     'InvalidInput' : IDL.Text,
     'NotFound' : IDL.Null,
@@ -124,6 +112,18 @@ export const idlFactory = ({ IDL }) => {
     'claimType' : ClaimType,
     'promoCode' : IDL.Opt(IDL.Text),
     'timestamp' : Timestamp,
+  });
+  const Subaccount = IDL.Vec(IDL.Nat8);
+  const Account = IDL.Record({
+    'owner' : IDL.Principal,
+    'subaccount' : IDL.Opt(Subaccount),
+  });
+  const Config = IDL.Record({
+    'minClaimIntervalNs' : IDL.Nat,
+    'icpLedgerId' : IDL.Principal,
+    'admins' : IDL.Vec(IDL.Principal),
+    'paymentRecipient' : Account,
+    'sneedGovernanceId' : IDL.Principal,
   });
   const IcpPaymentLogEntry = IDL.Record({
     'id' : IDL.Nat,
@@ -271,7 +271,7 @@ export const idlFactory = ({ IDL }) => {
     'ok' : Withdrawal,
     'err' : WithdrawError,
   });
-  const SneedPremium = IDL.Service({
+  return IDL.Service({
     'addAdmin' : IDL.Func([IDL.Principal], [AdminResult], []),
     'addIcpTier' : IDL.Func([IcpTier], [AdminResult], []),
     'addVpTier' : IDL.Func([VotingPowerTier], [AdminResult], []),
@@ -317,6 +317,11 @@ export const idlFactory = ({ IDL }) => {
         [MembershipStatus],
         ['query'],
       ),
+    'checkMemberships' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [IDL.Vec(MembershipStatus)],
+        ['query'],
+      ),
     'claimPromoCode' : IDL.Func([IDL.Text], [PromoCodeResult], []),
     'claimWithVotingPower' : IDL.Func([], [ClaimResult], []),
     'createPromoCode' : IDL.Func([CreatePromoCodeRequest], [AdminResult_5], []),
@@ -330,6 +335,22 @@ export const idlFactory = ({ IDL }) => {
     'getActivePremiumMembers' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],
+        ['query'],
+      ),
+    'getActivePremiumMembersPage' : IDL.Func(
+        [IDL.Record({ 'limit' : IDL.Nat, 'start' : IDL.Nat })],
+        [
+          IDL.Record({
+            'next' : IDL.Opt(IDL.Nat),
+            'total_active' : IDL.Nat,
+            'items' : IDL.Vec(
+              IDL.Record({
+                'principal' : IDL.Principal,
+                'expiration' : IDL.Int,
+              })
+            ),
+          }),
+        ],
         ['query'],
       ),
     'getAllIcpTiers' : IDL.Func([], [IDL.Vec(IcpTier)], ['query']),
@@ -356,6 +377,17 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getClaimLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getClaimLogFor' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Nat],
+        [
+          IDL.Record({
+            'claims' : IDL.Vec(ClaimLogEntry),
+            'total_count' : IDL.Nat,
+            'has_more' : IDL.Bool,
+          }),
+        ],
+        ['query'],
+      ),
     'getConfig' : IDL.Func([], [Config], ['query']),
     'getDepositAccount' : IDL.Func([IDL.Principal], [Account], ['query']),
     'getIcpPaymentLog' : IDL.Func(
@@ -370,6 +402,17 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getIcpPaymentLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getIcpPaymentLogFor' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Nat],
+        [
+          IDL.Record({
+            'payments' : IDL.Vec(IcpPaymentLogEntry),
+            'total_count' : IDL.Nat,
+            'has_more' : IDL.Bool,
+          }),
+        ],
+        ['query'],
+      ),
     'getIcpTiers' : IDL.Func([], [IDL.Vec(IcpTier)], ['query']),
     'getMembershipDetails' : IDL.Func(
         [IDL.Principal],
@@ -484,21 +527,7 @@ export const idlFactory = ({ IDL }) => {
     'updateIcpTier' : IDL.Func([IDL.Nat, IcpTier], [AdminResult], []),
     'updateVpTier' : IDL.Func([IDL.Nat, VotingPowerTier], [AdminResult], []),
     'withdrawDeposit' : IDL.Func([], [WithdrawResult], []),
+    'withdrawDepositToken' : IDL.Func([IDL.Principal], [WithdrawResult], []),
   });
-  return SneedPremium;
 };
-export const init = ({ IDL }) => {
-  const Subaccount = IDL.Vec(IDL.Nat8);
-  const Account = IDL.Record({
-    'owner' : IDL.Principal,
-    'subaccount' : IDL.Opt(Subaccount),
-  });
-  const Config = IDL.Record({
-    'minClaimIntervalNs' : IDL.Nat,
-    'icpLedgerId' : IDL.Principal,
-    'admins' : IDL.Vec(IDL.Principal),
-    'paymentRecipient' : Account,
-    'sneedGovernanceId' : IDL.Principal,
-  });
-  return [IDL.Opt(Config)];
-};
+export const init = ({ IDL }) => { return []; };
