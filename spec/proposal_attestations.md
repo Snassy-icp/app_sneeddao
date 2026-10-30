@@ -235,6 +235,9 @@ What OhShii offered on its side, while its handover lasts and changes can still 
 6. **Registry ids, early.** OhShii needs the registry's principals to fill its reader slot. So we reserve the
    canisters (mainnet + staging) before the code exists: empty canisters, with interim controllers until the neutral
    hosting of question 3 is settled. Their ids don't change when control moves later.
+   *Reserved 2026-10-30:* mainnet `a5rqn-baaaa-aaaac-bghua-cai` (controllers SNS root fp274 + d7zib), staging
+   `xrnbc-uaaaa-aaaac-qhm7a-cai`. Plan for neutral control: sneed_guardian_multidao as sole controller (DAO-approved
+   hashes only, a veto council per participating DAO).
 
 ## Phases (suggested)
 
