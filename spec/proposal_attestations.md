@@ -1,8 +1,10 @@
 # Proposal attestations (draft for discussion)
 
-*Status: draft v2, 2026-10-30. A conversation between Sneed DAO and the OhShii DAO; nothing is built yet. v2 takes in
-OhShii's [review on PR #18](https://github.com/Snassy-icp/app_sneeddao/pull/18): release subjects, installer origin,
-a prompt live check, and caller admission. It also records the answers to the open questions.*
+*Status: draft v3, 2026-10-30. A conversation between Sneed DAO and the OhShii DAO; nothing is built yet.
+- v2 takes in OhShii's [review on PR #18](https://github.com/Snassy-icp/app_sneeddao/pull/18): release subjects,
+  installer origin, a prompt live check, and caller admission. It also records the answers to the open questions.
+- v3 takes in OhShii's planned read interface (`get_proposal_upgrade_steps`, `list_upgrade_proposals`). It adds
+  `upgrade_arg_sha256`, the snapshot-restore and skipped steps, and the admission terms.*
 
 ## Why
 
@@ -40,6 +42,9 @@ type Subject = {
   // an install that is not a proposal (e.g. a controller install while a DAO hands over), identified by what went live
   #release : { target : Principal; module_hash : Blob };
 };
+// A step that restores a canister snapshot changes the module, but proposes no hash, so there is nothing to rebuild.
+// Builders don't attest it. The registry still runs its live check and shows "module changed by snapshot restore",
+// with the hash before and after, so the step is never silently blank.
 
 type Artifact = {
   #wasm : {
@@ -48,6 +53,7 @@ type Artifact = {
     built_raw_sha256 : Blob;
     built_gz_sha256 : ?Blob;          // gzip -9 -n, if the proposal ships gzipped (then the live module hash is the gz hash)
     embedded : [{ name : Text; sha256 : Blob }];   // nested modules, e.g. governance/ledger/index wasms inside a launcher
+    upgrade_arg_sha256 : ?Blob;       // sha256 of the install/upgrade argument, when the proposal states one
   };
   #asset_batch : {
     target : Principal;               // the asset canister
@@ -94,6 +100,11 @@ ones stay visible in the log.
    - **who installed it**: the change's origin (`from_user` or `from_canister`, with the principal). An install that did
      not come from the DAO's governance canister is shown as such. Voters most want to see exactly that.
 
+   - **A skipped step** (the target already ran that hash, so nothing was installed): `#live_match` if the hash
+     matches, with `installed_by` taken from the earlier install that put it there, and marked as skipped. The
+     installer is not the proposal.
+   - **A failed step**: no live check, and the governance canister's error is shown.
+
    For `#release` subjects the same check runs as soon as the attestation arrives: is that module live (or in the
    recent history) on the target, and who installed it.
 2. **The live asset tree, after execution (frontend steps).**
@@ -107,14 +118,28 @@ ones stay visible in the log.
 
 **Reading proposals: one adapter per governance kind.**
 - **SNS governance:** `get_proposal` strips the wasm, but renders its hash in the text.
-- **ONS and SONS:** structured payloads, so nothing is parsed from text:
-  - the payload carries `wasm_module_hash`, `git_repo_url`, `git_commit_hash` and `build_instructions`;
-  - the upgrade shapes are `CanisterUpgrade`, `CanisterUpgradeBatch`, `DappUpgradeBatch` (git fields per step) and
-    `AssetUpgrade`;
-  - each step reports its result (`batch_step_results`).
+- **ONS and SONS:** one adapter covers both, since every OhShii governance canister has the same two reads
+  (planned):
+  - `get_proposal_upgrade_steps : (nat64) -> (opt ProposalUpgradeSteps) query` returns the steps in proposal order,
+    with each step's `index` and `target`, `is_self` (the governance canister upgrading itself, always last), an
+    optional `role`, and three more fields:
+    - the **artifact**: `wasm { module_hash; size_bytes; chunked; upgrade_arg_sha256 }`,
+      `asset_batch { batch_id; evidence }`, or `snapshot_restore { snapshot_id }`;
+    - the **source**: `git_repo_url`, `git_commit_hash`, `build_instructions`, each capped at 8 KiB, plus a
+      `truncated` flag;
+    - the **execution**: `pending`, `not_executed`, `in_progress`, `executed : nat64`, `skipped : nat64` or
+      `failed { at; error }`.
 
-  OhShii offered one read method with the same name and shape on ONS and SONS, which makes that a single adapter (see
-  "Calls to other DAOs' canisters").
+    It also returns the proposal's `kind`, `status` and `executed_at`, and `null` for proposals that aren't upgrades.
+  - `list_upgrade_proposals : (record { after : opt nat64; limit : nat32 }) -> (record { items; next : opt nat64 })
+    query` returns compact summaries: id, kind, status, step count and finished steps. Keep paging while `next` is
+    set, even past an empty page.
+  - New fields and variants arrive only as `opt`. A canister still on an older module has neither method, so the
+    adapter falls back to `get_proposal` (ONS) or `get_proposal_by_id` (SONS).
+  - These map one to one onto `Subject` (`#proposal { governance; proposal_id; step = index }`) and `Artifact`:
+    - `module_hash` becomes `proposed_sha256`;
+    - `upgrade_arg_sha256` is copied as it is;
+    - a `truncated` source is shown as truncated; the registry never guesses the rest.
 
 ## What frontends read
 
@@ -143,7 +168,18 @@ canister id(s). For that, the registry publishes:
   open (at most once an hour), one status read per step until it has executed, then one `canister_info` per step, which
   goes to the management canister and is not billed to the DAO. Plus one fleet listing a day.
 
-OhShii offered these on its side, for the duration of its handover, when they can still ship without a vote:
+**OhShii's admission terms (planned).** Each OhShii governance canister, and `dao_storage`, admits a small, capped
+set of external readers:
+- An admitted reader may call only the attestation reads: the steps, the list, the deployed-source record and a paged
+  fleet list.
+- During the handover, the list is changed by direct install. After it, a change takes a vote: on ONS a critical
+  proposal, on each SONS that DAO's own vote. So removing a reader also takes days.
+- Replicated reads are billed to OhShii. A reader far over its published budget can be removed, so the registry
+  keeps to its budget in code: per-DAO call caps, with a back-off when over.
+- The registry must send the principals it calls from, mainnet and staging. A placeholder holds the slot until
+  then. **So the registry canister ids are needed early**, before the code is ready.
+
+What OhShii offered on its side, while its handover lasts and changes can still ship without a vote:
 1. **Admit the registry** on ONS, SONS and `dao_storage`. → Yes, needed.
 2. **One common read method on ONS and SONS:** per proposal, the steps in this spec's terms: index, target, wasm or
    asset, the proposed hash or `batch_id` + evidence, git repo, commit and build instructions, and each step's
@@ -176,6 +212,9 @@ OhShii offered these on its side, for the duration of its handover, when they ca
   - Batch steps become one attestation each, and the launcher's embedded modules go in `embedded`. A child canister
     keeps reporting its embedded `.wasm.gz` hash until it is upgraded, so `canister_info` on the children works.
   - Third-party builds of OhShii modules wait until its repositories are public.
+  - A deployed-source record exists only for upgrades executed by a proposal, not for direct installs.
+  - OhShii doesn't check asset steps after commit: `executed` means the commit was accepted. The registry's tree hash
+    is that check.
 - **Running others' recipes.** The Sneed Verifier could also run a project's own recipe (e.g. `verify-proposal.sh`),
   but only on a separate, empty machine, never next to any DAO keys. Builds run rootless in a container with no secrets
   and no network for the compile step.
@@ -193,6 +232,9 @@ OhShii offered these on its side, for the duration of its handover, when they ca
 4. **Nested modules.** *Answered:* worth it. OhShii's launcher embeds four modules: SONS governance, DFINITY's ICRC
    ledger and index (pinned to DFINITY's release hashes), and a token migrator.
 5. **Naming.** No preference on either side yet; placeholders stay.
+6. **Registry ids, early.** OhShii needs the registry's principals to fill its reader slot. So we reserve the
+   canisters (mainnet + staging) before the code exists: empty canisters, with interim controllers until the neutral
+   hosting of question 3 is settled. Their ids don't change when control moves later.
 
 ## Phases (suggested)
 
