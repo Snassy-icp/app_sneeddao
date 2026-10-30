@@ -40,6 +40,7 @@ import { icrc1Transfer } from '../utils/icrcTx';
 import { appConfirm } from '../utils/appDialog';
 import { journalStake, updateStake, removeStake } from '../utils/stakeJournal';
 import PendingStakesNotice from '../components/PendingStakesNotice';
+import { verifyDownloadedWasm } from '../utils/wasmIntegrity';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1055,17 +1056,8 @@ function IcpNeuronManager() {
             const arrayBuffer = await response.arrayBuffer();
             const wasmModule = new Uint8Array(arrayBuffer);
             
-            if (wasmModule.length === 0) {
-                throw new Error('Downloaded WASM file is empty');
-            }
-            
-            // Validate WASM magic bytes (0x00 0x61 0x73 0x6D = "\0asm") or gzip (0x1f 0x8b)
-            const isWasm = wasmModule[0] === 0x00 && wasmModule[1] === 0x61 && wasmModule[2] === 0x73 && wasmModule[3] === 0x6D;
-            const isGzip = wasmModule[0] === 0x1F && wasmModule[1] === 0x8B;
-            
-            if (!isWasm && !isGzip) {
-                throw new Error('Downloaded file does not appear to be a valid WASM module');
-            }
+            // only the exact published module is installed: its sha256 must be the version's wasmHash
+            verifyDownloadedWasm(wasmModule, targetVersion.wasmHash, `v${versionStr}`);
             
             console.log(`WASM downloaded: ${(wasmModule.length / 1024).toFixed(2)} KB`);
             

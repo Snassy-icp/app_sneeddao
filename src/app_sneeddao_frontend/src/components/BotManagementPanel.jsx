@@ -45,6 +45,7 @@ import ConfirmDialog from './ConfirmDialog';
 import BotEventPanel from './BotEventPanel';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import { upgradeSteps } from '../utils/upgradePath';
+import { verifyDownloadedWasm } from '../utils/wasmIntegrity';
 import { fetchBotCyclesBalance } from '../utils/botCycles';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
@@ -1111,11 +1112,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
 
                 const arrayBuffer = await response.arrayBuffer();
                 const wasmModule = new Uint8Array(arrayBuffer);
-                if (wasmModule.length === 0) throw new Error('Downloaded WASM file is empty');
-
-                const isWasm = wasmModule[0] === 0x00 && wasmModule[1] === 0x61 && wasmModule[2] === 0x73 && wasmModule[3] === 0x6D;
-                const isGzip = wasmModule[0] === 0x1F && wasmModule[1] === 0x8B;
-                if (!isWasm && !isGzip) throw new Error('Downloaded file does not appear to be a valid WASM module');
+                // only the exact published module is installed: its sha256 must be the version's wasmHash
+                verifyDownloadedWasm(wasmModule, step.wasmHash, `v${fmtVer(step)}`);
 
                 await mgmt.install_code({
                     mode: { [mode]: null },
