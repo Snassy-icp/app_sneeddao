@@ -21,6 +21,7 @@ import { idlFactory as sneedexIdl, init as sneedexInit } from '../build/sneedex.
 import { idlFactory as sneedappIdl } from '../build/sneedapp.did.js';
 import { idlFactory as padIdl } from '../build/sneed_pad.did.js';
 import { idlFactory as guardianIdl, init as guardianInit } from '../build/sneed_guardian.did.js';
+import { idlFactory as attestationsIdl } from '../build/sneed_attestations.did.js';
 import { idlFactory as stakingBotIdl } from '../build/sneed_icp_staking_bot.did.js';
 import { idlFactory as tradingBotIdl } from '../build/sneed_trading_bot.did.js';
 
@@ -70,6 +71,7 @@ beforeAll(async () => {
     initTypes: guardianInit({ IDL }),
     initArgs: [{ name: 'guardian', approvers: [admin], threshold: 1n, archive_controllers: [], admins: [], sneed_premium: [], fee_destination: [account(admin)], icp_ledger: [icpId], sns_wasm: [] }],
   });
+  await add('sneed_attestations', attestationsIdl);
   await add('sneed_icp_staking_bot', stakingBotIdl, { bot: true });
   await add('sneed_trading_bot', tradingBotIdl, { bot: true });
 }, 300_000);
