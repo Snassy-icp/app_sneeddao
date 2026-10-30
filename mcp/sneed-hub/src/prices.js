@@ -25,9 +25,10 @@ export const effectivePrice = ({ regular, premium = null, isPremium = false, spe
   return best;
 };
 
-/// Premium membership of a principal: { active, expires } (Sneed Premium checkMembership).
-export const premiumStatus = async (principal) => {
-  const p = await actor(premiumIdl, CANISTERS.sneed_premium);
+/// Premium membership of a principal: { active, expires } (Sneed Premium checkMembership), read with
+/// `anon` (a write context's actor factory, or the shared anonymous one).
+export const premiumStatus = async (principal, anon = actor) => {
+  const p = await anon(premiumIdl, CANISTERS.sneed_premium);
   const s = await p.checkMembership(toPrincipal(principal));
   if ('Active' in s) return { active: true, expires: s.Active.expiration };
   if ('Expired' in s) return { active: false, expired_at: s.Expired.expiredAt };

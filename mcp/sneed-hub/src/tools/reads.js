@@ -15,7 +15,7 @@ import { idlFactory as govIdl } from '../idl/sns_governance.did.js';
 import { idlFactory as icrc1Idl } from '../idl/icrc1_ledger.did.js';
 import { actor, CANISTERS, opt, toPrincipal, ptext, canisterId, signedActor } from '../ic.js';
 import { activeIdentity } from '../identity.js';
-import { nsToIso, secToIso, plain, variantKey, tokenInfo, formatUnits } from '../format.js';
+import { nsToIso, secToIso, plain, variantKey, tokenInfo, formatUnits, shortErr } from '../format.js';
 import { textResult, safeText, link, fmt, toHex, icrc3IdlFactory } from '../chain.js';
 import { acceptingVotes, votableNeurons, neuronIdHex, PERM } from './w_gov.js';
 import { namesOf } from './names.js';
@@ -161,7 +161,7 @@ export function registerReadTools(server) {
       const [bal, watches] = await Promise.all([m.get_my_balance(), m.get_my_watches()]);
       lines.push(`My balance: ${fmt(bal.balance_e8s, ICP_T)} (${fmt(bal.per_day_e8s, ICP_T)}/day${bal.paused ? ', PAUSED' : ''}); deposit to ${bal.deposit_account.owner.toText()} subaccount ${toHex(opt(bal.deposit_account.subaccount) ?? [])}`);
       lines.push(...watches.map((w) => `  watching ${w.name} (${j(w.target)}), next check ${nsToIso(w.next_check_at)}, ${fmt(w.price_per_check_e8s, ICP_T)}/check`));
-    } catch (e) { lines.push(`(my watches: ${e.message})`); }
+    } catch (e) { lines.push(`(my watches: ${shortErr(e)})`); }
     lines.push(link('/notifications'));
     return textResult(lines);
   }));

@@ -191,7 +191,8 @@ live from Sneed Hub). Prompt: `help_me_on_sneed_hub`.
 ## Development
 
 ```bash
-npm test             # unit tests: safety layer, identities and PEMs, delegations and the connect listener, helpers
+npm test             # unit tests: safety layer, identities and PEMs, delegations and the connect listener, helpers,
+                     # sns_vote / sns_make_motion_proposal against a Candid-faithful fake governance, write-tool fixes
 npm run smoke        # starts the server and calls every read tool on mainnet (writes forced off, throwaway key)
 ```
 

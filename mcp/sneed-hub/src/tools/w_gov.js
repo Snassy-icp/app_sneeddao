@@ -7,7 +7,7 @@ import { idlFactory as govIdl } from '../idl/sns_governance.did.js';
 import { CANISTERS, opt, toPrincipal, ptext } from '../ic.js';
 import { defineWrite } from '../writes.js';
 import { toHex, fromHex, link } from '../chain.js';
-import { formatUnits } from '../format.js';
+import { formatUnits, shortErr } from '../format.js';
 
 export const PERM = { SUBMIT_PROPOSAL: 3, VOTE: 4 };
 
@@ -80,7 +80,7 @@ export const govWrites = [
           const res = opt(r.command);
           if (res && 'Error' in res) steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: ${res.Error.error_message}`);
           else { okCount += 1; steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: voted`); }
-        } catch (e) { steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: ${e.message.split('\n')[0]}`); }
+        } catch (e) { steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: ${shortErr(e)}`); }
       }
       return { ok: okCount > 0, summary: `${okCount} of ${plan.calls.length} neuron(s) voted`, error: okCount ? undefined : 'no vote was registered', steps, links: [link(`/proposal?proposalid=${proposal_id}&sns=${CANISTERS.sneed_sns_root}`)] };
     },

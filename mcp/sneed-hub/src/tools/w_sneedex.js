@@ -7,8 +7,8 @@ import { idlFactory as icrc1Idl } from '../idl/icrc1_ledger.did.js';
 import { idlFactory as icrc7Idl } from '../idl/icrc7.did.js';
 import { CANISTERS, opt, toPrincipal, ptext } from '../ic.js';
 import { defineWrite } from '../writes.js';
-import { spend, toBaseUnits, ledgerFee, fmt, link, accountId, extTokenIdentifier, extIdlFactory, toHex } from '../chain.js';
-import { tokenInfo, plain } from '../format.js';
+import { spend, toBaseUnits, ledgerFee, fmt, link, accountId, extTokenIdentifier, extIdlFactory, toHex, balanceProblems } from '../chain.js';
+import { tokenInfo, plain, shortErr } from '../format.js';
 import { specialPricesFor, effectivePrice, premiumStatus } from '../prices.js';
 
 const sxErr = (e) => { const k = Object.keys(e)[0]; const v = e[k]; return v == null ? k : `${k}: ${typeof v === 'object' ? JSON.stringify(plain(v)) : v}`; };
@@ -88,7 +88,7 @@ const bidRun = async ({ offer_id }, ctx, plan) => {
   try {
     sxOk(await sx.confirmBid(bidId, amount), 'confirmBid');
   } catch (e) {
-    return { ok: false, spent: true, steps, error: e.message, recovery: `The tokens are in bid ${bidId}'s escrow. Retry confirmBid on Sneed Hub (${link(`/sneedex_offer/${offer_id}`)}), or withdraw them there (withdrawBidEscrow).` };
+    return { ok: false, spent: true, steps, error: shortErr(e), recovery: `The tokens are in bid ${bidId}'s escrow. Retry confirmBid on Sneed Hub (${link(`/sneedex_offer/${offer_id}`)}), or withdraw them there (withdrawBidEscrow).` };
   }
   steps.push(`bid ${bidId} confirmed`);
   return { ok: true, spent: true, summary: `bid ${bidId} placed on offer ${offer_id}`, steps, links: [link(`/sneedex_offer/${offer_id}`)] };
@@ -132,7 +132,7 @@ const createBuild = async (a, ctx) => {
   // fee (fetchFeeInfo): regular/premium creation fee, special prices; existing payment deposit
   const [feeCfg, paySub, special] = await Promise.all([sx.getFeeConfig(), sx.getOfferCreationPaymentSubaccount(toPrincipal(ctx.principal)), specialPricesFor(sx, ctx.principal)]);
   let isPremium = false;
-  try { isPremium = (await premiumStatus(ctx.principal)).active; } catch { /* treat as regular */ }
+  try { isPremium = (await premiumStatus(ctx.principal, ctx.anon)).active; } catch { /* treat as regular */ }
   const regular = BigInt(feeCfg.regularCreationFeeE8s);
   const base = regular === 0n ? 0n : isPremium ? BigInt(feeCfg.premiumCreationFeeE8s) : regular;
   const eff = effectivePrice({ regular: base, special: regular === 0n ? null : special, field: 'offer_creation_fee_e8s' });
@@ -167,8 +167,6 @@ const createBuild = async (a, ctx) => {
       const ledger = toPrincipal(as.ledger, 'ledger').toText();
       const { amount, token } = await toBaseUnits(ledger, as.amount);
       const fee = await ledgerFee(ledger);
-      const bal = await (await ctx.anon(icrc1Idl, ledger)).icrc1_balance_of({ owner: me, subaccount: [] });
-      if (bal < amount + fee) problems.push(`asset ${i}: balance ${fmt(bal, token)} is below ${fmt(amount + fee, token)}.`);
       assets.push({ kind: 'token', ledger, amount, fee, variant: { ICRC1Token: { ledger_canister_id: ledger, amount } } });
       spends.push(await spend(ledger, amount + fee, `asset ${i}: ${fmt(amount, token)} into the offer escrow + ledger fee`, 'Sneedex offer escrow'));
     } else {
@@ -215,6 +213,8 @@ const createBuild = async (a, ctx) => {
     }
   });
   calls.push({ canister: CANISTERS.sneedex, method: 'activateOffer', args: ['<offer id>'] });
+  // the ICP creation fee and the token assets, summed per ledger, come from your main account
+  problems.push(...await balanceProblems(ctx, spends));
   return {
     summary: `Create a Sneedex offer of ${a.assets.length} asset(s) priced in ${pt.symbol ?? priceLedger}: ${minBid != null ? `min bid ${fmt(minBid, pt)}` : 'no auction'}${buyout != null ? `, buyout ${fmt(buyout, pt)}` : ''}, ${a.expiration_days ?? 7} day(s)${a.expiration_hours ? ` ${a.expiration_hours} h` : ''}`,
     calls,
@@ -237,7 +237,7 @@ export const createRun = async (a, ctx, plan) => {
   let spent = false;
   let offerId = null;
   const fail = (e) => ({
-    ok: false, spent, steps, error: e.message ?? String(e),
+    ok: false, spent, steps, error: shortErr(e),
     recovery: offerId != null ? `Offer ${offerId} exists but is not active. Open ${link(`/sneedex_offer/${offerId}`)} to finish escrow, or cancel it and reclaim the assets (cancelOffer / reclaimAssets).` : (spent ? 'The creation fee is in your Sneedex fee deposit and will be used by your next offer (or withdraw it on Sneed Hub).' : undefined),
     links: offerId != null ? [link(`/sneedex_offer/${offerId}`)] : [],
   });
@@ -275,6 +275,7 @@ export const createRun = async (a, ctx, plan) => {
         const tr = await l.icrc1_transfer({ to: { owner: toPrincipal(CANISTERS.sneedex), subaccount: [sub] }, amount: as.amount, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
         if ('Err' in tr) throw new Error(`asset ${i}: transfer refused: ${JSON.stringify(plain(tr.Err))}`);
         spent = true;
+        steps.push(`asset ${i}: tokens sent to the offer escrow (block ${tr.Ok})`);
         sxOk(await sx.escrowICRC1Tokens(offerId, idx), 'escrowICRC1Tokens');
       } else if (as.kind === 'icrc7' && as.byApproval) {
         const c = await ctx.signed(icrc7Idl, as.coll);

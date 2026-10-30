@@ -86,6 +86,9 @@ export const tokenInfo = async (ledger) => {
   return p;
 };
 
+/// For tests: use this metadata for a ledger instead of reading it.
+export const primeTokenInfo = (info) => { tokenCache.set(info.ledger, Promise.resolve(info)); };
+
 /// "1,234.5 SNEED" (or base units when decimals are unknown).
 export const amountText = async (amount, ledger) => {
   if (amount == null) return null;
@@ -94,10 +97,19 @@ export const amountText = async (amount, ledger) => {
   return `${formatUnits(amount, t.decimals)} ${t.symbol ?? ''}`.trim();
 };
 
+/// The reject message of an agent error (agent-js 2: props "Reject message" for updates, "Message" for
+/// queries, JSON-quoted in the text; the polling path's "Reject text"), else the first line.
 export const shortErr = (e) => {
   const m = String(e?.message ?? e);
-  const reject = m.match(/Reject text: ([^\n]+)/) || m.match(/"Reject message": "([^"]+)"/);
-  return (reject ? reject[1] : m.split('\n')[0]).slice(0, 300);
+  const props = e?.props ?? {};
+  let msg = props['Reject message'] ?? props.Message ?? null;
+  if (msg == null) msg = m.match(/Reject text: ([^\n]+)/)?.[1] ?? null;
+  if (msg == null) {
+    const q = m.match(/"(?:Reject message|Message)": ("(?:[^"\\]|\\.)*")/);
+    if (q) try { msg = JSON.parse(q[1]); } catch { /* keep the first line */ }
+  }
+  if (msg == null && props['HTTP status code']) msg = `HTTP ${props['HTTP status code']} ${props['HTTP status text'] ?? ''}`.trim();
+  return String(msg ?? m.split('\n')[0]).slice(0, 300);
 };
 
 /// MCP tool result: a JSON body (plus an optional one-line summary up front).
