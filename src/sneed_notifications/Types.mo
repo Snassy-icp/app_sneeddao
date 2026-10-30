@@ -265,6 +265,17 @@ module {
     withdraw_pending : ?PendingWithdrawal;
   };
 
+  /// get_timer_status: the work timer (armed only when something is due) and the hourly housekeeping.
+  public type TimerStatus = {
+    paused : Bool; // admins stopped the timers (admin_pause_timers)
+    paused_at : ?Int;
+    next_run_at : ?Int; // when the work timer fires; null: nothing is due (or paused)
+    last_tick_at : Int; // when a work run last started
+    ticking : Bool; // a work run in progress
+    last_housekeeping_at : Int; // 0: none since the last install or upgrade
+    next_housekeeping_at : ?Int; // null: paused (an upgrade restarts the hour)
+  };
+
   public type Result = { #ok : Text; #err : Text };
   public type ResultNat = { #ok : Nat; #err : Text };
 };
