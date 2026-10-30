@@ -35,7 +35,7 @@ import T "Types";
 /// attestation per builder (newest counts, older ones stay in the ICRC-3 log), never merges them
 /// into a score, and checks what it can itself:
 /// - it reads each attested proposal through an adapter (SNS `get_proposal`; OhShii ONS/SONS
-///   `get_proposal_upgrade_steps`, planned interface) until every step is final;
+///   `get_proposal_upgrade_steps`, OhShii's published interface) until every step is final;
 /// - after a wasm step executes (or is skipped, or restores a snapshot) it reads the target with
 ///   the management canister's canister_info promptly (the IC keeps only 20 changes): live module
 ///   hash, and who installed it;
@@ -935,8 +935,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
       case (?p) {
         let s = Oh.steps(p, config.max_steps, MAX_SOURCE_TEXT);
         let phase = Oh.overall(s);
-        let status = switch (p.status) { case (?x) x; case null switch phase { case (#open) "open"; case (#executing) "executing"; case (#final) "final" } };
-        afterRead(t, { kind = #ohshii; proposal_kind = p.kind; status; executed_at = p.executed_at; steps = s; read_at = now() }, phase, null);
+        afterRead(t, { kind = #ohshii; proposal_kind = ?p.kind; status = p.status; executed_at = p.executed_at; steps = s; read_at = now() }, phase, null);
       };
     };
   };

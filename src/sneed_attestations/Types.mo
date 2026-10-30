@@ -120,7 +120,7 @@ module {
 
   public type GovernanceKind = {
     #sns; // SNS governance: get_proposal
-    #ohshii; // ONS and SONS: get_proposal_upgrade_steps (planned interface, src/sneed_attestations/OhShiiTypes.mo)
+    #ohshii; // ONS and SONS: get_proposal_upgrade_steps (OhShii's published Candid, src/sneed_attestations/OhShiiTypes.mo)
   };
 
   /// The step's artifact as the proposal states it.

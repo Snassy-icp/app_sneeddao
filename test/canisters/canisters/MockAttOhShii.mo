@@ -1,14 +1,14 @@
 import Array "mo:base/Array";
 import Error "mo:base/Error";
+import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 
 /// Stands in for an OhShii governance canister (ONS or a SONS) for sneed_attestations' tests, with
-/// the read methods OhShii planned (PR #18 comment, spec/proposal_attestations.md v3). The step
-/// record deliberately differs a little from the registry's expected types (src/sneed_attestations/
-/// OhShiiTypes.mo): `index` is a nat32 (the registry expects opt nat and falls back to the position),
-/// and there is an extra field, as a newer OhShii module might send.
+/// the reads in OhShii's published Candid (PR #20 comment), plus one extra field (`staged_at`) as a
+/// newer OhShii module might add. The step's artifact, source and execution are sent without `opt`
+/// (a subtype of OhShii's `opt` fields), so the tests don't wrap every value.
 ///
 /// It controls its targets and installs into them (`install`), and restores snapshots
 /// (`snapshot_cycle`), so canister_info shows real changes made by "governance".
@@ -24,7 +24,7 @@ persistent actor class MockAttOhShii() = this {
     #in_progress;
     #executed : Nat64;
     #skipped : Nat64;
-    #failed : { at : Nat64; error : Text };
+    #failed : { at : ?Nat64; error : Text }; // as in OhShii's published Candid (PR #20)
   };
   type Step = {
     index : Nat32;
@@ -36,7 +36,7 @@ persistent actor class MockAttOhShii() = this {
     execution : Execution;
     staged_at : Nat64; // a field the registry doesn't know
   };
-  type Steps = { proposal_id : Nat64; kind : Text; status : Text; executed_at : ?Nat64; steps : [Step] };
+  type Steps = { governance : Principal; proposal_id : Nat64; kind : Text; status : Text; executed_at : ?Nat64; steps : [Step] };
 
   type InstallMode = { #install; #reinstall; #upgrade : ?{ skip_pre_upgrade : ?Bool } };
   type Mgmt = actor {
@@ -79,7 +79,7 @@ persistent actor class MockAttOhShii() = this {
     } catch (e) #err(Error.message(e));
   };
 
-  // ---- OhShii's planned reads (update methods here, to count them) ----
+  // ---- OhShii's reads (update methods here, to count them) ----
 
   public shared func get_proposal_upgrade_steps(id : Nat64) : async ?Steps {
     reads += 1;
@@ -90,11 +90,14 @@ persistent actor class MockAttOhShii() = this {
     };
   };
 
-  public query func list_upgrade_proposals(args : { after : ?Nat64; limit : Nat32 }) : async { items : [{ id : Nat64; kind : Text; status : Text; step_count : Nat; finished_steps : Nat }]; next : ?Nat64 } {
-    let items = Array.mapFilter<(Nat64, ?Steps), { id : Nat64; kind : Text; status : Text; step_count : Nat; finished_steps : Nat }>(proposals, func((i, s)) {
+  // OhShii's published Candid (PR #20): UpgradeProposalSummary / UpgradeProposalPage
+  type Summary = { proposal_id : Nat64; kind : Text; status : Text; step_count : Nat32; finished_steps : Nat32; executed_at : ?Nat64 };
+  public query func list_upgrade_proposals(args : { after : ?Nat64; limit : Nat32 }) : async { items : [Summary]; next : ?Nat64 } {
+    let items = Array.mapFilter<(Nat64, ?Steps), Summary>(proposals, func((i, s)) {
+      let row = func(x : Steps) : Summary = { proposal_id = i; kind = x.kind; status = x.status; step_count = Nat32.fromNat(x.steps.size()); finished_steps = 0; executed_at = x.executed_at };
       switch (s, args.after) {
-        case (?x, ?a) if (i <= a) null else ?{ id = i; kind = x.kind; status = x.status; step_count = x.steps.size(); finished_steps = 0 };
-        case (?x, null) ?{ id = i; kind = x.kind; status = x.status; step_count = x.steps.size(); finished_steps = 0 };
+        case (?x, ?a) if (i <= a) null else ?row(x);
+        case (?x, null) ?row(x);
         case _ null;
       };
     });
