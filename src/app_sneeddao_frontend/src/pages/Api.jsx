@@ -120,6 +120,16 @@ export const apiDocs = [
         color: '#8b5cf6',
         hidden: true,
     },
+    // Not deployed yet: reachable at /api/sneed_attestations (its ICRC-3 block_types_url points there), not listed as a card.
+    {
+        slug: 'sneed_attestations',
+        icon: FaServer,
+        title: 'Sneed attestation registry',
+        canisterId: '',
+        description: 'Builders attest what they rebuilt for each step of an upgrade proposal or release; the registry checks the live module, its installer and the asset tree itself, and logs it all in ICRC-3.',
+        color: '#0ea5e9',
+        hidden: true,
+    },
     // The naming canisters each have a short page pointing into the Sneed Names doc, so links such as
     // the block_types_url the canisters publish (/api/sneed_pid_names#block-types) resolve. Not listed as cards.
     ...[
