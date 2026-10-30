@@ -115,7 +115,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const ResultNat = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const ValidationResult = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
-  const SneedProfiles = IDL.Service({
+  return IDL.Service({
     'admin_add_admin' : IDL.Func([IDL.Principal], [Result], []),
     'admin_hide_dapp' : IDL.Func([DappId, IDL.Bool], [Result], []),
     'admin_icrc3_repair_archive_controllers' : IDL.Func(
@@ -202,6 +202,5 @@ export const idlFactory = ({ IDL }) => {
     'verify_dapp' : IDL.Func([DappId, IDL.Bool], [Result], []),
     'verify_dapp_by_dao' : IDL.Func([DappId, IDL.Bool], [], []),
   });
-  return SneedProfiles;
 };
 export const init = ({ IDL }) => { return []; };

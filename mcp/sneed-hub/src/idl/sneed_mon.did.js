@@ -1,4 +1,6 @@
 export const idlFactory = ({ IDL }) => {
+  const GetBlocksResult = IDL.Rec();
+  const Value = IDL.Rec();
   const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const ResultNat = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const Account = IDL.Record({
@@ -27,6 +29,22 @@ export const idlFactory = ({ IDL }) => {
     'max_users' : IDL.Nat,
     'paused' : IDL.Bool,
     'neuron_cache_s' : IDL.Nat,
+  });
+  const SettingsUpdate = IDL.Record({
+    'archive_top_up_threshold' : IDL.Opt(IDL.Nat),
+    'archive_max_blocks' : IDL.Opt(IDL.Nat),
+    'max_live_blocks' : IDL.Opt(IDL.Nat),
+    'archive_initial_cycles' : IDL.Opt(IDL.Nat),
+    'spill_batch_size' : IDL.Opt(IDL.Nat),
+    'archive_top_up_amount' : IDL.Opt(IDL.Nat),
+  });
+  const Settings = IDL.Record({
+    'archive_top_up_threshold' : IDL.Nat,
+    'archive_max_blocks' : IDL.Nat,
+    'max_live_blocks' : IDL.Nat,
+    'archive_initial_cycles' : IDL.Nat,
+    'spill_batch_size' : IDL.Nat,
+    'archive_top_up_amount' : IDL.Nat,
   });
   const Tier = IDL.Record({
     'daily_multiplier' : IDL.Nat,
@@ -75,10 +93,12 @@ export const idlFactory = ({ IDL }) => {
     'fees_withdrawn_e8s' : IDL.Nat,
     'icp_ledger' : IDL.Principal,
     'accounts' : IDL.Nat,
+    'auto_top_ups' : IDL.Nat,
     'fees_forwarded_e8s' : IDL.Nat,
     'paused_users' : IDL.Nat,
     'deposits_e8s' : IDL.Nat,
     'obligations_e8s' : IDL.Nat,
+    'auto_top_ups_e8s' : IDL.Nat,
   });
   const AllConfig = IDL.Record({
     'tuning' : Tuning,
@@ -86,7 +106,34 @@ export const idlFactory = ({ IDL }) => {
     'core' : Config,
     'billing' : BillingConfig,
   });
+  const LogEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'ts' : IDL.Int,
+    'cid' : IDL.Nat,
+    'level' : IDL.Variant({ 'info' : IDL.Null, 'error' : IDL.Null }),
+    'message' : IDL.Text,
+    'caller' : IDL.Principal,
+  });
+  const AutoTopUpSettings = IDL.Record({
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'amount_e8s' : IDL.Nat,
+    'when_below_e8s' : IDL.Nat,
+  });
+  const TopUpFailure = IDL.Record({ 'at' : IDL.Int, 'reason' : IDL.Text });
+  const MyAutoTopUp = IDL.Record({
+    'min_amount_e8s' : IDL.Nat,
+    'last_pull_at' : IDL.Int,
+    'retry_at' : IDL.Int,
+    'pulled_e8s' : IDL.Nat,
+    'max_amount_e8s' : IDL.Nat,
+    'per_pull_allowance_e8s' : IDL.Nat,
+    'settings' : IDL.Opt(AutoTopUpSettings),
+    'pulls' : IDL.Nat,
+    'last_failure' : IDL.Opt(TopUpFailure),
+    'spender' : Account,
+  });
   const MyBalance = IDL.Record({
+    'auto_top_up' : MyAutoTopUp,
     'watches' : IDL.Nat,
     'deposited_e8s' : IDL.Nat,
     'deposit_account' : Account,
@@ -108,6 +155,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const ChargeEntryTiered = IDL.Record({
     'at' : IDL.Int,
+    'kind' : IDL.Text,
     'every_min' : IDL.Nat,
     'target' : Target,
     'price_e8s' : IDL.Nat,
@@ -241,6 +289,59 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'level' : Level,
   });
+  const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
+  const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
+  const ArchiveRange = IDL.Record({
+    'end' : IDL.Nat,
+    'canister_id' : IDL.Principal,
+    'start' : IDL.Nat,
+  });
+  const GetArchivesResult = IDL.Vec(ArchiveRange);
+  const BlockRange = IDL.Record({ 'start' : IDL.Nat, 'length' : IDL.Nat });
+  const GetBlocksArgs = IDL.Vec(BlockRange);
+  Value.fill(
+    IDL.Variant({
+      'Int' : IDL.Int,
+      'Map' : IDL.Vec(IDL.Tuple(IDL.Text, Value)),
+      'Nat' : IDL.Nat,
+      'Blob' : IDL.Vec(IDL.Nat8),
+      'Text' : IDL.Text,
+      'Array' : IDL.Vec(Value),
+    })
+  );
+  const Block = IDL.Record({ 'id' : IDL.Nat, 'block' : Value });
+  const ArchivedBlocks = IDL.Record({
+    'args' : GetBlocksArgs,
+    'callback' : IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
+  });
+  GetBlocksResult.fill(
+    IDL.Record({
+      'log_length' : IDL.Nat,
+      'blocks' : IDL.Vec(Block),
+      'archived_blocks' : IDL.Vec(ArchivedBlocks),
+    })
+  );
+  const DataCertificate = IDL.Record({
+    'certificate' : IDL.Vec(IDL.Nat8),
+    'hash_tree' : IDL.Vec(IDL.Nat8),
+  });
+  const ArchiveInfo = IDL.Record({
+    'canister_id' : IDL.Principal,
+    'start' : IDL.Nat,
+    'length' : IDL.Nat,
+    'max_blocks' : IDL.Nat,
+  });
+  const LogStatus = IDL.Record({
+    'live_blocks' : IDL.Nat,
+    'live_first_index' : IDL.Nat,
+    'history_imported' : IDL.Bool,
+    'spilling' : IDL.Bool,
+    'settings' : Settings,
+    'log_length' : IDL.Nat,
+    'last_block_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'archives' : IDL.Vec(ArchiveInfo),
+  });
+  const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
   const SpResult = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const WatchSettingsInput = IDL.Record({
     'reminder_window_s' : IDL.Opt(IDL.Nat),
@@ -249,8 +350,25 @@ export const idlFactory = ({ IDL }) => {
     'reminders' : IDL.Opt(IDL.Bool),
     'new_proposals' : IDL.Opt(IDL.Bool),
   });
-  const SneedMon = IDL.Service({
+  return IDL.Service({
     'admin_add_admin' : IDL.Func([IDL.Principal], [Result], []),
+    'admin_icrc3_repair_archive_controllers' : IDL.Func(
+        [],
+        [
+          IDL.Vec(
+            IDL.Tuple(
+              IDL.Principal,
+              IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text }),
+            )
+          ),
+        ],
+        [],
+      ),
+    'admin_icrc3_spill_now' : IDL.Func(
+        [],
+        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_pause' : IDL.Func([], [Result], []),
     'admin_register_with_notifications' : IDL.Func([], [ResultNat], []),
     'admin_remove_admin' : IDL.Func([IDL.Principal], [Result], []),
@@ -261,6 +379,11 @@ export const idlFactory = ({ IDL }) => {
     'admin_set_config' : IDL.Func([Config], [Result], []),
     'admin_set_fee_destination' : IDL.Func([IDL.Opt(Account)], [Result], []),
     'admin_set_fee_sweep_threshold' : IDL.Func([IDL.Nat], [Result], []),
+    'admin_set_icrc3_settings' : IDL.Func(
+        [SettingsUpdate],
+        [IDL.Variant({ 'Ok' : Settings, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_set_interval' : IDL.Func([IDL.Nat], [Result], []),
     'admin_set_notifications_canister' : IDL.Func(
         [IDL.Opt(IDL.Principal)],
@@ -278,6 +401,7 @@ export const idlFactory = ({ IDL }) => {
     'get_billing_config' : IDL.Func([], [BillingConfig], ['query']),
     'get_config' : IDL.Func([], [AllConfig], ['query']),
     'get_deposit_account' : IDL.Func([], [Account], ['query']),
+    'get_log' : IDL.Func([IDL.Nat, IDL.Nat], [IDL.Vec(LogEntry)], ['query']),
     'get_my_balance' : IDL.Func([], [MyBalance], ['query']),
     'get_my_charges' : IDL.Func(
         [IDL.Nat, IDL.Nat],
@@ -296,6 +420,11 @@ export const idlFactory = ({ IDL }) => {
       ),
     'get_my_nns_neurons' : IDL.Func([], [IDL.Vec(IDL.Nat64)], ['query']),
     'get_my_watches' : IDL.Func([], [IDL.Vec(MyWatch)], ['query']),
+    'get_recent_errors' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Int, IDL.Text))],
+        ['query'],
+      ),
     'get_special_prices' : IDL.Func([], [SpecialPrices], ['query']),
     'get_special_prices_for' : IDL.Func(
         [IDL.Principal],
@@ -322,6 +451,32 @@ export const idlFactory = ({ IDL }) => {
     'get_topics' : IDL.Func([], [IDL.Vec(NTopic)], ['query']),
     'get_tuning' : IDL.Func([], [Tuning], ['query']),
     'get_watch' : IDL.Func([Target], [IDL.Opt(MyWatch)], ['query']),
+    'icrc10_supported_standards' : IDL.Func(
+        [],
+        [IDL.Vec(SupportedStandard)],
+        ['query'],
+      ),
+    'icrc3_get_archives' : IDL.Func(
+        [GetArchivesArgs],
+        [GetArchivesResult],
+        ['query'],
+      ),
+    'icrc3_get_blocks' : IDL.Func(
+        [GetBlocksArgs],
+        [GetBlocksResult],
+        ['query'],
+      ),
+    'icrc3_get_tip_certificate' : IDL.Func(
+        [],
+        [IDL.Opt(DataCertificate)],
+        ['query'],
+      ),
+    'icrc3_log_status' : IDL.Func([], [LogStatus], ['query']),
+    'icrc3_supported_block_types' : IDL.Func(
+        [],
+        [IDL.Vec(BlockType)],
+        ['query'],
+      ),
     'list_target_topics' : IDL.Func(
         [Target],
         [IDL.Variant({ 'ok' : IDL.Vec(TopicOption), 'err' : IDL.Text })],
@@ -330,6 +485,7 @@ export const idlFactory = ({ IDL }) => {
     'refresh_my_neurons' : IDL.Func([Target], [ResultNat], []),
     'remove_partner_prices' : IDL.Func([IDL.Principal], [SpResult], []),
     'set_admin_prices' : IDL.Func([MonPrices], [SpResult], []),
+    'set_auto_top_up' : IDL.Func([IDL.Opt(AutoTopUpSettings)], [Result], []),
     'set_nns_neurons' : IDL.Func([IDL.Vec(IDL.Nat64)], [Result], []),
     'set_partner_prices' : IDL.Func(
         [IDL.Principal, MonPartner],
@@ -341,6 +497,5 @@ export const idlFactory = ({ IDL }) => {
     'watch' : IDL.Func([Target], [Result], []),
     'withdraw_balance' : IDL.Func([IDL.Nat, Account], [ResultNat], []),
   });
-  return SneedMon;
 };
 export const init = ({ IDL }) => { return []; };

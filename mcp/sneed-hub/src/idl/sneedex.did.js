@@ -1,15 +1,6 @@
 export const idlFactory = ({ IDL }) => {
   const GetBlocksResult = IDL.Rec();
   const Value = IDL.Rec();
-  const Config = IDL.Record({
-    'min_increment_usd_range_max' : IDL.Nat,
-    'min_increment_usd_range_min' : IDL.Nat,
-    'min_increment_fallback_tokens' : IDL.Nat,
-    'admins' : IDL.Vec(IDL.Principal),
-    'min_increment_usd_target' : IDL.Nat,
-    'max_assets_per_offer' : IDL.Nat,
-    'min_offer_duration_ns' : IDL.Nat,
-  });
   const OfferId = IDL.Nat;
   const SneedexError = IDL.Variant({
     'CannotCancelWithBids' : IDL.Null,
@@ -95,7 +86,7 @@ export const idlFactory = ({ IDL }) => {
   const AddAssetRequest = IDL.Record({ 'asset' : Asset, 'offer_id' : OfferId });
   const AssetTypeId = IDL.Nat;
   const Result_6 = IDL.Variant({ 'ok' : AssetTypeId, 'err' : SneedexError });
-  const Result_5 = IDL.Variant({ 'ok' : IDL.Text, 'err' : SneedexError });
+  const Result_2 = IDL.Variant({ 'ok' : IDL.Text, 'err' : SneedexError });
   const Account = IDL.Record({
     'owner' : IDL.Principal,
     'subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
@@ -128,7 +119,7 @@ export const idlFactory = ({ IDL }) => {
     'public_note' : IDL.Opt(IDL.Text),
     'min_bid_increment_fee_multiple' : IDL.Opt(IDL.Nat),
   });
-  const Result_4 = IDL.Variant({ 'ok' : OfferId, 'err' : SneedexError });
+  const Result_5 = IDL.Variant({ 'ok' : OfferId, 'err' : SneedexError });
   const OfferState = IDL.Variant({
     'PendingEscrow' : IDL.Null,
     'Claimed' : IDL.Null,
@@ -221,12 +212,21 @@ export const idlFactory = ({ IDL }) => {
     'memory_allocation' : IDL.Nat,
     'compute_allocation' : IDL.Nat,
   });
-  const Result_3 = IDL.Variant({ 'ok' : CanisterInfo, 'err' : SneedexError });
+  const Result_4 = IDL.Variant({ 'ok' : CanisterInfo, 'err' : SneedexError });
   const CanisterKind = IDL.Record({
     'id' : CanisterKindId,
     'active' : IDL.Bool,
     'name' : IDL.Text,
     'description' : IDL.Text,
+  });
+  const Config = IDL.Record({
+    'min_increment_usd_range_max' : IDL.Nat,
+    'min_increment_usd_range_min' : IDL.Nat,
+    'min_increment_fallback_tokens' : IDL.Nat,
+    'admins' : IDL.Vec(IDL.Principal),
+    'min_increment_usd_target' : IDL.Nat,
+    'max_assets_per_offer' : IDL.Nat,
+    'min_offer_duration_ns' : IDL.Nat,
   });
   const Timestamp = IDL.Nat64;
   const CreationFeePaymentLogEntry = IDL.Record({
@@ -288,6 +288,16 @@ export const idlFactory = ({ IDL }) => {
     'offer' : Offer,
     'bids' : IDL.Vec(Bid),
     'highest_bid' : IDL.Opt(Bid),
+  });
+  const SupportLogEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'op' : IDL.Text,
+    'principal' : IDL.Opt(IDL.Principal),
+    'kind' : IDL.Text,
+    'text' : IDL.Text,
+    'time' : IDL.Int,
+    'offer_id' : IDL.Opt(IDL.Nat),
+    'bid_id' : IDL.Opt(IDL.Nat),
   });
   const PriceTier = IDL.Variant({
     'admin' : IDL.Null,
@@ -379,27 +389,32 @@ export const idlFactory = ({ IDL }) => {
     'governance' : IDL.Principal,
   });
   const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
-  const Result_2 = IDL.Variant({ 'ok' : BidId, 'err' : SneedexError });
+  const Result_3 = IDL.Variant({ 'ok' : BidId, 'err' : SneedexError });
   const TradingBotVersion = IDL.Record({
     'major' : IDL.Nat,
     'minor' : IDL.Nat,
     'patch' : IDL.Nat,
   });
-  const Sneedex = IDL.Service({
+  return IDL.Service({
     'acceptBid' : IDL.Func([OfferId], [Result_1], []),
     'activateOffer' : IDL.Func([OfferId], [Result_1], []),
     'addAdmin' : IDL.Func([IDL.Principal], [Result_1], []),
     'addAsset' : IDL.Func([AddAssetRequest], [Result_1], []),
     'addAssetType' : IDL.Func([IDL.Text, IDL.Text], [Result_6], []),
-    'adminReclaimStuckTokens' : IDL.Func([OfferId], [Result_5], []),
+    'adminReclaimStuckTokens' : IDL.Func([OfferId], [Result_2], []),
+    'adminReclaimStuckTokensWithReason' : IDL.Func(
+        [OfferId, IDL.Text],
+        [Result_2],
+        [],
+      ),
     'adminReturnMisplacedExtNft' : IDL.Func(
         [IDL.Principal, IDL.Nat32, IDL.Opt(OfferId), IDL.Principal],
-        [Result_5],
+        [Result_2],
         [],
       ),
     'adminReturnMisplacedNft' : IDL.Func(
         [IDL.Principal, IDL.Nat, Account],
-        [Result_5],
+        [Result_2],
         [],
       ),
     'admin_icrc3_register_archives_now' : IDL.Func(
@@ -445,7 +460,7 @@ export const idlFactory = ({ IDL }) => {
     'clearNeuronInfoCache' : IDL.Func([], [Result_1], []),
     'clearNeuronInfoCacheFor' : IDL.Func([IDL.Principal], [Result_1], []),
     'confirmBid' : IDL.Func([BidId, IDL.Nat], [Result_1], []),
-    'createOffer' : IDL.Func([CreateOfferRequest], [Result_4], []),
+    'createOffer' : IDL.Func([CreateOfferRequest], [Result_5], []),
     'deactivateAssetType' : IDL.Func([AssetTypeId], [Result_1], []),
     'debugGetAllOffers' : IDL.Func(
         [],
@@ -479,12 +494,13 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getBidsByBidder' : IDL.Func([IDL.Principal], [IDL.Vec(Bid)], ['query']),
+    'getBidsByBidderAll' : IDL.Func([IDL.Principal], [IDL.Vec(Bid)], ['query']),
     'getCachedNeuronManagerInfoQuery' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(NeuronManagerInfo)],
         ['query'],
       ),
-    'getCanisterInfo' : IDL.Func([OfferId, IDL.Nat], [Result_3], []),
+    'getCanisterInfo' : IDL.Func([OfferId, IDL.Nat], [Result_4], []),
     'getCanisterKinds' : IDL.Func([], [IDL.Vec(CanisterKind)], ['query']),
     'getConfig' : IDL.Func([], [Config], ['query']),
     'getCreationFeePaymentLog' : IDL.Func(
@@ -499,6 +515,11 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getCreationFeePaymentLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getCreationFeePaymentsFor' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [IDL.Vec(CreationFeePaymentLogEntry)],
+        ['query'],
+      ),
     'getCutPaymentLog' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [
@@ -511,6 +532,11 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getCutPaymentLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getCutPaymentsFor' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [IDL.Vec(CutPaymentLogEntry)],
+        ['query'],
+      ),
     'getEffectiveOfferCreationFee' : IDL.Func([IDL.Principal], [IDL.Nat64], []),
     'getExpirationCheckInterval' : IDL.Func([], [IDL.Nat], ['query']),
     'getFeeConfig' : IDL.Func(
@@ -610,6 +636,20 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getPublicOffers' : IDL.Func([], [IDL.Vec(Offer)], ['query']),
+    'getSettlement' : IDL.Func(
+        [OfferId],
+        [
+          IDL.Opt(
+            IDL.Record({
+              'delivered_asset_indices' : IDL.Vec(IDL.Nat),
+              'state' : OfferState,
+              'winning_bid' : IDL.Opt(Bid),
+              'settlement_in_progress' : IDL.Bool,
+            })
+          ),
+        ],
+        ['query'],
+      ),
     'getSneedLockCanisterId' : IDL.Func([], [IDL.Principal], ['query']),
     'getSneedPremiumCanisterId' : IDL.Func(
         [],
@@ -617,6 +657,16 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getSneedSmsCanisterId' : IDL.Func([], [IDL.Opt(IDL.Principal)], ['query']),
+    'getSupportLog' : IDL.Func(
+        [IDL.Opt(IDL.Nat), IDL.Nat],
+        [IDL.Vec(SupportLogEntry)],
+        ['query'],
+      ),
+    'getSupportLogFor' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(SupportLogEntry)],
+        ['query'],
+      ),
     'getUserOfferCreationBalance' : IDL.Func([IDL.Principal], [IDL.Nat], []),
     'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
     'get_offer_price_tiers' : IDL.Func(
@@ -686,7 +736,8 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
-    'reserveBid' : IDL.Func([OfferId], [Result_2], []),
+    'reserveBid' : IDL.Func([OfferId], [Result_3], []),
+    'retryRefund' : IDL.Func([BidId], [Result], []),
     'setBackendCanisterId' : IDL.Func([IDL.Opt(IDL.Principal)], [Result_1], []),
     'setExpirationCheckInterval' : IDL.Func([IDL.Nat], [Result_1], []),
     'setFeeRecipient' : IDL.Func([Account], [Result_1], []),
@@ -736,6 +787,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
+    'settleOffer' : IDL.Func([OfferId], [Result_2], []),
     'startExpirationTimer' : IDL.Func([], [Result_1], []),
     'stopExpirationTimer' : IDL.Func([], [Result_1], []),
     'triggerExpirationCheck' : IDL.Func([], [Result_1], []),
@@ -753,17 +805,5 @@ export const idlFactory = ({ IDL }) => {
     'withdrawBidEscrow' : IDL.Func([BidId, IDL.Nat], [Result], []),
     'withdrawOfferCreationPayment' : IDL.Func([], [Result], []),
   });
-  return Sneedex;
 };
-export const init = ({ IDL }) => {
-  const Config = IDL.Record({
-    'min_increment_usd_range_max' : IDL.Nat,
-    'min_increment_usd_range_min' : IDL.Nat,
-    'min_increment_fallback_tokens' : IDL.Nat,
-    'admins' : IDL.Vec(IDL.Principal),
-    'min_increment_usd_target' : IDL.Nat,
-    'max_assets_per_offer' : IDL.Nat,
-    'min_offer_duration_ns' : IDL.Nat,
-  });
-  return [IDL.Opt(Config)];
-};
+export const init = ({ IDL }) => { return []; };

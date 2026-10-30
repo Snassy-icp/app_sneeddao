@@ -317,6 +317,36 @@ export const idlFactory = ({ IDL }) => {
     'logoUrl' : IDL.Opt(IDL.Text),
     'families' : IDL.Vec(IDL.Text),
   });
+  const OrphanInfo = IDL.Record({
+    'handOverPending' : IDL.Bool,
+    'appId' : IDL.Text,
+    'minter' : IDL.Principal,
+    'recordedAt' : IDL.Int,
+    'canisterId' : IDL.Principal,
+    'reason' : IDL.Text,
+  });
+  const PendingTopUp = IDL.Record({
+    'id' : IDL.Nat,
+    'icpE8s' : IDL.Nat64,
+    'recordedAt' : IDL.Int,
+    'block' : IDL.Opt(IDL.Nat),
+    'payer' : IDL.Principal,
+    'canisterId' : IDL.Principal,
+    'reason' : IDL.Text,
+  });
+  const RefundLeg = IDL.Record({
+    'fromSubaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'amountE8s' : IDL.Nat64,
+  });
+  const RefundCredit = IDL.Record({
+    'id' : IDL.Nat,
+    'appId' : IDL.Text,
+    'legs' : IDL.Vec(RefundLeg),
+    'recordedAt' : IDL.Int,
+    'payer' : IDL.Principal,
+    'canisterId' : IDL.Opt(IDL.Principal),
+    'reason' : IDL.Text,
+  });
   const SpecialMintPrices = IDL.Record({ 'mint_fee_e8s' : IDL.Opt(IDL.Nat) });
   const PartnerListing = IDL.Record({
     'principal' : IDL.Principal,
@@ -435,7 +465,7 @@ export const idlFactory = ({ IDL }) => {
     'links' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'logoUrl' : IDL.Opt(IDL.Text),
   });
-  const IcpNeuronManagerFactory = IDL.Service({
+  return IDL.Service({
     'addAdmin' : IDL.Func([IDL.Principal], [], []),
     'addApp' : IDL.Func(
         [IDL.Nat, AddAppInput],
@@ -460,9 +490,38 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
+    'adminCloseRefundCredit' : IDL.Func(
+        [IDL.Nat, IDL.Text],
+        [IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text })],
+        [],
+      ),
     'adminRegisterCanister' : IDL.Func(
         [IDL.Principal, IDL.Principal, IDL.Text],
         [],
+        [],
+      ),
+    'adminReturnStuckIcp' : IDL.Func(
+        [IDL.Principal, IDL.Nat64, IDL.Text],
+        [
+          IDL.Variant({
+            'Ok' : IDL.Record({
+              'blockIndex' : IDL.Nat,
+              'creditsClosed' : IDL.Vec(IDL.Nat),
+              'remainingE8s' : IDL.Nat64,
+              'returnedE8s' : IDL.Nat64,
+            }),
+            'Err' : IDL.Text,
+          }),
+        ],
+        [],
+      ),
+    'adminSettleOrphan' : IDL.Func(
+        [
+          IDL.Principal,
+          IDL.Variant({ 'HandOver' : IDL.Null, 'Delete' : IDL.Null }),
+          IDL.Text,
+        ],
+        [IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text })],
         [],
       ),
     'adminTopUpCycles' : IDL.Func([IDL.Nat64], [NotifyTopUpResult], []),
@@ -505,6 +564,19 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'calculateIcpForCycles' : IDL.Func([IDL.Nat], [IDL.Nat64], []),
+    'claim_refund_credit' : IDL.Func(
+        [IDL.Nat],
+        [
+          IDL.Variant({
+            'Ok' : IDL.Record({
+              'remainingE8s' : IDL.Nat64,
+              'returnedE8s' : IDL.Nat64,
+            }),
+            'Err' : IDL.Text,
+          }),
+        ],
+        [],
+      ),
     'clearAppVersionWasm' : IDL.Func(
         [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat],
         [],
@@ -709,6 +781,17 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getVerifiedPublishers' : IDL.Func([], [IDL.Vec(PublisherInfo)], ['query']),
     'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
+    'get_orphans_for' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(OrphanInfo)],
+        ['query'],
+      ),
+    'get_pending_top_ups' : IDL.Func([], [IDL.Vec(PendingTopUp)], ['query']),
+    'get_refund_credits_for' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(RefundCredit)],
+        ['query'],
+      ),
     'get_special_prices' : IDL.Func(
         [],
         [
@@ -760,6 +843,23 @@ export const idlFactory = ({ IDL }) => {
     'icrc3_supported_block_types' : IDL.Func(
         [],
         [IDL.Vec(BlockType)],
+        ['query'],
+      ),
+    'lookupLedgerTx' : IDL.Func(
+        [IDL.Nat],
+        [
+          IDL.Record({
+            'indexedFrom' : IDL.Nat,
+            'hits' : IDL.Vec(
+              IDL.Record({
+                'field' : IDL.Text,
+                'block_id' : IDL.Nat,
+                'block' : IDL.Opt(Value),
+                'btype' : IDL.Text,
+              })
+            ),
+          }),
+        ],
         ['query'],
       ),
     'lookupMintedCanister' : IDL.Func(
@@ -818,6 +918,16 @@ export const idlFactory = ({ IDL }) => {
     'remove_partner_prices' : IDL.Func(
         [IDL.Principal],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
+    'retry_handover' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text })],
+        [],
+      ),
+    'retry_top_up' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
         [],
       ),
     'setAppDaoCut' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [], []),
@@ -913,7 +1023,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'withdrawUserPayment' : IDL.Func([], [TransferResult], []),
+    'withdrawUserToken' : IDL.Func([IDL.Principal], [TransferResult], []),
   });
-  return IcpNeuronManagerFactory;
 };
 export const init = ({ IDL }) => { return []; };

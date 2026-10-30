@@ -29,7 +29,7 @@ export const idlFactory = ({ IDL }) => {
     'target' : NeuronKey,
     'avatar' : IDL.Opt(AvatarRef),
   });
-  const SneedNeuronNicknames = IDL.Service({
+  return IDL.Service({
     'admin_add_admin' : IDL.Func([IDL.Principal], [Result], []),
     'admin_finish_import' : IDL.Func([], [Result], []),
     'admin_import_nicknames' : IDL.Func(
@@ -92,6 +92,5 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
   });
-  return SneedNeuronNicknames;
 };
 export const init = ({ IDL }) => { return []; };

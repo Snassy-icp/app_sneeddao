@@ -113,11 +113,17 @@ balances, the caps, and how to:
   (`"caps": {"<ledger id>": "<whole tokens>"}`) or with `SNEED_MCP_CAPS`.
 - **No plain transfers.** Sending tokens to an arbitrary account stays disabled unless
   `SNEED_MCP_ALLOW_TRANSFERS=1`. Purpose-bound transfers that are part of a Sneed flow still work: a tip
-  to a post's author, a bid escrow, a lock deposit, a fee deposit.
+  to a post's author, a bid escrow, a lock deposit, a fee deposit. With the switch on, `wallet_send` is
+  registered (still previewed, capped and audited) and `mon_withdraw` may pay out to someone else.
+- **Allowances count as spending.** `mon_auto_top_up` approves sneed_mon to pull ICP later; the whole allowance
+  counts toward the daily cap, like a transfer.
+- **Verified upgrades.** `sneedapp_upgrade_bot` installs a wasm only when its SHA-256 matches the version's
+  published hash, and goes through every published version in between (never skips one).
 - **Delegation scope.** In act-as-me mode the IC refuses calls outside the canisters you approved. The
-  preview says so up front.
+  preview says so up front. Bot upgrades call the management canister (`aaaaa-aa`).
 - **Audit log.** Every executed write is appended to `~/.config/sneed-hub-mcp/audit.jsonl` (mode 600) with
-  its signer, arguments, calls, spends and the reply.
+  its signer, arguments, calls, spends and the reply. A refused confirmation (unknown, reused or expired token,
+  changed arguments or chain state, cap) is logged too, as `refused` with the reason (never the token).
 - **Mirrors Sneed Hub.** Each write makes the same calls in the same order as the Sneed Hub page for that
   action. For multi-step flows (offers, locks, bids) a failure says exactly what happened and how to
   recover.
@@ -166,6 +172,26 @@ Writes (only with `SNEED_MCP_WRITES=1`; each is preview, then confirm):
 | `mon_watch`, `mon_unwatch` | optional top-up + `credit_deposit`, `watch` / `unwatch`, Notifications `allow_app` |
 | `notifications_allow_app`, `notifications_set_channels` | `allow_app`, `set_settings` (your other settings unchanged) |
 | `rll_claim` | `claim_full_balance_of_hotkey` per token above its fee |
+| `sneedex_offer_action` | one call on an offer: `cancelOffer` / `acceptBid` / `claimWinningBid` / `reclaimAssets` (seller), `claimAssets` (winner), `processExpiration` / `settleOffer` (anyone) |
+| `sneedex_bid_action` | `refundBid` (lost bid) or `withdrawBidEscrow` (what a bid's escrow holds above the standing bid) |
+| `sneedex_withdraw_fee_deposit` | `withdrawOfferCreationPayment` |
+| `sneed_lock_withdraw` | `transfer_tokens` of free (unlocked) tokens from your Sneed Lock wallet to your main account |
+| `sneed_lock_change` | `start_dissolving`, `stop_dissolving`, `increase_dissolve_delay`, `extend_lock` (owner; the lock page's rules) |
+| `sneed_lock_withdraw_fee_deposit` | `withdraw_payment_balance` (the ICP lock-fee deposit) |
+| `mon_withdraw` | `withdraw_balance` (to yourself; another recipient needs `SNEED_MCP_ALLOW_TRANSFERS=1`) |
+| `mon_update_watch`, `mon_set_nns_neurons` | `update_watch` (tier, topics, reminders), `set_nns_neurons` |
+| `mon_auto_top_up` | `icrc2_approve` for sneed_mon + `set_auto_top_up`; off: `set_auto_top_up(null)` + allowance back to 0. The whole allowance counts toward the daily cap |
+| `forum_vote`, `forum_delete` | `vote_on_post_with_neurons` / `vote_on_thread_with_neurons` (or the retract calls) with your neurons in the forum's SNS; `delete_post` / `delete_thread` (own only) |
+| `nickname_set`, `neuron_name_set`, `avatar_set` | `sneed_pid_nicknames` / `sneed_neuron_nicknames.set_nickname`; `sneed_neuron_names.set_name` (needs a permission on the neuron); `sneed_pid_names.set_my_avatar` (https link) / `set_my_nft_avatar` / `set_my_ext_nft_avatar` (an NFT your main account holds) |
+| `premium_buy`, `premium_claim_vp`, `premium_withdraw_deposit` | ICP for the tier's price (your price; only what the deposit lacks) into your Premium deposit + `purchaseWithIcp`; `claimWithVotingPower`; `withdrawDeposit` |
+| `notifications_set_quiet_hours`, `notifications_app_settings` | `set_settings` (quiet hours, rest unchanged); `set_permission` (demote, copy only, daily caps, per-topic rules) |
+| `sneedapp_mint` | ICP for what your payment deposit lacks of the mint price + `mintCanister(app, version)` |
+| `sneedapp_upgrade_bot` | management canister `install_code` (upgrade) through every published version between the running one and the target; each wasm must hash to its published hash |
+| `wallet_send` | `icrc1_transfer` to any account. Registered only with `SNEED_MCP_ALLOW_TRANSFERS=1` |
+
+Not offered (yet): creating ICPSwap position (LP) locks (`create_position_lock` needs the pool's position transfer flow),
+uploading avatar images (give an https link or an NFT), adding notification channels (they are encrypted to the
+relay key in the browser), and Sneed Profiles (a dapp registry, not a user profile).
 
 Resources: `sneed-hub://docs/llms.txt`, `sneed-hub://api-docs/{slug}`, `sneed-hub://skills/{name}` (fetched
 live from Sneed Hub). Prompt: `help_me_on_sneed_hub`.
@@ -175,7 +201,7 @@ live from Sneed Hub). Prompt: `help_me_on_sneed_hub`.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SNEED_MCP_WRITES` | off | `1` registers the write tools |
-| `SNEED_MCP_ALLOW_TRANSFERS` | off | `1` allows plain transfers to arbitrary accounts |
+| `SNEED_MCP_ALLOW_TRANSFERS` | off | `1` allows plain transfers to arbitrary accounts (registers `wallet_send`) |
 | `SNEED_MCP_CAPS` | `{"ICP ledger":"1","SNEED ledger":"1000"}` | JSON daily caps in whole tokens, by ledger id (or symbol) |
 | `SNEED_MCP_DFX_IDENTITY` | | Own identity: a plaintext dfx identity by name |
 | `SNEED_MCP_IDENTITY_PEM` | | Own identity: a PEM file |
@@ -192,7 +218,8 @@ live from Sneed Hub). Prompt: `help_me_on_sneed_hub`.
 
 ```bash
 npm test             # unit tests: safety layer, identities and PEMs, delegations and the connect listener, helpers,
-                     # sns_vote / sns_make_motion_proposal against a Candid-faithful fake governance, write-tool fixes
+                     # sns_vote / sns_make_motion_proposal against a Candid-faithful fake governance, write-tool fixes,
+                     # every phase-2 write tool against Candid-faithful fakes (test/candid-fake.mjs)
 npm run smoke        # starts the server and calls every read tool on mainnet (writes forced off, throwaway key)
 ```
 
@@ -202,8 +229,10 @@ name, forum thread/post/edit, SMS, a Sneed Lock token lock with its fee, a Sneed
 NFTs created in act-as-me mode through the `/connect-agent` page's own code, the replica refusing a
 canister outside the delegation, a bid, and the audit log.
 
-The IDL factories in `src/idl/` are copies of the canisters' generated `service.did.js`
-(`test/canisters/build/*.did.js`, built from the current sources) plus `src/external` for ICRC-1 and
-ICRC-7, so the package is self-contained. Refresh them when an interface changes. Methods that are not
+The IDL factories in `src/idl/` are the deployed interfaces, so the package is self-contained: Sneedex, Sneed
+Lock, the forum, names, nicknames, avatars, profiles, Premium, Notifications and Sneedapp from the production
+canisters' `candid:service` metadata (`dfx canister --network ic metadata <id> candid:service | didc bind -t js`),
+Sneed Monitor from staging (no production canister yet), the others from the generated `service.did.js`, plus
+`src/external` for ICRC-1 and ICRC-7. Refresh them when an interface changes. Methods that are not
 deployed to production yet fall back where possible: Premium prices fall back to the tiers, and
 special prices say they are not available yet.

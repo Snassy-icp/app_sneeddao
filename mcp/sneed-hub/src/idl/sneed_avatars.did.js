@@ -27,7 +27,7 @@ export const idlFactory = ({ IDL }) => {
     'headers' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'status_code' : IDL.Nat16,
   });
-  const SneedAvatars = IDL.Service({
+  return IDL.Service({
     'admin_add_admin' : IDL.Func([IDL.Principal], [Result], []),
     'admin_remove' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result], []),
     'admin_remove_admin' : IDL.Func([IDL.Principal], [Result], []),
@@ -71,6 +71,5 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
   });
-  return SneedAvatars;
 };
 export const init = ({ IDL }) => { return []; };

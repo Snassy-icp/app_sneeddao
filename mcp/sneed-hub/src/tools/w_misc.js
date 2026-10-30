@@ -118,9 +118,9 @@ const lockRun = async (args, ctx, plan) => {
 
 // ---------------- Sneed Monitor ----------------
 
-const target = (t) => (t === 'nns' ? { nns: null } : { sns: toPrincipal(t, 'SNS root canister id') });
-const targetText = (t) => (t === 'nns' ? 'the NNS' : `SNS ${t}`);
-const monTarget = z.string().describe(`"nns" or an SNS root canister id (Sneed DAO: ${CANISTERS.sneed_sns_root})`);
+export const target = (t) => (t === 'nns' ? { nns: null } : { sns: toPrincipal(t, 'SNS root canister id') });
+export const targetText = (t) => (t === 'nns' ? 'the NNS' : `SNS ${t}`);
+export const monTarget = z.string().describe(`"nns" or an SNS root canister id (Sneed DAO: ${CANISTERS.sneed_sns_root})`);
 
 // ---------------- RLL ----------------
 

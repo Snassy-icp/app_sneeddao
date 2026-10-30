@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { idlFactory as govIdl } from '../idl/sns_governance.did.js';
 import { CANISTERS, opt, toPrincipal, ptext } from '../ic.js';
 import { defineWrite } from '../writes.js';
-import { toHex, fromHex, link } from '../chain.js';
+import { toHex, fromHex, link, rootOfGovernance } from '../chain.js';
 import { formatUnits, shortErr } from '../format.js';
 
 export const PERM = { SUBMIT_PROPOSAL: 3, VOTE: 4 };
@@ -33,6 +33,14 @@ export const votableNeurons = (proposal, neurons) => {
     const b = ballots.get(neuronIdHex(n));
     return b && BigInt(b.cast_timestamp_seconds) === 0n;
   });
+};
+
+/// Sneed Hub link of a proposal in the SNS of `governance` (its root from SNS-W; without one the
+/// link leaves the SNS out rather than naming Sneed DAO's).
+export const proposalLink = async (ctx, governance, id) => {
+  let root = null;
+  try { root = await rootOfGovernance(ctx, governance); } catch { /* link without the SNS */ }
+  return link(`/proposal?proposalid=${id}${root ? `&sns=${root}` : ''}`);
 };
 
 const govArg = z.string().optional().describe(`SNS governance canister id (default Sneed DAO ${CANISTERS.sneed_sns_governance})`);
@@ -82,7 +90,7 @@ export const govWrites = [
           else { okCount += 1; steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: voted`); }
         } catch (e) { steps.push(`neuron ${c.args.subaccount.slice(0, 12)}…: ${shortErr(e)}`); }
       }
-      return { ok: okCount > 0, summary: `${okCount} of ${plan.calls.length} neuron(s) voted`, error: okCount ? undefined : 'no vote was registered', steps, links: [link(`/proposal?proposalid=${proposal_id}&sns=${CANISTERS.sneed_sns_root}`)] };
+      return { ok: okCount > 0, summary: `${okCount} of ${plan.calls.length} neuron(s) voted`, error: okCount ? undefined : 'no vote was registered', steps, links: [await proposalLink(ctx, plan.calls[0]?.canister ?? CANISTERS.sneed_sns_governance, proposal_id)] };
     },
   },
   {
@@ -137,7 +145,7 @@ export const govWrites = [
       const res = opt(r.command);
       if (!res || 'Error' in res) return { ok: false, error: res ? res.Error.error_message : 'no answer' };
       const id = opt(res.MakeProposal.proposal_id)?.id;
-      return { ok: true, summary: `proposal ${id} submitted`, links: [link(`/proposal?proposalid=${id}&sns=${c.canister === CANISTERS.sneed_sns_governance ? CANISTERS.sneed_sns_root : ''}`)] };
+      return { ok: true, summary: `proposal ${id} submitted`, links: [await proposalLink(ctx, c.canister, id)] };
     },
   },
 ];

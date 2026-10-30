@@ -31,7 +31,7 @@ export const idlFactory = ({ IDL }) => {
     'title' : IDL.Text,
     'description' : IDL.Text,
   });
-  const Result_2 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : ForumError });
+  const Result_3 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : ForumError });
   const CreatePollOptionInput = IDL.Record({
     'title' : IDL.Text,
     'body' : IDL.Opt(IDL.Text),
@@ -248,6 +248,16 @@ export const idlFactory = ({ IDL }) => {
     'set_at' : IDL.Int,
     'set_by' : IDL.Principal,
   });
+  const ReactionTarget = IDL.Variant({ 'post' : IDL.Nat, 'thread' : IDL.Nat });
+  const ReactionCount = IDL.Record({ 'count' : IDL.Nat, 'emoji' : IDL.Text });
+  const TargetReactions = IDL.Record({
+    'target' : ReactionTarget,
+    'counts' : IDL.Vec(ReactionCount),
+  });
+  const UserReactions = IDL.Record({
+    'emojis' : IDL.Vec(IDL.Text),
+    'target' : ReactionTarget,
+  });
   const TipResponse = IDL.Record({
     'id' : IDL.Nat,
     'verified' : IDL.Opt(IDL.Bool),
@@ -310,6 +320,36 @@ export const idlFactory = ({ IDL }) => {
     'topic_id' : IDL.Nat,
     'thread_id' : IDL.Nat,
   });
+  const ThreadScoreResponse = IDL.Record({
+    'downvote_score' : IDL.Nat,
+    'upvote_score' : IDL.Nat,
+    'thread_id' : IDL.Nat,
+  });
+  const ThreadTipResponse = IDL.Record({
+    'id' : IDL.Nat,
+    'verified' : IDL.Opt(IDL.Bool),
+    'to_principal' : IDL.Principal,
+    'created_at' : IDL.Int,
+    'from_principal' : IDL.Principal,
+    'token_ledger_principal' : IDL.Principal,
+    'transaction_block_index' : IDL.Opt(IDL.Nat),
+    'verification_note' : IDL.Opt(IDL.Text),
+    'thread_id' : IDL.Nat,
+    'amount' : IDL.Nat,
+  });
+  const TipTokenSummary = IDL.Record({
+    'total_amount' : IDL.Nat,
+    'token_ledger_principal' : IDL.Principal,
+    'tip_count' : IDL.Nat,
+  });
+  const ThreadTipTotals = IDL.Record({
+    'tokens' : IDL.Vec(TipTokenSummary),
+    'thread_id' : IDL.Nat,
+  });
+  const ThreadTipsPage = IDL.Record({
+    'next' : IDL.Opt(IDL.Nat),
+    'items' : IDL.Vec(ThreadTipResponse),
+  });
   const GetThreadsByActivityResponse = IDL.Record({
     'threads' : IDL.Vec(ThreadResponse),
     'next_start_from' : IDL.Opt(IDL.Nat),
@@ -323,11 +363,6 @@ export const idlFactory = ({ IDL }) => {
     'total_tips' : IDL.Nat,
     'total_tip_amount_by_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
   });
-  const TipTokenSummary = IDL.Record({
-    'total_amount' : IDL.Nat,
-    'token_ledger_principal' : IDL.Principal,
-    'tip_count' : IDL.Nat,
-  });
   const TipsPage = IDL.Record({
     'next' : IDL.Opt(IDL.Nat),
     'items' : IDL.Vec(TipResponse),
@@ -336,6 +371,19 @@ export const idlFactory = ({ IDL }) => {
     'thread_count' : IDL.Nat,
     'topic_id' : IDL.Nat,
     'total_unread_posts' : IDL.Nat,
+  });
+  const ThreadVoteRecordResponse = IDL.Record({
+    'updated_at' : IDL.Int,
+    'vote_type' : VoteType,
+    'created_at' : IDL.Int,
+    'voter_principal' : IDL.Principal,
+    'thread_id' : IDL.Nat,
+    'voting_power' : IDL.Nat,
+    'neuron_id' : NeuronId,
+  });
+  const ThreadNeuronVotesResponse = IDL.Record({
+    'neuron_votes' : IDL.Vec(NeuronVote),
+    'thread_id' : IDL.Nat,
   });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
   const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
@@ -390,6 +438,10 @@ export const idlFactory = ({ IDL }) => {
     'archives' : IDL.Vec(ArchiveInfo),
   });
   const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
+  const Result_2 = IDL.Variant({
+    'ok' : IDL.Vec(IDL.Text),
+    'err' : ForumError,
+  });
   const SetLastReadPostRequest = IDL.Record({
     'last_read_post_id' : IDL.Nat,
     'thread_id' : IDL.Nat,
@@ -458,36 +510,41 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'check_user_premium_status' : IDL.Func([IDL.Principal], [IDL.Bool], []),
-    'create_forum' : IDL.Func([CreateForumInput], [Result_2], []),
-    'create_poll' : IDL.Func([CreatePollInput], [Result_2], []),
+    'create_forum' : IDL.Func([CreateForumInput], [Result_3], []),
+    'create_poll' : IDL.Func([CreatePollInput], [Result_3], []),
     'create_post' : IDL.Func(
         [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Text), IDL.Text],
-        [Result_2],
+        [Result_3],
         [],
       ),
     'create_proposal_thread' : IDL.Func(
         [CreateProposalThreadInput],
-        [Result_2],
+        [Result_3],
         [],
       ),
     'create_proposal_thread_with_auto_setup' : IDL.Func(
         [CreateProposalThreadInput],
-        [Result_2],
+        [Result_3],
         [],
       ),
-    'create_sns_forum_setup' : IDL.Func([IDL.Principal], [Result_2], []),
+    'create_sns_forum_setup' : IDL.Func([IDL.Principal], [Result_3], []),
     'create_special_topic' : IDL.Func(
         [CreateSpecialTopicInput],
-        [Result_2],
+        [Result_3],
         [],
       ),
-    'create_thread' : IDL.Func([CreateThreadInput], [Result_2], []),
+    'create_thread' : IDL.Func([CreateThreadInput], [Result_3], []),
+    'create_thread_tip' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Principal, IDL.Nat, IDL.Opt(IDL.Nat)],
+        [Result_3],
+        [],
+      ),
     'create_tip' : IDL.Func(
         [IDL.Principal, IDL.Nat, IDL.Principal, IDL.Nat, IDL.Opt(IDL.Nat)],
-        [Result_2],
+        [Result_3],
         [],
       ),
-    'create_topic' : IDL.Func([CreateTopicInput], [Result_2], []),
+    'create_topic' : IDL.Func([CreateTopicInput], [Result_3], []),
     'delete_forum' : IDL.Func([IDL.Nat], [Result], []),
     'delete_post' : IDL.Func([IDL.Nat], [Result], []),
     'delete_thread' : IDL.Func([IDL.Nat], [Result], []),
@@ -622,6 +679,16 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Text, RateRule))],
         ['query'],
       ),
+    'get_reactions' : IDL.Func(
+        [IDL.Vec(ReactionTarget)],
+        [IDL.Vec(TargetReactions)],
+        ['query'],
+      ),
+    'get_reactions_of_user' : IDL.Func(
+        [IDL.Principal, IDL.Vec(ReactionTarget)],
+        [IDL.Vec(UserReactions)],
+        ['query'],
+      ),
     'get_recent_mentions_count' : IDL.Func(
         [IDL.Principal],
         [IDL.Nat],
@@ -667,6 +734,31 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(IDL.Tuple(IDL.Nat32, IDL.Nat))],
         ['query'],
       ),
+    'get_thread_scores' : IDL.Func(
+        [IDL.Vec(IDL.Nat)],
+        [IDL.Vec(ThreadScoreResponse)],
+        ['query'],
+      ),
+    'get_thread_tip' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(ThreadTipResponse)],
+        ['query'],
+      ),
+    'get_thread_tip_totals' : IDL.Func(
+        [IDL.Vec(IDL.Nat)],
+        [IDL.Vec(ThreadTipTotals)],
+        ['query'],
+      ),
+    'get_thread_tips_given_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [ThreadTipsPage],
+        ['query'],
+      ),
+    'get_thread_tips_received_by_user_page' : IDL.Func(
+        [IDL.Principal, IDL.Opt(IDL.Nat), IDL.Nat],
+        [ThreadTipsPage],
+        ['query'],
+      ),
     'get_thread_votes_for_neurons' : IDL.Func(
         [IDL.Nat, IDL.Vec(NeuronId)],
         [IDL.Vec(ThreadVoteResponse)],
@@ -678,6 +770,11 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_threads_by_activity_with_unread_counts' : IDL.Func(
+        [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Nat, IDL.Bool],
+        [GetThreadsByActivityResponse],
+        ['query'],
+      ),
+    'get_threads_by_hot' : IDL.Func(
         [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Nat, IDL.Bool],
         [GetThreadsByActivityResponse],
         ['query'],
@@ -730,6 +827,11 @@ export const idlFactory = ({ IDL }) => {
         [TipsPage],
         ['query'],
       ),
+    'get_tips_on_thread_page' : IDL.Func(
+        [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Nat],
+        [ThreadTipsPage],
+        ['query'],
+      ),
     'get_tips_received_by_user' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(TipResponse)],
@@ -767,6 +869,16 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Nat))],
         ['query'],
       ),
+    'get_votes_on_thread' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(ThreadVoteRecordResponse)],
+        ['query'],
+      ),
+    'get_votes_on_thread_for_neurons' : IDL.Func(
+        [IDL.Nat, IDL.Vec(NeuronId)],
+        [ThreadNeuronVotesResponse],
+        ['query'],
+      ),
     'health_check' : IDL.Func([], [IDL.Bool], ['query']),
     'icrc10_supported_standards' : IDL.Func(
         [],
@@ -798,8 +910,15 @@ export const idlFactory = ({ IDL }) => {
     'mark_mentions_seen_up_to' : IDL.Func([IDL.Int], [], []),
     'mark_replies_seen_up_to' : IDL.Func([IDL.Int], [], []),
     'mark_tips_seen_up_to' : IDL.Func([IDL.Int], [], []),
+    'react' : IDL.Func([ReactionTarget, IDL.Text, IDL.Bool], [Result_2], []),
     'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
     'remove_proposals_topic' : IDL.Func([IDL.Nat], [Result], []),
+    'retract_thread_vote' : IDL.Func([IDL.Nat], [Result], []),
+    'retract_thread_vote_with_neurons' : IDL.Func(
+        [IDL.Nat, IDL.Vec(NeuronId)],
+        [Result],
+        [],
+      ),
     'retract_vote' : IDL.Func([IDL.Nat], [Result], []),
     'retract_vote_with_neurons' : IDL.Func(
         [IDL.Nat, IDL.Vec(NeuronId)],
@@ -813,6 +932,11 @@ export const idlFactory = ({ IDL }) => {
       ),
     'set_mention_sms' : IDL.Func([IDL.Bool], [Result], []),
     'set_proposals_topic' : IDL.Func([SetProposalTopicInput], [Result], []),
+    'set_reactions' : IDL.Func(
+        [ReactionTarget, IDL.Vec(IDL.Text)],
+        [Result_2],
+        [],
+      ),
     'undelete_forum' : IDL.Func([IDL.Nat], [Result], []),
     'undelete_post' : IDL.Func([IDL.Nat], [Result], []),
     'undelete_thread' : IDL.Func([IDL.Nat], [Result], []),
@@ -835,6 +959,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'update_topic' : IDL.Func([IDL.Nat, CreateTopicInput], [Result], []),
+    'verify_thread_tip' : IDL.Func([IDL.Nat], [Result_1], []),
     'verify_tip' : IDL.Func([IDL.Nat], [Result_1], []),
     'vote_on_poll_with_neurons' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Vec(NeuronId)],
@@ -843,6 +968,12 @@ export const idlFactory = ({ IDL }) => {
       ),
     'vote_on_post' : IDL.Func([IDL.Nat, VoteType], [Result], []),
     'vote_on_post_with_neurons' : IDL.Func(
+        [IDL.Nat, VoteType, IDL.Vec(NeuronId)],
+        [Result],
+        [],
+      ),
+    'vote_on_thread' : IDL.Func([IDL.Nat, VoteType], [Result], []),
+    'vote_on_thread_with_neurons' : IDL.Func(
         [IDL.Nat, VoteType, IDL.Vec(NeuronId)],
         [Result],
         [],

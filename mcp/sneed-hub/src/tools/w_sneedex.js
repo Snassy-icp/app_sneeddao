@@ -70,7 +70,7 @@ const bidBuild = (kind) => async ({ offer_id, amount }, ctx) => {
     spends: [await spend(ledger, base + fee, `${kind} ${fmt(base, t)} into the bid escrow + ledger fee`, `Sneedex bid escrow`)],
     notes: [kind === 'buyout' ? 'A buyout completes the offer at once; the assets are delivered automatically.' : 'If you are outbid, the escrowed amount comes back automatically minus a ledger fee.'],
     problems,
-    _amount: base, _fee: fee, _ledger: ledger,
+    _amount: base, _fee: fee, _ledger: ledger, _kind: kind,
   };
 };
 
@@ -91,7 +91,16 @@ const bidRun = async ({ offer_id }, ctx, plan) => {
     return { ok: false, spent: true, steps, error: shortErr(e), recovery: `The tokens are in bid ${bidId}'s escrow. Retry confirmBid on Sneed Hub (${link(`/sneedex_offer/${offer_id}`)}), or withdraw them there (withdrawBidEscrow).` };
   }
   steps.push(`bid ${bidId} confirmed`);
-  return { ok: true, spent: true, summary: `bid ${bidId} placed on offer ${offer_id}`, steps, links: [link(`/sneedex_offer/${offer_id}`)] };
+  // a buyout completes the offer at once (confirmBid with the buyout amount); a bid just stands
+  let summary = `bid ${bidId} placed on offer ${offer_id}`;
+  if (plan._kind === 'buyout') {
+    let state = null;
+    try { state = Object.keys(opt(await sx.queryOffer(BigInt(offer_id)))?.state ?? {})[0] ?? null; } catch { /* report without it */ }
+    summary = state && state !== 'Completed' && state !== 'Claimed'
+      ? `buyout bid ${bidId} confirmed on offer ${offer_id}, but the offer is ${state}, not completed: check ${link(`/sneedex_offer/${offer_id}`)}`
+      : `offer ${offer_id} bought out (bid ${bidId}): the offer is completed and Sneedex is delivering the assets to you (sneedex_offer_action claim_assets retries if any is missing)`;
+  }
+  return { ok: true, spent: true, summary, steps, links: [link(`/sneedex_offer/${offer_id}`)] };
 };
 
 // ---------------- create offer ----------------
@@ -136,6 +145,8 @@ const createBuild = async (a, ctx) => {
   const regular = BigInt(feeCfg.regularCreationFeeE8s);
   const base = regular === 0n ? 0n : isPremium ? BigInt(feeCfg.premiumCreationFeeE8s) : regular;
   const eff = effectivePrice({ regular: base, special: regular === 0n ? null : special, field: 'offer_creation_fee_e8s' });
+  // the base is already the premium fee for a member: name it so (not "regular")
+  if (eff.tier === 'regular' && isPremium && regular !== 0n) eff.tier = 'premium';
   const creationFee = eff.price;
   const icp = await ctx.anon(icrc1Idl, CANISTERS.icp_ledger);
   const payBal = await icp.icrc1_balance_of({ owner: toPrincipal(CANISTERS.sneedex), subaccount: [paySub] });
@@ -333,6 +344,182 @@ export const createRun = async (a, ctx, plan) => {
   }
 };
 
+// ---------------- after the sale: offer and bid actions ----------------
+// Mirrors pages/SneedexOffer.jsx and pages/SneedexMy.jsx (handleCancelOffer, handleAcceptBid,
+// handleClaimAssets, handleClaimPayment, handleProcessExpiration, handleRefundBid,
+// handleWithdrawExcess) and pages/SneedexCreate.jsx handleWithdrawPayment: one Sneedex call each.
+// reclaimAssets and settleOffer have no Sneed Hub button (Sneedex settles by itself on a timer);
+// they are here to retry a hand-over that did not happen.
+
+const ICP_T = { decimals: 8, symbol: 'ICP' };
+const stateOf = (o) => Object.keys(o.state)[0];
+
+/// What each offer action calls, who may call it, and in which offer states (sneedex main.mo).
+export const OFFER_ACTIONS = {
+  cancel: { method: 'cancelOffer', who: 'seller', states: ['Active', 'Draft', 'PendingEscrow'], what: 'Cancel offer' },
+  accept_bid: { method: 'acceptBid', who: 'seller', states: ['Active'], what: 'Accept the highest bid on offer' },
+  claim_assets: { method: 'claimAssets', who: 'winner', states: ['Completed'], what: 'Claim the assets of offer' },
+  claim_payment: { method: 'claimWinningBid', who: 'seller', states: ['Completed', 'Claimed'], what: 'Claim the payment for offer' },
+  reclaim_assets: { method: 'reclaimAssets', who: 'seller', states: ['Expired', 'Cancelled'], what: 'Take back the assets of offer' },
+  process_expiration: { method: 'processExpiration', who: 'anyone', states: ['Active'], what: 'Process the expiry of offer' },
+  settle: { method: 'settleOffer', who: 'anyone', states: ['Completed', 'Claimed', 'Expired', 'Cancelled'], what: 'Finish the settlement of offer' },
+};
+
+const offerActionBuild = async ({ offer_id, action }, ctx) => {
+  const spec = OFFER_ACTIONS[action];
+  if (!spec) throw new Error(`Unknown action ${action}.`);
+  const sx = await ctx.anon(sneedexIdl, CANISTERS.sneedex);
+  const view = opt(await sx.getOfferView(BigInt(offer_id)));
+  if (!view) throw new Error(`No offer ${offer_id}.`);
+  const o = view.offer;
+  const st = stateOf(o);
+  const ledger = o.price_token_ledger.toText();
+  const t = await tokenInfo(ledger);
+  const fee = await ledgerFee(ledger);
+  const settlement = opt(await sx.getSettlement(BigInt(offer_id)));
+  const winner = settlement ? opt(settlement.winning_bid) : null;
+  const hb = opt(view.highest_bid);
+  const seller = o.creator.toText();
+  const problems = [];
+  const notes = [];
+  if (spec.who === 'seller' && seller !== ctx.principal) problems.push(`Only the seller (${seller}) can do this; you are ${ctx.principal}.`);
+  if (spec.who === 'winner' && (!winner || winner.bidder.toText() !== ctx.principal)) problems.push(`Only the winning bidder${winner ? ` (${winner.bidder.toText()})` : ''} can claim the assets.`);
+  if (!spec.states.includes(st)) problems.push(`The offer is ${st}; ${action} needs it ${spec.states.join(' or ')}.`);
+  if (settlement?.settlement_in_progress) problems.push('A settlement of this offer is running right now; try again in a minute.');
+  const exp = opt(o.expiration);
+  const delivered = settlement ? settlement.delivered_asset_indices.length : 0;
+  const allDelivered = delivered >= o.assets.length;
+  const sellerPaid = winner ? !('Won' in winner.state) : false;
+  const cut = (amount) => (BigInt(amount) * BigInt(o.fee_rate_bps)) / 10_000n;
+  const pct = `${Number(o.fee_rate_bps) / 100}%`;
+  const standing = view.bids.filter((b) => b.tokens_escrowed && 'Pending' in b.state).length;
+  switch (action) {
+    case 'cancel':
+      notes.push(standing ? `${standing} standing bid(s) are refunded automatically (each less one ledger fee).` : 'No standing bids.');
+      notes.push('The escrowed assets come back to you automatically (reclaim_assets retries if one does not arrive).');
+      break;
+    case 'accept_bid':
+      if (!hb) problems.push('There is no bid to accept.');
+      else notes.push(`Highest bid ${fmt(hb.amount, t)} by ${hb.bidder.toText()}. The offer completes: the assets go to the bidder, and you get about ${fmt(BigInt(hb.amount) - cut(hb.amount) - fee, t)} (the bid less the ${pct} Sneedex cut and ledger fees), paid automatically or with claim_payment.`);
+      break;
+    case 'claim_assets':
+      if (allDelivered) problems.push('All assets have been handed over already.');
+      else notes.push(`${o.assets.length - delivered} of ${o.assets.length} asset(s) still to hand over, to your main account (NFTs, tokens) or to you (canisters, neurons, locks).`);
+      break;
+    case 'claim_payment':
+      if (!winner) problems.push('No winning bid found.');
+      else if (sellerPaid) problems.push('You have been paid already.');
+      else notes.push(`You get about ${fmt(BigInt(winner.amount) - cut(winner.amount) - fee, t)} (the bid of ${fmt(winner.amount, t)} less the ${pct} Sneedex cut and ledger fees) at your main account.`);
+      break;
+    case 'reclaim_assets':
+      if (settlement && allDelivered) problems.push('All assets have been handed back already.');
+      notes.push('The escrowed assets go back to your main account (NFTs, tokens) or to you (canisters, neurons, locks). No Sneed Hub button: Sneedex does this by itself after a cancel or expiry; this retries it.');
+      break;
+    case 'process_expiration':
+      if (exp == null) problems.push('This offer has no expiry.');
+      else if (BigInt(exp) > BigInt(Date.now()) * 1_000_000n) problems.push(`The offer has not expired yet (it expires ${new Date(Number(BigInt(exp) / 1_000_000n)).toISOString()}).`);
+      notes.push(hb ? `The highest bid (${fmt(hb.amount, t)} by ${hb.bidder.toText()}) wins and the offer completes.` : 'No bids: the offer expires and the assets go back to the seller.');
+      notes.push('Anyone may call this; it only checks the clock.');
+      break;
+    case 'settle':
+      if (st === 'Claimed' && sellerPaid) problems.push('Nothing to settle: the assets are claimed and the seller is paid.');
+      else if ((st === 'Expired' || st === 'Cancelled') && settlement && allDelivered) problems.push('Nothing to settle: the assets are back with the seller.');
+      else if (st === 'Completed' && allDelivered && sellerPaid) problems.push('Nothing to settle: the assets are handed over and the seller is paid.');
+      notes.push('Anyone may call this: assets and payments go only to the winner and the seller the offer records, never to the caller. No Sneed Hub button (Sneedex settles on a timer); it retries what has not happened yet.');
+      break;
+    default:
+  }
+  return {
+    summary: `${spec.what} ${offer_id} (now ${st})`,
+    calls: [{ canister: CANISTERS.sneedex, method: spec.method, args: [offer_id] }],
+    notes,
+    problems,
+  };
+};
+
+const offerActionRun = async ({ offer_id, action }, ctx) => {
+  const spec = OFFER_ACTIONS[action];
+  const sx = await ctx.signed(sneedexIdl, CANISTERS.sneedex);
+  const out = sxOk(await sx[spec.method](BigInt(offer_id)), spec.method);
+  let state = null;
+  try { state = stateOf(opt(await sx.queryOffer(BigInt(offer_id)))); } catch { /* report without it */ }
+  const reply = typeof out === 'string' && out ? `: ${out}` : '';
+  return { ok: true, summary: `${spec.method}(${offer_id}) done${reply}${state ? `; the offer is now ${state}` : ''}`, links: [link(`/sneedex_offer/${offer_id}`)] };
+};
+
+/// What can leave a bid's escrow now (sneedex withdrawBidEscrow): nothing from a Won bid; a standing
+/// escrowed bid keeps bid.amount (its refund or payout, fees included); the withdrawal pays one fee.
+export const bidEscrowState = ({ bid, balance, fee }) => {
+  const st = Object.keys(bid.state)[0];
+  if (st === 'Won') return { st, reserved: BigInt(balance), max: 0n, why: 'a won bid stays in escrow until the seller is paid' };
+  const paidOut = st === 'Refunded' || st === 'ClaimedBySeller';
+  const reserved = bid.tokens_escrowed && !paidOut ? BigInt(bid.amount) : 0n;
+  const max = BigInt(balance) > reserved + BigInt(fee) ? BigInt(balance) - reserved - BigInt(fee) : 0n;
+  return { st, reserved, max, why: reserved > 0n ? 'the bid amount stays in escrow while the bid stands' : null };
+};
+
+const bidActionBuild = async ({ bid_id, action, amount }, ctx) => {
+  const sx = await ctx.anon(sneedexIdl, CANISTERS.sneedex);
+  const bid = opt(await sx.queryBid(BigInt(bid_id)));
+  if (!bid) throw new Error(`No bid ${bid_id}.`);
+  const offer = opt(await sx.queryOffer(bid.offer_id));
+  if (!offer) throw new Error(`No offer ${bid.offer_id} for bid ${bid_id}.`);
+  const ledger = offer.price_token_ledger.toText();
+  const t = await tokenInfo(ledger);
+  const fee = await ledgerFee(ledger);
+  const problems = [];
+  if (bid.bidder.toText() !== ctx.principal) problems.push(`Bid ${bid_id} is ${bid.bidder.toText()}'s, not yours (${ctx.principal}).`);
+  const st = Object.keys(bid.state)[0];
+  if (action === 'refund') {
+    if (st !== 'Lost') problems.push(st === 'Refunded' ? 'This bid has been refunded already.' : `Only a lost bid can be refunded; this one is ${st}.`);
+    else if (!bid.tokens_escrowed) problems.push('No tokens were escrowed for this bid.');
+    const back = BigInt(bid.amount) > fee ? BigInt(bid.amount) - fee : 0n;
+    return {
+      summary: `Refund lost bid ${bid_id} on offer ${bid.offer_id}`,
+      calls: [{ canister: CANISTERS.sneedex, method: 'refundBid', args: [bid_id] }],
+      notes: [`You get ${fmt(back, t)} (the bid less one ledger fee) at your main account. Lost bids are normally refunded automatically.`],
+      problems,
+    };
+  }
+  const sub = await sx.getBidEscrowSubaccount(bid.bidder, bid.id);
+  const balance = await (await ctx.anon(icrc1Idl, ledger)).icrc1_balance_of({ owner: toPrincipal(CANISTERS.sneedex), subaccount: [sub] });
+  const e = bidEscrowState({ bid, balance, fee });
+  const want = amount ? (await toBaseUnits(ledger, amount)).amount : e.max;
+  if (e.max <= 0n) problems.push(`Nothing can be withdrawn: the escrow holds ${fmt(balance, t)}${e.reserved > 0n ? `, ${fmt(e.reserved, t)} of it reserved (${e.why})` : ''}, and the ledger fee is ${fmt(fee, t)}.`);
+  else if (want <= 0n) problems.push('Amount must be positive.');
+  else if (want > e.max) problems.push(`At most ${fmt(e.max, t)} can be withdrawn now.`);
+  return {
+    summary: `Withdraw ${fmt(want, t)} from the escrow of bid ${bid_id} (offer ${bid.offer_id}, bid ${st})`,
+    calls: [{ canister: CANISTERS.sneedex, method: 'withdrawBidEscrow', args: [bid_id, want] }],
+    notes: [`Escrow ${fmt(balance, t)}; reserved ${fmt(e.reserved, t)}${e.why ? ` (${e.why})` : ''}; the ledger fee of ${fmt(fee, t)} comes out of the escrow, and ${fmt(want, t)} arrives at your main account.`],
+    problems,
+    _want: want,
+  };
+};
+
+const bidActionRun = async ({ bid_id, action }, ctx, plan) => {
+  const sx = await ctx.signed(sneedexIdl, CANISTERS.sneedex);
+  if (action === 'refund') {
+    sxOk(await sx.refundBid(BigInt(bid_id)), 'refundBid');
+    return { ok: true, summary: `bid ${bid_id} refunded`, links: [link('/sneedex_my')] };
+  }
+  const block = sxOk(await sx.withdrawBidEscrow(BigInt(bid_id), plan._want), 'withdrawBidEscrow');
+  return { ok: true, summary: `withdrew ${plan._want} base units from bid ${bid_id}'s escrow (ledger block ${block})`, links: [link('/sneedex_my')] };
+};
+
+const feeDepositBuild = async (args, ctx) => {
+  const sx = await ctx.anon(sneedexIdl, CANISTERS.sneedex);
+  const sub = await sx.getOfferCreationPaymentSubaccount(toPrincipal(ctx.principal));
+  const bal = await (await ctx.anon(icrc1Idl, CANISTERS.icp_ledger)).icrc1_balance_of({ owner: toPrincipal(CANISTERS.sneedex), subaccount: [sub] });
+  const fee = await ledgerFee(CANISTERS.icp_ledger);
+  return {
+    summary: `Withdraw your Sneedex offer-creation fee deposit (${fmt(bal, ICP_T)})`,
+    calls: [{ canister: CANISTERS.sneedex, method: 'withdrawOfferCreationPayment', args: [] }],
+    notes: bal > fee ? [`You get ${fmt(bal - fee, ICP_T)} (the whole deposit less one ledger fee) at your main account.`] : [],
+    problems: bal > fee ? [] : [`Nothing to withdraw: the deposit is ${fmt(bal, ICP_T)}, not above the ${fmt(fee, ICP_T)} ledger fee.`],
+  };
+};
+
 export const sneedexWrites = [
   {
     name: 'sneedex_bid',
@@ -368,6 +555,42 @@ export const sneedexWrites = [
     },
     build: createBuild,
     run: createRun,
+  },
+  {
+    name: 'sneedex_offer_action',
+    title: 'Sneedex: cancel, accept, claim, reclaim, expire or settle an offer',
+    description: 'One Sneedex call on an offer, as the Sneedex offer page and "My Sneedex" make it. action: cancel (seller; cancelOffer: standing bids are refunded, the assets come back), accept_bid (seller; acceptBid: the highest bid wins), claim_assets (winning bidder; claimAssets), claim_payment (seller; claimWinningBid), reclaim_assets (seller, expired or cancelled offer; reclaimAssets), process_expiration (anyone, after the expiry; processExpiration), settle (anyone; settleOffer finishes whatever hand-over is left, only ever to the recorded winner and seller). No tokens leave your account.',
+    inputSchema: {
+      offer_id: z.number().int().min(0).describe('Offer id'),
+      action: z.enum(Object.keys(OFFER_ACTIONS)).describe('What to do'),
+    },
+    destructive: true,
+    build: offerActionBuild,
+    run: offerActionRun,
+  },
+  {
+    name: 'sneedex_bid_action',
+    title: 'Sneedex: refund a lost bid or withdraw from a bid escrow',
+    description: 'For one of your Sneedex bids (ids in sneedex_get_offer): action refund (refundBid: a lost bid\'s escrow back to you less one ledger fee; normally automatic) or withdraw (withdrawBidEscrow: what is in the bid\'s escrow above what a standing bid reserves, e.g. an over-payment; amount defaults to all that can leave). The tokens arrive at your main account.',
+    inputSchema: {
+      bid_id: z.number().int().min(0).describe('Bid id'),
+      action: z.enum(['refund', 'withdraw']).describe('refund or withdraw'),
+      amount: z.string().optional().describe('withdraw: whole tokens (default: the most that can leave)'),
+    },
+    build: bidActionBuild,
+    run: bidActionRun,
+  },
+  {
+    name: 'sneedex_withdraw_fee_deposit',
+    title: 'Sneedex: withdraw the offer-creation fee deposit',
+    description: 'Take back the ICP in your Sneedex offer-creation fee deposit (withdrawOfferCreationPayment: the whole deposit less one ledger fee, to your main account), as the create page\'s withdraw button does.',
+    inputSchema: {},
+    build: feeDepositBuild,
+    async run(args, ctx) {
+      const sx = await ctx.signed(sneedexIdl, CANISTERS.sneedex);
+      const amount = sxOk(await sx.withdrawOfferCreationPayment(), 'withdrawOfferCreationPayment');
+      return { ok: true, summary: `withdrew ${fmt(amount, ICP_T)} from your Sneedex fee deposit`, links: [link('/sneedex_create')] };
+    },
   },
 ];
 

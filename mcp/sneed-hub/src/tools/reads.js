@@ -23,6 +23,14 @@ import { namesOf } from './names.js';
 const RO = { readOnlyHint: true, openWorldHint: true };
 const clip = (s, n = 300) => (s == null ? '' : s.length > n ? `${s.slice(0, n)}…` : s);
 const j = (v) => JSON.stringify(plain(v));
+
+/// One watch of mon_read. next_check_at is 0 until the watch's first check (myWatch in sneed_mon),
+/// and checks stop while the balance is paused.
+export const monWatchLine = (w, { paused = false } = {}) => {
+  const next = BigInt(w.next_check_at) > 0n ? nsToIso(w.next_check_at) : null;
+  const when = paused ? 'checks paused (balance used up: top up to resume)' : next ? `next check ${next}` : 'first check pending (in the next round)';
+  return `  watching ${w.name} (${j(w.target)}), every ${w.settings.every_min} min, ${when}, ${fmt(w.price_per_check_e8s, ICP_T)}/check`;
+};
 const ICP_T = { decimals: 8, symbol: 'ICP' };
 const me = () => activeIdentity();
 const signed = (idl, id) => { const w = me(); return signedActor(idl, id, w.identity); };
@@ -160,7 +168,7 @@ export function registerReadTools(server) {
       const m = await signed(monIdl, id);
       const [bal, watches] = await Promise.all([m.get_my_balance(), m.get_my_watches()]);
       lines.push(`My balance: ${fmt(bal.balance_e8s, ICP_T)} (${fmt(bal.per_day_e8s, ICP_T)}/day${bal.paused ? ', PAUSED' : ''}); deposit to ${bal.deposit_account.owner.toText()} subaccount ${toHex(opt(bal.deposit_account.subaccount) ?? [])}`);
-      lines.push(...watches.map((w) => `  watching ${w.name} (${j(w.target)}), next check ${nsToIso(w.next_check_at)}, ${fmt(w.price_per_check_e8s, ICP_T)}/check`));
+      lines.push(...watches.map((w) => monWatchLine(w, { paused: bal.paused })));
     } catch (e) { lines.push(`(my watches: ${shortErr(e)})`); }
     lines.push(link('/notifications'));
     return textResult(lines);
