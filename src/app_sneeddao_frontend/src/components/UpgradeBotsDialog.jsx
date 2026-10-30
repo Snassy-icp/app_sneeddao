@@ -9,6 +9,7 @@ import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { fetchLedgerSuiteWasm } from '../utils/ledgerSuite';
+import { verifyDownloadedWasm } from '../utils/wasmIntegrity';
 import { upgradeSteps } from '../utils/upgradePath';
 
 // Management canister IDL with install_code
@@ -256,10 +257,8 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers: o
                             if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
                             const arrayBuffer = await response.arrayBuffer();
                             wasm = new Uint8Array(arrayBuffer);
-                            if (wasm.length === 0) throw new Error('Downloaded WASM file is empty');
-                            const isWasmMagic = wasm[0] === 0x00 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6D;
-                            const isGzip = wasm[0] === 0x1F && wasm[1] === 0x8B;
-                            if (!isWasmMagic && !isGzip) throw new Error('Downloaded file is not a valid WASM module');
+                            // only the exact published module is installed: its sha256 must be the version's wasmHash
+                            verifyDownloadedWasm(wasm, stepVer.wasmHash, versionLabel(stepVer));
                             wasmByUrl[wasmUrl] = wasm;
                         }
 

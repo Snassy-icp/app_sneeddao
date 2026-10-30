@@ -34,6 +34,7 @@ import { Link } from 'react-router-dom';
 import { useDenomination } from '../contexts/DenominationContext';
 import priceService from '../services/PriceService';
 import { icrc1Transfer } from '../utils/icrcTx';
+import { planPremiumPayment } from '../utils/premiumPayPlan';
 
 // Custom CSS for animations
 const customStyles = `
@@ -502,6 +503,43 @@ export default function Premium() {
         });
     };
     
+    // The deposit already holds more than the tier's price, so no tier would match it: offer to
+    // send it back (withdrawDeposit: all of it, less one ledger fee, to your wallet) first.
+    const offerDepositWithdrawal = (depositBalance, tier) => {
+        setPremiumConfirmModal({
+            show: true,
+            type: 'icp',
+            title: 'Withdraw your Premium deposit first',
+            icon: <FaCoins style={{ fontSize: '2.5rem', color: '#FFD700' }} />,
+            details: [
+                { label: 'Your deposit holds', value: formatIcp(depositBalance) },
+                { label: `${tier.name} costs`, value: formatIcp(tier.amountE8s) },
+            ],
+            highlight: 'An earlier payment is still in your Premium deposit, and it is more than this tier costs, so no tier would match it. Withdraw it to your wallet (less one ledger fee), then press "Pay Now" again.',
+            confirmText: 'Withdraw deposit',
+            onConfirm: doWithdrawDeposit,
+        });
+    };
+    
+    const doWithdrawDeposit = async () => {
+        closePremiumConfirmModal();
+        setPayingNow(true);
+        try {
+            const actor = await getActor();
+            const r = await actor.withdrawDeposit();
+            if ('ok' in r) {
+                showInfo('Deposit withdrawn', `${formatIcp(r.ok.amountE8s)} went back to your wallet.`, 'success');
+                await fetchData();
+                await fetchWalletBalance();
+            } else {
+                showInfo('Withdrawal Failed', JSON.stringify(r.err, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)), 'error');
+            }
+        } catch (err) {
+            showInfo('Error', 'Failed to withdraw the deposit: ' + err.message, 'error');
+        }
+        setPayingNow(false);
+    };
+    
     const doPayNow = async () => {
         closePremiumConfirmModal();
         setPayingNow(true);
@@ -510,17 +548,27 @@ export default function Premium() {
             const tier = icpTiers[selectedIcpTier];
             const icpLedger = createIcrc1Actor(ICP_LEDGER_ID, { agentOptions: { identity, host: 'https://icp-api.io' } });
             
-            // Step 1: Transfer ICP from wallet to deposit account
-            const transferArgs = {
-                to: depositAccount,
-                fee: [],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-                amount: BigInt(tier.amountE8s),
-            };
+            // The purchase matches the WHOLE deposit to a tier's price, so the deposit must end up
+            // holding exactly the price: send only what is missing (an earlier payment may be there)
+            const depositBalance = await icpLedger.icrc1_balance_of(depositAccount);
+            const plan = planPremiumPayment(depositBalance, tier.amountE8s);
+            if (plan.tooMuch) {
+                setPayingNow(false);
+                offerDepositWithdrawal(depositBalance, tier);
+                return;
+            }
             
-            const transferResult = await icrc1Transfer(icpLedger, transferArgs);
+            // Step 1: Transfer ICP from wallet to deposit account (skipped when it already holds the price)
+            const transferResult = plan.send > 0n
+                ? await icrc1Transfer(icpLedger, {
+                    to: depositAccount,
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: plan.send,
+                })
+                : { Ok: null };
             
             if ('Err' in transferResult) {
                 const err = transferResult.Err;
