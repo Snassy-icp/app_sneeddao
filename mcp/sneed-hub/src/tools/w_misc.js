@@ -10,8 +10,8 @@ import { idlFactory as rllIdl } from '../idl/rll.did.js';
 import { idlFactory as govIdl } from '../idl/sns_governance.did.js';
 import { CANISTERS, opt, toPrincipal, canisterId } from '../ic.js';
 import { defineWrite, unwrapResult } from '../writes.js';
-import { spend, toBaseUnits, ledgerFee, fmt, link, principalSubaccount, toHex } from '../chain.js';
-import { tokenInfo, plain, nsDuration } from '../format.js';
+import { spend, toBaseUnits, ledgerFee, fmt, link, principalSubaccount, toHex, balanceProblems } from '../chain.js';
+import { tokenInfo, plain, nsDuration, shortErr } from '../format.js';
 import { specialPricesFor, effectivePrice, premiumStatus } from '../prices.js';
 
 const ICP_T = { decimals: 8, symbol: 'ICP' };
@@ -33,7 +33,7 @@ const lockBuild = async ({ ledger, amount, lock_days, dissolve_delay_days }, ctx
   // the run checks it with getEffectiveLockFee before moving anything)
   const [fees, paySub, limits, special] = await Promise.all([anonLock.get_lock_fees_icp(), anonLock.getPaymentSubaccount(me), anonLock.get_lock_limits(), specialPricesFor(anonLock, ctx.principal)]);
   let isPremium = false;
-  try { isPremium = (await premiumStatus(ctx.principal)).active; } catch { /* regular */ }
+  try { isPremium = (await premiumStatus(ctx.principal, ctx.anon)).active; } catch { /* regular */ }
   const eff = effectivePrice({ regular: fees.token_lock_fee_icp_e8s, premium: fees.premium_token_lock_fee_icp_e8s, isPremium, special, field: 'token_lock_fee_icp_e8s' });
   const icp = await ctx.anon(icrc1Idl, CANISTERS.icp_ledger);
   const payBal = await icp.icrc1_balance_of({ owner: toPrincipal(lockId), subaccount: [paySub] });
@@ -41,15 +41,13 @@ const lockBuild = async ({ ledger, amount, lock_days, dissolve_delay_days }, ctx
   // tokens: free balance in the caller's Sneed Lock wallet subaccount counts first
   const sub = principalSubaccount(me);
   const l = await ctx.anon(icrc1Idl, ledgerId);
-  const [backendBal, summed, walletBal] = await Promise.all([
+  const [backendBal, summed] = await Promise.all([
     l.icrc1_balance_of({ owner: toPrincipal(lockId), subaccount: [sub] }),
     signedLock.get_summed_locks().catch(() => []),
-    l.icrc1_balance_of({ owner: me, subaccount: [] }),
   ]);
   const lockedSum = summed.filter(([t]) => t.toText() === ledgerId).reduce((s, [, b]) => s + BigInt(b), 0n);
   const available = backendBal > lockedSum ? backendBal - lockedSum : 0n;
   const toSend = base > available ? base - available : 0n;
-  if (toSend > 0n && walletBal < toSend + fee) problems.push(`Wallet balance ${fmt(walletBal, token)} is below ${fmt(toSend + fee, token)}.`);
   // lock period
   const days = lock_days ?? 0;
   const delayNs = dissolve_delay_days ? BigInt(Math.round(dissolve_delay_days * 86400)) * 1_000_000_000n : null;
@@ -69,6 +67,8 @@ const lockBuild = async ({ ledger, amount, lock_days, dissolve_delay_days }, ctx
     spends.push(await spend(ledgerId, toSend + fee, `${fmt(toSend, token)} into your Sneed Lock wallet + ledger fee`, 'your Sneed Lock wallet subaccount'));
   }
   calls.push({ canister: lockId, method: 'create_lock', args: [base, ledgerId, days ? `<now + ${days} d, ns>` : 0, delayNs != null ? [delayNs] : []] });
+  // the ICP lock fee and the tokens (both ICP when locking ICP) come from your main account
+  problems.push(...await balanceProblems(ctx, spends));
   return {
     summary: `Lock ${fmt(base, token)} for ${days ? `${days} day(s)` : 'no fixed period'}${delayNs ? ` with a ${dissolve_delay_days}-day dissolve delay` : ''}`,
     calls,
@@ -112,7 +112,7 @@ const lockRun = async (args, ctx, plan) => {
     steps.push(`lock ${r.Ok} created`);
     return { ok: true, spent, summary: `lock ${r.Ok} created`, steps, links: [link(`/lock/${r.Ok}`)] };
   } catch (e) {
-    return { ok: false, spent, steps, error: e.message, recovery: spent ? `Anything sent stays in your Sneed Lock wallet / fee deposit (nothing is lost): check ${link('/sneedlock')} before retrying (create_lock is not idempotent).` : undefined };
+    return { ok: false, spent, steps, error: shortErr(e), recovery: spent ? `Anything sent stays in your Sneed Lock wallet / fee deposit (nothing is lost): check ${link('/sneedlock')} before retrying (create_lock is not idempotent).` : undefined };
   }
 };
 
@@ -173,6 +173,7 @@ export const miscWrites = [
         calls.push({ canister: CANISTERS.icp_ledger, method: 'icrc1_transfer', args: { to: { owner: bal.deposit_account.owner.toText(), subaccount: opt(bal.deposit_account.subaccount) ? [toHex(opt(bal.deposit_account.subaccount))] : [] }, amount: top + fee, fee: [], memo: [] } });
         calls.push({ canister: monId, method: 'credit_deposit', args: [] });
         spends.push(await spend(CANISTERS.icp_ledger, top + 2n * fee, 'Sneed Monitor top-up (+ the credit move fee) + ledger fee', 'your Monitor deposit account'));
+        problems.push(...await balanceProblems(ctx, spends));
       } else if (BigInt(bal.balance_e8s) === 0n) problems.push('Your Sneed Monitor balance is 0: pass top_up_icp.');
       if (t === 'nns') problems.push('Watching the NNS also needs your NNS neuron ids (set_nns_neurons); do it on Sneed Hub /notifications for now.');
       calls.push({ canister: monId, method: 'watch', args: [plain(target(t))] });
@@ -196,6 +197,7 @@ export const miscWrites = [
           const tr = await icp.icrc1_transfer({ to: plan._dep, amount: plan._top + plan._fee, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
           if ('Err' in tr) throw new Error(`top-up refused: ${JSON.stringify(plain(tr.Err))}`);
           spent = true;
+          steps.push(`top-up sent to your Monitor deposit account (ICP block ${tr.Ok})`);
           const c = unwrapResult(await mon.credit_deposit(), 'credit_deposit');
           steps.push(`credited ${fmt(c.credited_e8s, ICP_T)}`);
         }
@@ -203,10 +205,10 @@ export const miscWrites = [
         steps.push(`watching ${targetText(t)}`);
         if (plan._app != null) {
           const n = await ctx.signed(notifIdl, CANISTERS.sneed_notifications);
-          try { unwrapResult(await n.allow_app(plan._app, true), 'allow_app'); steps.push('Monitor allowed in Sneed Notifications'); } catch (e) { steps.push(`allow_app failed (${e.message}); allow it on ${link('/notifications')}`); }
+          try { unwrapResult(await n.allow_app(plan._app, true), 'allow_app'); steps.push('Monitor allowed in Sneed Notifications'); } catch (e) { steps.push(`allow_app failed (${shortErr(e)}); allow it on ${link('/notifications')}`); }
         }
         return { ok: true, spent, summary: `watching ${targetText(t)}`, steps, links: [link('/notifications')] };
-      } catch (e) { return { ok: false, spent, steps, error: e.message }; }
+      } catch (e) { return { ok: false, spent, steps, error: shortErr(e) }; }
     },
   },
   {
@@ -214,13 +216,17 @@ export const miscWrites = [
     title: 'Sneed Monitor: stop watching',
     description: 'Stop watching an SNS (or the NNS) with Sneed Monitor (unwatch). Your prepaid balance stays.',
     inputSchema: { target: monTarget },
-    async build({ target: t }) {
-      return { summary: `Stop watching ${targetText(t)}`, calls: [{ canister: canisterId('sneed_mon'), method: 'unwatch', args: [plain(target(t))] }] };
+    async build({ target: t }, ctx) {
+      const monId = canisterId('sneed_mon');
+      const watches = await (await ctx.signed(monIdl, monId)).get_my_watches();
+      // unwatch answers ok("Not watching") for a target you do not watch: say so before, not "stopped"
+      const problems = watches.some((w) => JSON.stringify(plain(w.target)) === JSON.stringify(plain(target(t)))) ? [] : [`You do not watch ${targetText(t)}.`];
+      return { summary: `Stop watching ${targetText(t)}`, calls: [{ canister: monId, method: 'unwatch', args: [plain(target(t))] }], problems };
     },
     async run({ target: t }, ctx) {
       const mon = await ctx.signed(monIdl, canisterId('sneed_mon'));
-      unwrapResult(await mon.unwatch(target(t)), 'unwatch');
-      return { ok: true, summary: `stopped watching ${targetText(t)}` };
+      const r = unwrapResult(await mon.unwatch(target(t)), 'unwatch');
+      return { ok: true, summary: `${targetText(t)}: ${r}` };
     },
   },
   {

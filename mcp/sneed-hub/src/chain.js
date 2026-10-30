@@ -5,6 +5,7 @@ import { Principal } from '@dfinity/principal';
 import { toPrincipal, ptext, HUB_URL } from './ic.js';
 import { tokenInfo, formatUnits, plain, shortErr } from './format.js';
 import { parseUnits } from './safety.js';
+import { idlFactory as icrc1Idl } from './idl/icrc1_ledger.did.js';
 
 // ---- text results ----
 export const textResult = (lines) => ({ content: [{ type: 'text', text: (Array.isArray(lines) ? lines.filter((l) => l != null && l !== false).join('\n') : String(lines)) }] });
@@ -67,6 +68,18 @@ export const fmt = (amount, t) => (t?.decimals != null ? `${formatUnits(amount, 
 export const spend = async (ledger, amount, what, to = null, { arbitraryTransfer = false } = {}) => {
   const t = await tokenInfo(ledger);
   return { ledger: ptext(ledger), symbol: t.symbol, decimals: t.decimals, amount: BigInt(amount), what, to, arbitraryTransfer };
+};
+/// Problems when the signer's main account cannot cover a plan's spends, summed per ledger (fees
+/// included): e.g. an ICP lock fee plus nothing else, or ICP offered as an asset plus the ICP fee.
+export const balanceProblems = async (ctx, spends) => {
+  const totals = new Map();
+  for (const sp of spends) totals.set(sp.ledger, (totals.get(sp.ledger) ?? 0n) + BigInt(sp.amount));
+  const problems = [];
+  for (const [ledger, need] of totals) {
+    const bal = await (await ctx.anon(icrc1Idl, ledger)).icrc1_balance_of({ owner: toPrincipal(ctx.principal), subaccount: [] });
+    if (bal < need) problems.push(`Balance ${fmt(bal, await tokenInfo(ledger))} is below the ${fmt(need, await tokenInfo(ledger))} this needs (ledger fees included).`);
+  }
+  return problems;
 };
 export const ledgerFee = async (ledger) => {
   const t = await tokenInfo(ledger);

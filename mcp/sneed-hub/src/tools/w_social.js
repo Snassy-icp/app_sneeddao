@@ -10,7 +10,7 @@ import { idlFactory as icrc1Idl } from '../idl/icrc1_ledger.did.js';
 import { CANISTERS, opt, toPrincipal, ptext } from '../ic.js';
 import { defineWrite, unwrapResult } from '../writes.js';
 import { spend, toBaseUnits, ledgerFee, fmt, link } from '../chain.js';
-import { plain } from '../format.js';
+import { plain, shortErr } from '../format.js';
 
 const forumErr = (e) => { const k = Object.keys(e)[0]; return `${k}: ${e[k]}`; };
 const forumOk = (r, what) => { if ('err' in r) throw new Error(`${what}: ${forumErr(r.err)}`); return r.ok; };
@@ -150,7 +150,7 @@ export const forumWrites = [
       const f = await ctx.signed(forumIdl, CANISTERS.sneed_sns_forum);
       let r;
       try { r = await f.create_tip(author, BigInt(post_id), toPrincipal(ledgerId), base, [block]); } catch (e) {
-        return { ok: false, spent: true, steps, error: `the tokens were sent but recording the tip failed: ${e.message}`, recovery: 'Do NOT send again. The author has the tokens; the tip is just not shown on the post.' };
+        return { ok: false, spent: true, steps, error: `the tokens were sent but recording the tip failed: ${shortErr(e)}`, recovery: 'Do NOT send again. The author has the tokens; the tip is just not shown on the post.' };
       }
       if ('err' in r) return { ok: false, spent: true, steps, error: `the tokens were sent but the forum did not record the tip: ${forumErr(r.err)}`, recovery: 'Do NOT send again.' };
       const tip = opt(await f.get_tip(r.ok).catch(() => []));
