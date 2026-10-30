@@ -7,7 +7,7 @@ The attestation registry (`sneed_attestations`) is an on-chain record of **who r
 - **Per builder, never one score.** Results are shown per builder. Which builders a DAO trusts is that DAO's choice (its known-builders list, set by its governance), and it changes only highlighting.
 - **Informational, not a gate.** No DAO's upgrade path depends on the registry being up.
 
-Governance kinds: SNS governance (`get_proposal`) and OhShii's ONS and SONS (`get_proposal_upgrade_steps`, OhShii's planned read interface, to be confirmed when OhShii ships it). The registry also takes `#release` subjects: installs that are not proposals (for example a controller install during a DAO handover), identified by target and module hash.
+Governance kinds: SNS governance (`get_proposal`) and OhShii's ONS and SONS (`get_proposal_upgrade_steps`, OhShii's read interface as published on PR #20; live with OhShii's next upgrade of those canisters). The registry also takes `#release` subjects: installs that are not proposals (for example a controller install during a DAO handover), identified by target and module hash.
 
 | | |
 |---|---|
