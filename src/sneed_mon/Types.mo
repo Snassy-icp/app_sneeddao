@@ -297,6 +297,18 @@ module {
     retry_at : Int; // after a refusal: not before a day has passed
     notice_sent : Bool; // the one "Auto top-up failed" message for this failure went out
   };
+  /// get_timer_status: the round timer.
+  public type TimerStatus = {
+    paused : Bool; // admins paused rounds (admin_pause): no timer at all
+    next_run_at : ?Int; // when the round timer fires next; null: nothing to watch (or paused)
+    recurring : Bool; // the timer runs every interval_s (work is due), not once at a later time
+    interval_s : Nat;
+    round_open : Bool;
+    running : Bool; // a tick in progress
+    last_round_start : Int;
+    last_round_end : Int;
+  };
+
   public type MyAutoTopUp = {
     settings : ?AutoTopUpSettings;
     pulls : Nat;

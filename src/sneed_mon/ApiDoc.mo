@@ -37,7 +37,7 @@ Sneed Hub's watcher, registered with Sneed Notifications as the app \"Sneed Moni
 - Messages are sent by Sneed Notifications under its rules (`sponsored = false`: paid channels charge your notification balance there; Sneed SMS is free). A sent notification can't be taken back.
 
 ## Asynchronous lifecycle and polling
-- A timer runs a round every 10 minutes. A target is polled as often as its most frequent active (paid-up) watcher wants, never when it has none. A new proposal's ballots are read once (`get_proposal`) and matched against every watcher's cached neurons; the reminder reads them once more per reminder window in use. NNS candidates are checked with `get_neuron_info` of your registered neurons when your check is due.
+- A timer runs a round every 10 minutes while there is work (paid-up watches, notices, retries); with nothing to watch or admin-paused no timer runs (`get_timer_status()`: next round, `null` when idle). A target is polled as often as its most frequent active (paid-up) watcher wants, never when it has none. A new proposal's ballots are read once (`get_proposal`) and matched against every watcher's cached neurons; the reminder reads them once more per reminder window in use. NNS candidates are checked with `get_neuron_info` of your registered neurons when your check is due.
 - Each watch is checked when due: its waiting proposals go out, one message per topic. Someone who starts watching an SNS later is not told about proposals announced before, only reminded.
 - Poll `get_status()` (counts, backlog, round duration, economics: revenue, checks and cycles burned, total / 24 h / 30 days) and `get_targets()`.
 

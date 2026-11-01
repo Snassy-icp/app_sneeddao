@@ -84,6 +84,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   public type AutoTopUpSettings = T.AutoTopUpSettings;
   public type TopUpFailure = T.TopUpFailure;
   public type MyAutoTopUp = T.MyAutoTopUp;
+  public type TimerStatus = T.TimerStatus;
 
   // ---------------------------------------------------------------------------------------------
   // State (enhanced orthogonal persistence, like sneed_notifications)
@@ -640,13 +641,13 @@ shared (deployer) persistent actor class SneedMon() = this {
         };
       });
       spend();
-      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (pause notices): " # Error.message(e)); return };
+      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (pause notices): " # Error.message(e)); notices_retry_at := now() + RETRY_IDLE_NS; return };
       var k = 0;
       for (r in results.vals()) {
         if (k < chunk.size()) {
           let u = chunk[k];
           switch r {
-            case (#err(#not_registered) or #err(#unknown_topic)) {}; // not told: next round, after re-registration
+            case (#err(#not_registered) or #err(#unknown_topic)) notices_retry_at := now() + RETRY_IDLE_NS; // not told: next round, after re-registration (hourly when idle)
             case _ { let a = acct(u); if (a.paused) putAcct(u, { a with notice_sent = true }) };
           };
           switch r { case (#ok(x)) if (not x.deduplicated) sent += 1; case _ {} };
@@ -700,6 +701,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     Map.set(watches, Map.phash, caller, Array.append(watchesOf(caller), [{ target; settings = tuning.defaults; created_at = t; last_check_at = 0; user_refresh_at = t }]));
     if (not Map.has(accounts, Map.phash, caller)) putAcct(caller, NEW_ACCOUNT);
     ignore maybeResume(caller, #caller(caller)); // capCheck made sure the balance pays a check of each watch
+    planRounds<system>(); // the first watch: rounds start (at the next interval, as always)
     // best effort: the request shows up in the user's notification centre
     switch (config.notifications, app_id) {
       case (?n, ?_) try { ignore await (actor (Principal.toText(n)) : T.Notifications).request_permission(caller) } catch (_) {};
@@ -748,6 +750,7 @@ shared (deployer) persistent actor class SneedMon() = this {
       case null {};
     };
     ignore maybeResume(caller, #caller(caller)); // fewer watches may fit the balance again
+    planRounds<system>(); // the last watch gone: no more rounds
     #ok("Stopped watching");
   };
 
@@ -768,6 +771,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     };
     switch (checkSettings(next)) { case (?e) return #err(e); case null {} };
     updateWatch(caller, key, func(x) = { x with settings = next });
+    planRounds<system>();
     #ok("Saved");
   };
 
@@ -971,7 +975,9 @@ shared (deployer) persistent actor class SneedMon() = this {
   public shared ({ caller }) func credit_deposit() : async CreditResult {
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
     if (not lock(caller)) return #err("A deposit or withdrawal of yours is under way; try again in a moment");
-    try { await* creditDeposit(caller) } finally { Map.delete(in_flight, Map.phash, caller) };
+    let r = try { await* creditDeposit(caller) } finally { Map.delete(in_flight, Map.phash, caller) };
+    planRounds<system>(); // a paused user resumed: rounds again
+    r;
   };
 
   func creditDeposit(u : Principal) : async* CreditResult {
@@ -1080,6 +1086,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     };
     // a new setting starts afresh: a refusal is retried next round, and told again if it recurs
     Map.set(auto_top_ups, Map.phash, caller, { topUpOf(caller) with settings = s; set_at = now(); failure = null; retry_at = 0; notice_sent = false });
+    planRounds<system>(); // a paused user's top-up is tried next round
     switch s {
       case (?x) #ok("Auto top-up on: " # e8sText(x.amount_e8s) # " ICP from your " # (if (x.from_subaccount == null) "main account" else "subaccount") # " whenever your balance falls below " # e8sText(x.when_below_e8s) # " ICP, as far as your approval allows");
       case null #ok("Auto top-up is off");
@@ -1184,6 +1191,7 @@ shared (deployer) persistent actor class SneedMon() = this {
       ignore Timer.setTimer<system>(#seconds 1, work);
     };
     // else: the round stays open and the next timer tick goes on with it
+    planRounds<system>(); // nothing left to do: the timer stops until work returns
   };
 
   // ---- phase 0: auto top-ups (before anything is charged, so a pull can prevent a pause) ----
@@ -1308,13 +1316,13 @@ shared (deployer) persistent actor class SneedMon() = this {
         body = "Sneed Monitor could not top up your balance from your wallet: " # f.reason # ". It tries again in a day. To fix it now, renew the approval (or add ICP to your wallet) under Sneed Monitor on the notifications page. If your balance can't pay the next check meanwhile, monitoring pauses until you top up.";
       });
       spend();
-      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (top-up notices): " # Error.message(e)); return };
+      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (top-up notices): " # Error.message(e)); notices_retry_at := now() + RETRY_IDLE_NS; return };
       var k = 0;
       for (r in results.vals()) {
         if (k < chunk.size()) {
           let (u, f) = chunk[k];
           switch r {
-            case (#err(#not_registered) or #err(#unknown_topic)) {};
+            case (#err(#not_registered) or #err(#unknown_topic)) notices_retry_at := now() + RETRY_IDLE_NS;
             case _ { let t = topUpOf(u); if (t.failure == ?f) Map.set(auto_top_ups, Map.phash, u, { t with notice_sent = true }) };
           };
           switch r { case (#ok(x)) if (not x.deduplicated) sent += 1; case _ {} };
@@ -1856,7 +1864,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     try {
       let r = try {
         await ledger().icrc1_transfer({ from_subaccount = null; to; amount = amount - fee : Nat; fee = ?fee; memo = null; created_at_time = ?Nat64.fromNat(Int.abs(now())) });
-      } catch (e) { noteError(null, "fee forward: " # Error.message(e)); return };
+      } catch (e) { noteError(null, "fee forward: " # Error.message(e)); fee_retry_at := now() + RETRY_IDLE_NS; return };
       switch r {
         case (#Ok(ledger_block)) {
           fees_withdrawn_e8s += amount;
@@ -1865,7 +1873,7 @@ shared (deployer) persistent actor class SneedMon() = this {
           block("fee_forward", #timer, [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block)), ("forwards", #Nat(fee_forwards))]);
         };
         case (#Err(#BadFee(x))) { billing := { billing with ledger_fee_e8s = x.expected_fee }; noteError(null, "fee forward: the ledger fee changed") };
-        case (#Err _) noteError(null, "fee forward: the ledger refused the transfer");
+        case (#Err _) { noteError(null, "fee forward: the ledger refused the transfer"); fee_retry_at := now() + RETRY_IDLE_NS };
       };
     } finally { fees_in_flight := false };
   };
@@ -1991,7 +1999,136 @@ shared (deployer) persistent actor class SneedMon() = this {
     };
   };
 
-  transient var timer : Timer.TimerId = Timer.recurringTimer<system>(#seconds(config.interval_s), startRound);
+  // ---------------------------------------------------------------------------------------------
+  // The round timer (2026-11-01). It used to be a recurring timer every interval_s whether or not
+  // there was anything to watch (and also while admin-paused, the round returning at once): each
+  // Motoko timer run costs ~35 M cycles, ~5 B a day for nothing. Now rounds run on the same grid
+  // as before (install or upgrade time, or the last interval change, plus multiples of
+  // interval_s) but only while they have work (roundsDueAt): a paid-up watch, a paused user whose
+  // balance pays again, a pause or top-up notice to send, a top-up to retry, a fee forward to
+  // retry, an open round. With work due now a recurring timer runs every interval_s as before;
+  // with work due only later (a top-up retried in a day) one timer is armed for the first grid
+  // time from then; with none (or admin-paused) nothing is armed. Calls that may add work
+  // (watch, update_watch, credit_deposit, set_auto_top_up, the prices, admin_resume, the config)
+  // arm it again; a round that ends with nothing left stops it. Timers are transient: the actor
+  // body and postupgrade arm it again on every install and upgrade.
+  // ---------------------------------------------------------------------------------------------
+
+  transient var round_timer : ?Timer.TimerId = null;
+  transient var round_timer_recurring = false;
+  transient var next_round_at : Int = 0; // when round_timer fires next
+  transient var timer_epoch : Int = Time.now(); // rounds run at timer_epoch + k * interval_s
+  /// A notice that could not be delivered (not registered, a failed call) is tried again from
+  /// then on; a fee forward that failed likewise (with no other work, at most hourly).
+  transient var notices_retry_at : Int = 0;
+  transient var fee_retry_at : Int = 0;
+  transient let RETRY_IDLE_NS : Int = 3_600_000_000_000;
+
+  func intervalNs() : Int = config.interval_s * 1_000_000_000;
+
+  /// The first round time of the grid after `t` (and after now).
+  func nextGrid(t : Int) : Int {
+    let base = Int.max(t, now());
+    let iv = intervalNs();
+    if (base < timer_epoch) return timer_epoch + iv;
+    timer_epoch + ((base - timer_epoch) / iv + 1) * iv;
+  };
+
+  func noticesPending() : Bool {
+    if (config.notifications == null) return false;
+    for ((u, a) in Map.entries(accounts)) if (a.paused and not a.notice_sent and watchesOf(u).size() > 0) return true;
+    for (t in Map.vals(auto_top_ups)) switch (t.settings, t.failure) { case (?_, ?_) if (not t.notice_sent) return true; case _ {} };
+    false;
+  };
+
+  func feeForwardDue() : Bool {
+    if (billing.fee_destination == null) return false;
+    let amount = feesAvailable();
+    amount >= billing.fee_sweep_threshold_e8s and amount > billing.ledger_fee_e8s;
+  };
+
+  /// When rounds have work (null: none; a time not after now: now).
+  func roundsDueAt() : ?Int {
+    if (round_open) return ?0;
+    var due : ?Int = null;
+    func at(x : Int) { switch due { case (?d) if (x < d) due := ?x; case null due := ?x } };
+    for ((u, ws) in Map.entries(watches)) if (ws.size() > 0) {
+      let a = acct(u);
+      if (not a.paused) return ?0; // a paid-up watch: rounds are the product
+      if (a.balance_e8s >= checksCost(u, ws)) return ?0; // resumes at the next round (a lower price)
+      switch (Map.get(auto_top_ups, Map.phash, u)) { case (?t) if (t.settings != null) at(t.retry_at); case null {} };
+    };
+    if (noticesPending()) at(notices_retry_at);
+    if (feeForwardDue()) at(fee_retry_at);
+    due;
+  };
+
+  func stopRounds() {
+    switch (round_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    round_timer := null;
+    round_timer_recurring := false;
+    next_round_at := 0;
+  };
+
+  /// Arms (or stops) the round timer for the work there is. Call after anything that may add or
+  /// remove work.
+  func planRounds<system>() {
+    if (config.paused) return stopRounds();
+    let t = switch (roundsDueAt()) { case (?t) t; case null return stopRounds() };
+    // due within the next interval: the recurring cadence (already running, or from the next grid time)
+    if (round_timer_recurring and t <= now() + intervalNs()) return;
+    let at = nextGrid(t);
+    switch (round_timer) {
+      case (?id) {
+        if (not round_timer_recurring and next_round_at <= at and next_round_at >= now()) return;
+        Timer.cancelTimer(id);
+      };
+      case null {};
+    };
+    round_timer := ?Timer.setTimer<system>(#nanoseconds(Int.abs(at - now())), wakeRounds);
+    round_timer_recurring := false;
+    next_round_at := at;
+  };
+
+  /// The one-shot timer at a grid time: the recurring cadence starts from here if work is due now.
+  func wakeRounds() : async () {
+    round_timer := null;
+    next_round_at := 0;
+    if (config.paused) return;
+    switch (roundsDueAt()) {
+      case (?t) if (t <= now()) {
+        round_timer := ?Timer.recurringTimer<system>(#nanoseconds(Int.abs(intervalNs())), roundTick);
+        round_timer_recurring := true;
+        next_round_at := now() + intervalNs();
+        await startRound();
+        return;
+      };
+      case null {};
+    };
+    planRounds<system>();
+  };
+
+  func roundTick() : async () {
+    next_round_at := now() + intervalNs();
+    await startRound();
+  };
+
+  /// A new interval: the grid starts again from now (as the old recurring timer did).
+  func resetTimer<system>() {
+    stopRounds();
+    timer_epoch := now();
+    planRounds<system>();
+  };
+
+  /// The round timer: whether admins paused rounds, when it fires next (null: nothing to do, or
+  /// paused), whether it is the recurring cadence, the interval and the open round.
+  public query func get_timer_status() : async TimerStatus {
+    {
+      paused = config.paused; next_run_at = switch (round_timer) { case (?_) ?next_round_at; case null null };
+      recurring = round_timer_recurring; interval_s = config.interval_s; round_open; running = busy();
+      last_round_start; last_round_end;
+    };
+  };
 
   // ---------------------------------------------------------------------------------------------
   // Upgrade from the 1bbee49a build (SNS watches in `user_watches` / `snses`)
@@ -2001,6 +2138,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     migrateLegacy();
     Icrc3Log.certify(icrc3);
     ensure_icrc3_timer<system>();
+    planRounds<system>(); // timers are transient: rounds again if there is work
   };
 
   func migrateLegacy() {
@@ -2113,7 +2251,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     let reset = c.interval_s != config.interval_s;
     configBlocks(#caller(caller), coreValues(config), coreValues(c));
     config := c;
-    if (reset) resetTimer<system>();
+    if (reset) resetTimer<system>() else planRounds<system>(); // e.g. paused, the notifications canister
     #ok("Saved");
   };
 
@@ -2142,6 +2280,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     for (ws in Map.vals(watches)) for (w in ws.vals()) if (not kept(w.settings.every_min)) return #err("Watches use " # Nat.toText(w.settings.every_min) # " min");
     configBlocks(#caller(caller), tierValues(tier_table), tierValues(t));
     tier_table := t;
+    planRounds<system>(); // a lower price may resume paused users
     #ok("Saved");
   };
 
@@ -2152,6 +2291,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "admin_prices", pricesV(admin_prices), pricesV(p));
     admin_prices := p;
+    planRounds<system>();
     #ok;
   };
 
@@ -2167,6 +2307,7 @@ shared (deployer) persistent actor class SneedMon() = this {
       case (?o) if (partnerV(o) != partnerV(e)) block("config_update", #caller(caller), Array.append(base, [("old_value", partnerV(o))]));
       case null block("config_update", #caller(caller), base);
     };
+    planRounds<system>();
     #ok;
   };
 
@@ -2175,6 +2316,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     let old = switch (Map.get(partner_prices, Map.phash, partner)) { case (?o) o; case null return #err("No partner prices for this principal") };
     Map.delete(partner_prices, Map.phash, partner);
     block("config_update", #caller(caller), [("key", #Text("partner_prices")), ("partner", pv(partner)), ("old_value", partnerV(old)), ("value", #Text("removed"))]);
+    planRounds<system>();
     #ok;
   };
 
@@ -2189,17 +2331,13 @@ shared (deployer) persistent actor class SneedMon() = this {
     { admin_prices = if (getsAdminPrice(p)) ?admin_prices else null; partner = SP.activePartner(partner_prices, p, now()) };
   };
 
-  func resetTimer<system>() {
-    Timer.cancelTimer(timer);
-    timer := Timer.recurringTimer<system>(#seconds(config.interval_s), startRound);
-  };
-
   public shared ({ caller }) func admin_set_notifications_canister(p : ?Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "notifications", optPrincipalV(config.notifications), optPrincipalV(p));
     configBlock(#caller(caller), "app_id", optNatV(app_id), #Text("none"));
     config := { config with notifications = p };
     app_id := null;
+    planRounds<system>(); // notices to send, or none any more
     #ok("Saved");
   };
 
@@ -2236,6 +2374,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     switch a { case (?x) switch (x.subaccount) { case (?s) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case null {} }; case null {} };
     configBlock(#caller(caller), "fee_destination", optAccountV(billing.fee_destination), optAccountV(a));
     billing := { billing with fee_destination = a };
+    planRounds<system>(); // fees to forward
     #ok("Saved");
   };
 
@@ -2243,6 +2382,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "fee_sweep_threshold_e8s", #Nat(billing.fee_sweep_threshold_e8s), #Nat(e8s));
     billing := { billing with fee_sweep_threshold_e8s = e8s };
+    planRounds<system>();
     #ok("Saved");
   };
 
@@ -2253,6 +2393,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (b.icp_ledger != billing.icp_ledger and userBalancesTotal() + feesAvailable() > 0) return #err("Balances are held on the current ledger");
     configBlocks(#caller(caller), billingValues(billing), billingValues(b));
     billing := b;
+    planRounds<system>();
     #ok("Saved");
   };
 
@@ -2285,6 +2426,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "paused", flag(config.paused), flag(true));
     config := { config with paused = true };
+    stopRounds(); // no timer at all while paused (an open round ends at its next tick)
     #ok("Paused");
   };
 
@@ -2292,6 +2434,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "paused", flag(config.paused), flag(false));
     config := { config with paused = false };
+    planRounds<system>();
     #ok("Resumed");
   };
 
@@ -2300,7 +2443,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (seconds < MIN_INTERVAL_S) return #err("The interval is at least 60 seconds");
     configBlock(#caller(caller), "interval_s", #Nat(config.interval_s), #Nat(seconds));
     config := { config with interval_s = seconds };
-    resetTimer<system>();
+    resetTimer<system>(); // the rounds' grid starts again from now (only armed when there is work)
     #ok("Saved");
   };
 
@@ -2373,6 +2516,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
   func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
   ensure_icrc3_timer<system>();
+  planRounds<system>(); // on every install and upgrade (timers are transient), if there is work
 
   // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
   // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
@@ -2404,6 +2548,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     #get_my_charges_with_tier : Any;
     #get_special_prices : Any;
     #get_special_prices_for : Any;
+    #get_timer_status : Any;
     #set_admin_prices : Any;
     #set_partner_prices : Any;
     #remove_partner_prices : Any;
@@ -2445,7 +2590,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     #admin_icrc3_repair_archive_controllers : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_status _ or #get_recent_errors _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _) false;
+      case (#get_api_doc _ or #get_status _ or #get_recent_errors _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _ or #get_timer_status _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
       case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _ or #set_auto_top_up _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // a topic filter of up to 50 keys of 64 characters
