@@ -59,6 +59,8 @@ sneed_mon only sends; the user's settings in Sneed Notifications decide where a 
 
 A target is polled as often as its most frequent **active** (paid-up) watcher wants, and not at all when it has none (it then forgets its proposals, and starts afresh when a watcher returns). The calls per proposal don't depend on the number of watchers. A round makes at most `max_calls_per_tick` calls a tick (200); a bigger round goes on in follow-up ticks, and a new round never starts while one is open. Independent calls are issued in parallel (`tuning.parallel_calls`, 20). `get_status().backlog` and `last_round_duration_ns` show how far behind it is.
 
+Rounds run every `interval_s` (600 s) only while they have work: a paid-up watch, a user paused for balance whose balance pays again, a "monitoring paused" or "auto top-up failed" message to send, an auto top-up or fee forward to retry (a day or an hour later), an open round. With nothing to do (no watches, every watcher paused for balance and told, or `admin_pause`) no timer is armed at all, so an idle canister burns no cycles on rounds; `watch`, `credit_deposit`, `set_auto_top_up`, price and setting changes and `admin_resume` arm it again, for the next time on the rounds' grid (the install, upgrade or last interval change plus multiples of `interval_s`), as the old always-on timer would have run. `get_timer_status()` shows when the next round runs.
+
 ### 1.6 Billing
 
 | | |
@@ -197,6 +199,7 @@ dfx canister --network ic call sneed_mon get_status --query
 | `get_special_prices()` | query | `record { admin_prices : MonPrices; partners : vec record { principal; label; prices : MonPrices; expires_at : opt int } }` | Expired partners are listed too. |
 | `get_special_prices_for(principal)` | query | `record { admin_prices : opt MonPrices; partner : opt MonPartner }` | What applies to that principal now. |
 | `get_topics()` | query | `vec NTopic` | What is registered with Sneed Notifications. |
+| `get_timer_status()` | query | `TimerStatus` | The round timer (1.5): paused, when it fires next (`null`: nothing to do, or paused), whether rounds recur every interval, the open round and the last round's times. |
 | `get_admins()` / `get_api_doc()` | query | | |
 | `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([6](#6-activity-log-icrc-3)); not deployed yet. |
 
@@ -214,7 +217,7 @@ dfx canister --network ic call sneed_mon get_status --query
 | `admin_register_with_notifications()` | `register_app` ("Sneed Monitor", this canister, three topics); records the app id. |
 | `admin_update_notifications_app()` | `update_app(app_id, …)`: name, description and topics as this build has them, same id. |
 | `admin_set_app_id(opt nat)` | |
-| `admin_pause()` / `admin_resume()` / `admin_set_interval(nat)` / `admin_run_now()` | `admin_run_now` starts a round (or goes on with the open one) and returns after its first tick. |
+| `admin_pause()` / `admin_resume()` / `admin_set_interval(nat)` / `admin_run_now()` | `admin_pause` stops the round timer entirely (an open round ends at its next tick); `admin_resume` arms it again when there is work. A new interval restarts the rounds' grid from now. `admin_run_now` starts a round (or goes on with the open one) and returns after its first tick. |
 | `admin_add_admin(principal)` / `admin_remove_admin(principal)` | |
 | `set_admin_prices(MonPrices)` | The admin price (`null` field: none). Returns `variant { ok; err : text }`. |
 | `set_partner_prices(principal, MonPartner)` | Add or replace a partner: label 1–100 characters, expiry in the future or none, at most 200 partners, not the anonymous principal. |
@@ -244,6 +247,12 @@ type MonPartner = record { label : text; prices : MonPrices; expires_at : opt in
 type Account = record { owner : principal; subaccount : opt blob };
 type BillingConfig = record { icp_ledger : principal; ledger_fee_e8s : nat; fee_destination : opt Account; fee_sweep_threshold_e8s : nat };
 type TierTable = record { base_daily_price_e8s : nat; tiers : vec record { every_min : nat; daily_multiplier : nat } };
+type TimerStatus = record {
+  paused : bool;          // admin_pause: no timer at all
+  next_run_at : opt int;  // when the round timer fires next; null: nothing to watch (or paused)
+  recurring : bool;       // rounds every interval_s (work is due now), not one wake-up later
+  interval_s : nat; round_open : bool; running : bool; last_round_start : int; last_round_end : int;
+};
 ```
 
 `Status`, `Tuning`, `Accounting` and the rest are in [sneed_mon.did](/api-docs/sneed_mon.did). Times are `int` nanoseconds except `deadline_s` (seconds).
