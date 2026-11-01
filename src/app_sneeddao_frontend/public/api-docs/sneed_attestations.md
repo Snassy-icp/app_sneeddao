@@ -112,7 +112,7 @@ Returns `variant { ok = record { id; block } }` (the attestation's id and its IC
 
 ## 4. Polling and the call budget
 
-The registry watches only proposals with at least one attestation. A timer (every `tick_s`, default 60 s; no heartbeat) runs rounds of at most `max_in_flight` (3) calls, up to `max_calls_per_tick`:
+The registry watches only proposals with at least one attestation. A timer (no heartbeat) runs only when something is due, and then runs rounds of at most `max_in_flight` (3) calls, up to `max_calls_per_tick`:
 
 1. live checks of executed steps (`canister_info`: the management canister, not billed to the DAO), releases;
 2. proposal reads that are due: hourly while voting is open (`poll_open_s`, and a minute after an SNS proposal's deadline), every `poll_executing_s` (300 s) once adopted, until every step is final. Proposals attested by a DAO's known builders are read first.
@@ -120,6 +120,15 @@ The registry watches only proposals with at least one attestation. A timer (ever
 Some DAOs (OhShii among them) bill replicated reads to themselves and admit only a capped set of readers. The registry keeps to a published budget in code: at most `calls_per_hour_per_dao` billed calls (proposal reads, function lists, asset list pages) per DAO per hour. Over it, that DAO is skipped until the next hour, then twice as long each consecutive time, up to `max_backoff_s`. `get_call_budget()` publishes the registry's principals (mainnet and staging), every method it calls with when and whether it is billed, an estimate, and each DAO's use (`calls_this_hour`, `throttled_hours`, `backoff_until`).
 
 A read that fails is retried with back-off (5 minutes, doubling, at most 6 hours) and given up after `max_read_failures`; a definitive answer (no such proposal, not an upgrade proposal) stops at once. Proposals still not final after `max_watch_s` (30 days) are no longer watched. Controllers can `admin_recheck` a proposal.
+
+### 4.1 Timers
+
+The registry costs nothing while nothing is watched (since 2026-11-01; before, a 60-second timer ran always). Two timers:
+
+- a **work timer**, armed only for the earliest thing that is due: a watched proposal's next read, a live check of an executed step, a release check, a wanted function list or SNS-root lookup (each no earlier than the DAO's call budget allows again), and the ICRC-3 spill check (every 15 minutes at most) only while the log's live store is full. A new attestation (or `admin_recheck`, `admin_run_now`) starts a run at once. After a run, the next one comes `tick_s` (60 s) later at the earliest. Nothing is armed while nothing is due, while `paused`, or while the cycles are below `min_cycles`;
+- an **hourly housekeeping** timer: the log spill check, and arming the work timer for anything due.
+
+`get_timer_status()` (query) shows `paused`, `next_run_at` (null: nothing due), `last_tick_at`, `running`, and the housekeeping's `last_housekeeping_at` / `next_housekeeping_at`. In `get_stats()`, `ticks` counts polling runs and `last_tick_at` moves only when one runs.
 
 ## 5. Limits
 

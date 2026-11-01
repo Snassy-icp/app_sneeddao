@@ -497,6 +497,18 @@ git archive "$NOTIF_PREIDLE_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_notifications/main.mo" -o "$OUT/sneed_notifications_preidle.wasm" 2>&1 | grep -i "error" | head -5 || true
 test -s "$OUT/sneed_notifications_preidle.wasm"
 rm -rf "$PREV_SRC"
+# sneed_attestations before the idle-burn fix (a recurring tick_s timer and the ICRC-3 library's
+# 15-minute timer, always; main at c80882bd, what production a5rqn… runs since 2026-11-01), for
+# attestations-timers.test.js: the upgrade with keep from it, and the fail-before run of its
+# idle-cost test (ATT_WASM=sneed_attestations_preidle npx vitest run tests/attestations-timers.test.js -t "idle:")
+ATT_PREIDLE_COMMIT=c80882bd
+echo "== sneed_attestations at $ATT_PREIDLE_COMMIT (moc, EOP, sneed_attestations_preidle)"
+PREV_SRC="$(mktemp -d)"
+git archive "$ATT_PREIDLE_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_attestations/main.mo" -o "$OUT/sneed_attestations_preidle.wasm" 2>&1 | grep -i "error" | head -5 || true
+test -s "$OUT/sneed_attestations_preidle.wasm"
+rm -rf "$PREV_SRC"
 echo "== MockSmsBadReply"
 # shellcheck disable=SC2086
 "$MOC" -c $PKGS -o "$OUT/MockSmsBadReply.wasm" "$HERE/canisters/MockSmsBadReply.mo" 2>&1 | grep -i "error" -A5 || true
