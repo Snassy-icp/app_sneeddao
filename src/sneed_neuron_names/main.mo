@@ -183,8 +183,9 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     };
   };
 
-  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+  func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, "sneedneuronnames_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
   func keyFields(k : NeuronKey) : [(Text, T3.Value)] = [("sns_root", Icrc3Log.principal(k.sns_root)), ("neuron_id", #Blob(k.neuron_id))];
   func sourceValue(s : T.VerifySource) : T3.Value = switch s {
@@ -195,7 +196,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
   };
 
   /// Set (or with "" remove) a neuron's name. The caller has validated the name and checked it is free.
-  func applyName(k : NeuronKey, name : Text, caller : Principal) {
+  func applyName<system>(k : NeuronKey, name : Text, caller : Principal) {
     let scope = Dedup.getOrCreateIndexForPrincipal(roots, k.sns_root);
     let key = keyOf(scope, k.neuron_id);
     switch (Map.get(neurons, Map.bhash, key)) {
@@ -203,7 +204,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
         NameIndex.remove<Blob>(index, scope, n.name);
         if (name == "") {
           Map.delete(neurons, Map.bhash, key);
-          block("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("old_name", #Text(n.name))]]));
+          block<system>("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("old_name", #Text(n.name))]]));
         } else {
           let old = n.name;
           NameIndex.add<Blob>(index, scope, name, k.neuron_id);
@@ -212,14 +213,14 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
           if (cleared) n.verification := null;
           n.set_by := caller;
           n.updated_at := now64();
-          block("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("old_name", #Text(old)), ("name", #Text(name))], if (cleared) [("verification_cleared", #Nat(1))] else []]));
+          block<system>("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("old_name", #Text(old)), ("name", #Text(name))], if (cleared) [("verification_cleared", #Nat(1))] else []]));
         };
       };
       case null {
         if (name == "") return;
         NameIndex.add<Blob>(index, scope, name, k.neuron_id);
         Map.set<Blob, NeuronName>(neurons, Map.bhash, key, { var name = name; var verification = null; var avatar = null; var set_by = caller; var updated_at = now64() });
-        block("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(name))]]));
+        block<system>("name_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(name))]]));
       };
     };
     touch(key);
@@ -345,7 +346,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       case (?n, _) if (n.name == name) return #ok("Unchanged");
       case _ {};
     };
-    applyName(k, name, caller);
+    applyName<system>(k, name, caller);
     #ok(if (name == "") "Name removed" else "Name set");
   };
 
@@ -360,7 +361,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
         case (?n) {
           n.avatar := avatar;
           n.updated_at := now64();
-          block("avatar_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), switch avatar { case (?#url(u)) [("avatar", #Map([("url", #Text(u))]))]; case (?#blob(h)) [("avatar", #Map([("blob", #Blob(h))]))]; case null [] }]));
+          block<system>("avatar_set", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), switch avatar { case (?#url(u)) [("avatar", #Map([("url", #Text(u))]))]; case (?#blob(h)) [("avatar", #Map([("blob", #Blob(h))]))]; case null [] }]));
           touch(key);
           return #ok(if (avatar == null) "Avatar cleared" else "Avatar set");
         };
@@ -385,12 +386,12 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     };
   };
 
-  func applyVerify(k : NeuronKey, expected : Text, source : T.VerifySource, caller : Principal) : Result {
+  func applyVerify<system>(k : NeuronKey, expected : Text, source : T.VerifySource, caller : Principal) : Result {
     switch (checkVerify(k, expected)) {
       case (#ok((key, n))) {
         n.verification := ?{ name = expected; source; at = now64() };
         n.updated_at := now64();
-        block("verify", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(expected)), ("source", sourceValue(source))]]));
+        block<system>("verify", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(expected)), ("source", sourceValue(source))]]));
         touch(key);
         #ok("Verified");
       };
@@ -398,14 +399,14 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     };
   };
 
-  func applyUnverify(k : NeuronKey, caller : Principal) : Result {
+  func applyUnverify<system>(k : NeuronKey, caller : Principal) : Result {
     switch (findKey(k)) {
       case (?(_, key)) switch (Map.get(neurons, Map.bhash, key)) {
         case (?n) {
           if (n.verification == null) return #err("Not verified");
           n.verification := null;
           n.updated_at := now64();
-          block("unverify", caller, keyFields(k));
+          block<system>("unverify", caller, keyFields(k));
           touch(key);
           #ok("Unverified");
         };
@@ -417,12 +418,12 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
 
   public shared ({ caller }) func verify(k : NeuronKey, expected_name : Text) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    applyVerify(k, expected_name, #admin(caller), caller);
+    applyVerify<system>(k, expected_name, #admin(caller), caller);
   };
 
   public shared ({ caller }) func unverify(k : NeuronKey) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    applyUnverify(k, caller);
+    applyUnverify<system>(k, caller);
   };
 
   /// Called by an SNS's governance canister (a proposal of that SNS) for its own neurons.
@@ -431,7 +432,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       case (?g) if (g != caller) return #err("Only the governance canister of that SNS");
       case null return #err("Not a deployed SNS");
     };
-    applyVerify(k, expected_name, #sns_governance(caller), caller);
+    applyVerify<system>(k, expected_name, #sns_governance(caller), caller);
   };
 
   public shared ({ caller }) func unverify_by_sns(k : NeuronKey) : async Result {
@@ -439,12 +440,12 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       case (?g) if (g != caller) return #err("Only the governance canister of that SNS");
       case null return #err("Not a deployed SNS");
     };
-    applyUnverify(k, caller);
+    applyUnverify<system>(k, caller);
   };
 
   public shared ({ caller }) func verify_by_dao(k : NeuronKey, expected_name : Text) : async () {
     if (caller != config.dao_governance) Debug.trap("Only Sneed DAO governance");
-    switch (applyVerify(k, expected_name, #dao, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
+    switch (applyVerify<system>(k, expected_name, #dao, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
   };
 
   public query func validate_verify_by_dao(k : NeuronKey, expected_name : Text) : async T.ValidationResult {
@@ -456,7 +457,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
 
   public shared ({ caller }) func unverify_by_dao(k : NeuronKey) : async () {
     if (caller != config.dao_governance) Debug.trap("Only Sneed DAO governance");
-    switch (applyUnverify(k, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
+    switch (applyUnverify<system>(k, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
   };
 
   public query func validate_unverify_by_dao(k : NeuronKey) : async T.ValidationResult {
@@ -480,7 +481,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       switch (NameRules.problem(name, 1)) { case (?p) return #err(p); case null {} };
       switch (findKey(k)) { case (?(scope, _)) if (not nameFree(scope, name, k.neuron_id)) return #err("That name is taken in this SNS"); case null {} };
     };
-    applyName(k, name, caller);
+    applyName<system>(k, name, caller);
     #ok("Set");
   };
 
@@ -490,7 +491,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       case (?(_, key)) switch (Map.get(neurons, Map.bhash, key)) {
         case (?n) {
           n.avatar := null;
-          block("avatar_set", caller, keyFields(k));
+          block<system>("avatar_set", caller, keyFields(k));
           touch(key);
           #ok("Cleared");
         };
@@ -504,7 +505,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (c.archive_controllers.size() > 10) return #err("At most 10 archive controllers");
     config := c;
-    block("config_update", caller, [("config", #Text(debug_show (c)))]);
+    block<system>("config_update", caller, [("config", #Text(debug_show (c)))]);
     #ok("Config updated");
   };
 
@@ -528,14 +529,14 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
     admins := Array.append(admins, [p]);
-    block("config_update", caller, [("admin_added", Icrc3Log.principal(p))]);
+    block<system>("config_update", caller, [("admin_added", Icrc3Log.principal(p))]);
     #ok("Added");
   };
 
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     admins := Array.filter<Principal>(admins, func(a) = a != p);
-    block("config_update", caller, [("admin_removed", Icrc3Log.principal(p))]);
+    block<system>("config_update", caller, [("admin_removed", Icrc3Log.principal(p))]);
     #ok("Removed");
   };
 
@@ -544,13 +545,16 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     if (not isAdmin(caller)) Debug.trap("Admins only");
     if (import_closed) Debug.trap("Import is closed");
     if (items.size() > MAX_BATCH) Debug.trap("At most 500 items per call");
-    Array.map<ImportItem, ImportResult>(items, func(it) {
+    // a loop, not Array.map: importOne appends log blocks, which needs the system capability
+    let out = Buffer.Buffer<ImportResult>(items.size());
+    for (it in items.vals()) {
       let k = { sns_root = it.sns_root; neuron_id = it.neuron_id };
-      { key = k; result = importOne(it, k, caller) };
-    });
+      out.add({ key = k; result = importOne<system>(it, k, caller) });
+    };
+    Buffer.toArray(out);
   };
 
-  func importOne(it : ImportItem, k : NeuronKey, caller : Principal) : Result {
+  func importOne<system>(it : ImportItem, k : NeuronKey, caller : Principal) : Result {
     if (it.neuron_id.size() == 0 or it.neuron_id.size() > MAX_NEURON_ID) return #err("Not a neuron id");
     switch (NameRules.problem(it.name, 1)) { case (?p) return #err(p); case null {} };
     switch (findKey(k)) {
@@ -560,7 +564,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       };
       case null {};
     };
-    applyName(k, it.name, caller);
+    applyName<system>(k, it.name, caller);
     switch (findKey(k)) {
       case (?(_, key)) switch (Map.get(neurons, Map.bhash, key)) {
         case (?n) if (it.verified) n.verification := ?{ name = it.name; source = #import_; at = now64() };
@@ -568,14 +572,14 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
       };
       case null {};
     };
-    block("import", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(it.name)), ("verified", #Nat(if (it.verified) 1 else 0))]]));
+    block<system>("import", caller, Array.flatten<(Text, T3.Value)>([keyFields(k), [("name", #Text(it.name)), ("verified", #Nat(if (it.verified) 1 else 0))]]));
     #ok("imported");
   };
 
   public shared ({ caller }) func admin_finish_import() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     import_closed := true;
-    block("config_update", caller, [("import_closed", #Nat(1))]);
+    block<system>("config_update", caller, [("import_closed", #Nat(1))]);
     #ok("Import closed");
   };
 
@@ -595,7 +599,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     switch (Icrc3Log.applySettings(icrc3, u)) {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
-        for ((key, old, new) in changes.vals()) block("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
+        for ((key, old, new) in changes.vals()) block<system>("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
         #Ok(icrc3.settings);
       };
     };
@@ -613,7 +617,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
   };
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
   system func postupgrade() {
     Icrc3Log.certify(icrc3);

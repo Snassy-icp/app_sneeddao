@@ -167,7 +167,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       log_error = func(cid : Nat, m : Text) { logText(cid, "error", m) };
     };
   };
-  private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) { ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx) };
+  private func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) { ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx); Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt) };
   private func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
   private func pv(p : Principal) : T3.Value { Icrc3Log.principal(p) };
   private func plist(ps : [Principal]) : T3.Value { #Array(Array.map<Principal, T3.Value>(ps, pv)) };
@@ -291,7 +291,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     let c : T.Child = { canister_id; kind; suite; title; policy; registered_at = Time.now(); registered_by = caller; status = ?st; last_upgrade = null; last_upgrade_error = null };
     putChild(c);
     let cid = newCid();
-    icrc3_add("guardian_register", [("cid", #Nat(cid)), ("caller", pv(caller)), ("canister", pv(canister_id)), ("kind", #Text(kindText(kind))), ("title", #Text(title)), ("guardians", plist(policy.guardians)), ("auto_upgrade", #Text(debug_show(policy.auto_upgrade)))]);
+    icrc3_add<system>("guardian_register", [("cid", #Nat(cid)), ("caller", pv(caller)), ("canister", pv(canister_id)), ("kind", #Text(kindText(kind))), ("title", #Text(title)), ("guardians", plist(policy.guardians)), ("auto_upgrade", #Text(debug_show(policy.auto_upgrade)))]);
     logText(cid, "info", "registered " # kindText(kind) # " " # Principal.toText(canister_id) # " (" # title # ") by " # Principal.toText(caller));
     #Ok(c);
   };
@@ -394,7 +394,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     Map.set(op_price_tiers, nhash, op.id, tier);
     switch (kind) { case (#install({ arg = ?a })) { Map.set(op_arg_hashes, nhash, op.id, sha256(a)) }; case _ {} };
     let cid = newCid();
-    icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo)), ("price_tier", #Text(SP.tierText(tier)))]);
+    icrc3_add<system>("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo)), ("price_tier", #Text(SP.tierText(tier)))]);
     logText(cid, "info", "op " # Nat.toText(op.id) # " staged by " # Principal.toText(caller) # ": " # opKindText(kind) # " on " # Principal.toText(child));
     #Ok(op);
   };
@@ -498,7 +498,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     switch (r) { case (#Err(e)) { return #Err("refund failed: " # debug_show(e)) }; case (#Ok(_)) {} };
     // re-read: the op record may have moved on across the awaits
     switch (findOp(id)) { case (?o) { putOp({ o with refunded_e8s = o.refunded_e8s + amount }) }; case null {} };
-    icrc3_add("guardian_op_refund", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(amount))]);
+    icrc3_add<system>("guardian_op_refund", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(amount))]);
     #Ok(amount);
   };
   /// An approver (a DAO's governance canister, through a passed proposal) approves an op. An admin's
@@ -513,11 +513,11 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     let state : T.OpState = if (admin or approvals.size() >= threshold) { #approved(Time.now()) } else { #pending };
     let u = { op with approvals; state }; putOp(u);
     let cid = newCid();
-    icrc3_add("guardian_op_approve", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("approvals", #Nat(approvals.size())), ("approved", #Text(debug_show(admin or approvals.size() >= threshold))), ("as_admin", #Text(debug_show(admin)))]);
+    icrc3_add<system>("guardian_op_approve", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("approvals", #Nat(approvals.size())), ("approved", #Text(debug_show(admin or approvals.size() >= threshold))), ("as_admin", #Text(debug_show(admin)))]);
     logText(cid, "info", "op " # Nat.toText(id) # " approved by " # Principal.toText(caller) # " (" # Nat.toText(approvals.size()) # "/" # Nat.toText(threshold) # ")");
     #Ok(u);
   };
-  private func guardianAct(caller : Principal, id : Nat, ok : Bool) : { #Ok : T.Op; #Err : Text } {
+  private func guardianAct<system>(caller : Principal, id : Nat, ok : Bool) : { #Ok : T.Op; #Err : Text } {
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     let pol = policyOf(op);
     if (not has(pol.guardians, caller)) { return #Err("only a guardian of this child can do that") };
@@ -527,7 +527,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       if (has(op.oks, caller)) { return #Err("already ok'd") };
       let u = { op with oks = Array.append(op.oks, [caller]) }; putOp(u);
       let cid = newCid();
-      icrc3_add("guardian_op_ok", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("oks", #Nat(u.oks.size()))]);
+      icrc3_add<system>("guardian_op_ok", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("oks", #Nat(u.oks.size()))]);
       #Ok(u);
     } else {
       if (has(op.vetoes, caller)) { return #Err("already vetoed") };
@@ -535,15 +535,15 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       let blocked = pol.vetoes_to_block > 0 and vetoes.size() >= pol.vetoes_to_block;
       let u = { op with vetoes; state = if (blocked) { #vetoed } else { op.state } }; putOp(u);
       let cid = newCid();
-      icrc3_add("guardian_op_veto", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("vetoes", #Nat(vetoes.size())), ("blocked", #Text(debug_show(blocked)))]);
+      icrc3_add<system>("guardian_op_veto", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("vetoes", #Nat(vetoes.size())), ("blocked", #Text(debug_show(blocked)))]);
       logText(cid, "info", "op " # Nat.toText(id) # " vetoed by " # Principal.toText(caller) # (if (blocked) { " and blocked" } else { "" }));
       #Ok(u);
     };
   };
   /// A guardian of the child gives the go-ahead.
-  public shared ({ caller }) func ok_op(id : Nat) : async { #Ok : T.Op; #Err : Text } { guardianAct(caller, id, true) };
+  public shared ({ caller }) func ok_op(id : Nat) : async { #Ok : T.Op; #Err : Text } { guardianAct<system>(caller, id, true) };
   /// A guardian of the child vetoes; enough vetoes block the op for good.
-  public shared ({ caller }) func veto_op(id : Nat) : async { #Ok : T.Op; #Err : Text } { guardianAct(caller, id, false) };
+  public shared ({ caller }) func veto_op(id : Nat) : async { #Ok : T.Op; #Err : Text } { guardianAct<system>(caller, id, false) };
   /// The stager or an approver withdraws an op that has not executed.
   public shared ({ caller }) func cancel_op(id : Nat) : async { #Ok : T.Op; #Err : Text } {
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
@@ -551,7 +551,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (isExecuting(id)) { return #Err("op " # Nat.toText(id) # " is being executed") };
     switch (op.state) { case (#pending or #approved(_)) {}; case (s) { return #Err("op is " # debug_show(s)) } };
     let u = { op with state = #cancelled }; putOp(u);
-    icrc3_add("guardian_op_cancel", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id))]);
+    icrc3_add<system>("guardian_op_cancel", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id))]);
     #Ok(u);
   };
   /// Why an approved op cannot execute yet, or null when it can.
@@ -587,7 +587,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       let sweep = try { await icp_ledger().icrc1_transfer({ from_subaccount = ?opSubaccount(id); to = fee_destination; amount = op.fee_e8s; fee = ?ICP_FEE; memo = null; created_at_time = null }) } catch (e) { return #Err("fee transfer failed: " # Error.message(e)) };
       switch (sweep) { case (#Err(e)) { return #Err("fee transfer failed: " # debug_show(e)) }; case (#Ok(_)) {} };
       switch (findOp(id)) { case (?o) { putOp({ o with fee_paid_e8s = op.fee_e8s }) }; case null {} };
-      icrc3_add("guardian_op_fee", [("cid", #Nat(cid)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(op.fee_e8s)), ("to", pv(fee_destination.owner)), ("price_tier", #Text(SP.tierText(opTier(id))))]);
+      icrc3_add<system>("guardian_op_fee", [("cid", #Nat(cid)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(op.fee_e8s)), ("to", pv(fee_destination.owner)), ("price_tier", #Text(SP.tierText(opTier(id))))]);
     };
     let r = await* perform(op, cid);
     // re-read: the op may have been cancelled or executed by a concurrent call across the awaits
@@ -596,13 +596,13 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     switch (r) {
       case (#Ok(())) {
         let u = { latest with state = #executed(Time.now()) }; putOp(u);
-        icrc3_add("guardian_op_execute", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("canister", pv(op.child)), ("what", #Text(opKindText(op.kind)))]);
+        icrc3_add<system>("guardian_op_execute", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("canister", pv(op.child)), ("what", #Text(opKindText(op.kind)))]);
         logText(cid, "info", "op " # Nat.toText(id) # " executed by " # Principal.toText(caller));
         #Ok(u);
       };
       case (#Err(e)) {
         let u = { latest with state = #failed(e) }; putOp(u);
-        icrc3_add("guardian_op_fail", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("canister", pv(op.child)), ("error", #Text(e))]);
+        icrc3_add<system>("guardian_op_fail", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("canister", pv(op.child)), ("error", #Text(e))]);
         logText(cid, "error", "op " # Nat.toText(id) # " failed: " # e);
         #Err(e);
       };
@@ -617,7 +617,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
         } catch (e) { return #Err("update_settings failed: " # Error.message(e)) };
         if (not has(ps, self())) {
           dropChild(op.child);
-          icrc3_add("guardian_release", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("canister", pv(op.child)), ("kind", #Text(kindText(c.kind))), ("controllers", plist(ps))]);
+          icrc3_add<system>("guardian_release", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("canister", pv(op.child)), ("kind", #Text(kindText(c.kind))), ("controllers", plist(ps))]);
           logText(cid, "info", "released " # Principal.toText(op.child) # " to " # debug_show(ps));
         } else {
           ignore await* refreshChildStatus(c);
@@ -631,29 +631,29 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       case (#set_policy(p)) {
         let c = switch (findChild(op.child)) { case (?c) { c }; case null { return #Err("not a registered child any more") } };
         putChild({ c with policy = p });
-        icrc3_add("guardian_policy_set", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("canister", pv(op.child)), ("guardians", plist(p.guardians)), ("vetoes_to_block", #Nat(p.vetoes_to_block)), ("oks_required", #Nat(p.oks_required)), ("window_ns", #Nat(p.window_ns)), ("auto_upgrade", #Text(debug_show(p.auto_upgrade)))]);
+        icrc3_add<system>("guardian_policy_set", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("canister", pv(op.child)), ("guardians", plist(p.guardians)), ("vetoes_to_block", #Nat(p.vetoes_to_block)), ("oks_required", #Nat(p.oks_required)), ("window_ns", #Nat(p.window_ns)), ("auto_upgrade", #Text(debug_show(p.auto_upgrade)))]);
         #Ok;
       };
       case (#set_config(u)) { applyConfig<system>(u, cid, op.id); #Ok };
       case (#set_approvers(a)) {
         approvers := a.approvers; threshold := a.threshold;
-        icrc3_add("guardian_approvers_set", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("approvers", plist(a.approvers)), ("threshold", #Nat(a.threshold))]);
+        icrc3_add<system>("guardian_approvers_set", [("cid", #Nat(cid)), ("op", #Nat(op.id)), ("approvers", plist(a.approvers)), ("threshold", #Nat(a.threshold))]);
         #Ok;
       };
     };
   };
   private func applyConfig<system>(u : T.ConfigUpdate, cid : Nat, opId : Nat) {
-    let note = func(key : Text, old : Text, new_ : Text) { icrc3_add("guardian_config_update", [("cid", #Nat(cid)), ("op", #Nat(opId)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
-    switch (u.op_fee_e8s) { case (?v) { note("op_fee_e8s", Nat.toText(op_fee_e8s), Nat.toText(v)); op_fee_e8s := v }; case null {} };
-    switch (u.premium_op_fee_e8s) { case (?v) { note("premium_op_fee_e8s", Nat.toText(premium_op_fee_e8s), Nat.toText(v)); premium_op_fee_e8s := v }; case null {} };
-    switch (u.fee_destination) { case (?v) { note("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
-    switch (u.op_ttl_ns) { case (?v) { if (v >= 86_400_000_000_000) { note("op_ttl_ns", Nat.toText(op_ttl_ns), Nat.toText(v)); op_ttl_ns := v } }; case null {} };
-    switch (u.self_window_ns) { case (?v) { if (v <= MAX_WINDOW_NS) { note("self_window_ns", Nat.toText(self_window_ns), Nat.toText(v)); self_window_ns := v } }; case null {} };
-    switch (u.status_interval_s) { case (?v) { if (v >= 600) { note("status_interval_s", Nat.toText(status_interval_s), Nat.toText(v)); status_interval_s := v; restartStatusTimer<system>() } }; case null {} };
-    switch (u.low_cycles_threshold) { case (?v) { note("low_cycles_threshold", Nat.toText(low_cycles_threshold), Nat.toText(v)); low_cycles_threshold := v }; case null {} };
-    switch (u.cycle_reserve) { case (?v) { note("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
-    switch (u.paused) { case (?v) { note("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
-    switch (u.approve_function_id) { case (?v) { note("approve_function_id", debug_show(approve_function_id), debug_show(v)); approve_function_id := v }; case null {} };
+    func note<system>(key : Text, old : Text, new_ : Text) { icrc3_add<system>("guardian_config_update", [("cid", #Nat(cid)), ("op", #Nat(opId)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
+    switch (u.op_fee_e8s) { case (?v) { note<system>("op_fee_e8s", Nat.toText(op_fee_e8s), Nat.toText(v)); op_fee_e8s := v }; case null {} };
+    switch (u.premium_op_fee_e8s) { case (?v) { note<system>("premium_op_fee_e8s", Nat.toText(premium_op_fee_e8s), Nat.toText(v)); premium_op_fee_e8s := v }; case null {} };
+    switch (u.fee_destination) { case (?v) { note<system>("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
+    switch (u.op_ttl_ns) { case (?v) { if (v >= 86_400_000_000_000) { note<system>("op_ttl_ns", Nat.toText(op_ttl_ns), Nat.toText(v)); op_ttl_ns := v } }; case null {} };
+    switch (u.self_window_ns) { case (?v) { if (v <= MAX_WINDOW_NS) { note<system>("self_window_ns", Nat.toText(self_window_ns), Nat.toText(v)); self_window_ns := v } }; case null {} };
+    switch (u.status_interval_s) { case (?v) { if (v >= 600) { note<system>("status_interval_s", Nat.toText(status_interval_s), Nat.toText(v)); status_interval_s := v; restartStatusTimer<system>() } }; case null {} };
+    switch (u.low_cycles_threshold) { case (?v) { note<system>("low_cycles_threshold", Nat.toText(low_cycles_threshold), Nat.toText(v)); low_cycles_threshold := v }; case null {} };
+    switch (u.cycle_reserve) { case (?v) { note<system>("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
+    switch (u.paused) { case (?v) { note<system>("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
+    switch (u.approve_function_id) { case (?v) { note<system>("approve_function_id", debug_show(approve_function_id), debug_show(v)); approve_function_id := v }; case null {} };
   };
 
   // ---- upgrades along the blessed path ----
@@ -697,7 +697,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     };
     let after = await* refreshChildStatus(c);
     putChild({ after with last_upgrade = ?{ at = Time.now(); from = ?cur; to = hash; by }; last_upgrade_error = null });
-    icrc3_add("guardian_upgrade", [("cid", #Nat(cid)), ("canister", pv(c.canister_id)), ("kind", #Text(kindText(c.kind))), ("from", #Blob(cur)), ("to", #Blob(hash)), ("by", #Text(by)), ("reconfigure", #Text(debug_show(reconfigure)))]);
+    icrc3_add<system>("guardian_upgrade", [("cid", #Nat(cid)), ("canister", pv(c.canister_id)), ("kind", #Text(kindText(c.kind))), ("from", #Blob(cur)), ("to", #Blob(hash)), ("by", #Text(by)), ("reconfigure", #Text(debug_show(reconfigure)))]);
     logText(cid, "info", "upgraded " # kindText(c.kind) # " " # Principal.toText(c.canister_id) # " " # hex(cur) # " -> " # hex(hash) # " (" # by # ")");
     #Ok;
   };
@@ -763,7 +763,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
                       let child : T.Child = { canister_id = a.canister_id; kind = #archive; suite = ?l.canister_id; title = l.title # " archive"; policy = l.policy; registered_at = Time.now(); registered_by = self(); status = ?st; last_upgrade = null; last_upgrade_error = null };
                       putChild(child);
                       let cid = newCid();
-                      icrc3_add("guardian_register", [("cid", #Nat(cid)), ("caller", pv(self())), ("canister", pv(a.canister_id)), ("kind", #Text("archive")), ("title", #Text(child.title)), ("guardians", plist(l.policy.guardians)), ("auto_upgrade", #Text(debug_show(l.policy.auto_upgrade)))]);
+                      icrc3_add<system>("guardian_register", [("cid", #Nat(cid)), ("caller", pv(self())), ("canister", pv(a.canister_id)), ("kind", #Text("archive")), ("title", #Text(child.title)), ("guardians", plist(l.policy.guardians)), ("auto_upgrade", #Text(debug_show(l.policy.auto_upgrade)))]);
                       logText(cid, "info", "discovered archive " # Principal.toText(a.canister_id) # " of " # l.title);
                     };
                   };
@@ -797,7 +797,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   private func ensureTimers<system>() {
     if (timers_started) { return };
     timers_started := true;
-    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+    Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job);
     restartStatusTimer<system>();
     ignore Timer.recurringTimer<system>(#seconds 86_400, upgrade_job);
     ignore Timer.setTimer<system>(#seconds 2, func() : async () { ignore await* refreshBlessedImpl() });
@@ -865,12 +865,12 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   public shared ({ caller }) func admin_add_admin(p : Principal) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admins only") };
     if (Principal.isAnonymous(p)) { return #Err("not the anonymous principal") };
-    if (not has(admins, p)) { admins := Array.append(admins, [p]); icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_added")), ("old_value", #Text("")), ("value", #Text(Principal.toText(p)))]) };
+    if (not has(admins, p)) { admins := Array.append(admins, [p]); icrc3_add<system>("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_added")), ("old_value", #Text("")), ("value", #Text(Principal.toText(p)))]) };
     #Ok;
   };
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admins only") };
-    if (has(admins, p)) { admins := Array.filter<Principal>(admins, func(a) { a != p }); icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_removed")), ("old_value", #Text(Principal.toText(p))), ("value", #Text(""))]) };
+    if (has(admins, p)) { admins := Array.filter<Principal>(admins, func(a) { a != p }); icrc3_add<system>("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_removed")), ("old_value", #Text(Principal.toText(p))), ("value", #Text(""))]) };
     #Ok;
   };
   public query func get_admins() : async [Principal] { admins };
@@ -880,7 +880,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (n == 0 or n > 10_000) { return #Err("between 1 and 10000") };
     let old = max_open_ops_per_caller;
     max_open_ops_per_caller := n;
-    icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("max_open_ops_per_caller")), ("old_value", #Nat(old)), ("value", #Nat(n))]);
+    icrc3_add<system>("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("max_open_ops_per_caller")), ("old_value", #Nat(old)), ("value", #Nat(n))]);
     #Ok;
   };
   /// Set a per-caller rate limit (null: back to the default). Actions: see get_rate_limits.
@@ -891,7 +891,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       case (#ok(r)) {
         rate_rules := r;
         let v : T3.Value = switch (rule) { case (?x) { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) }; case null { #Text("default") } };
-        icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
+        icrc3_add<system>("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
         #Ok;
       };
     };
@@ -913,8 +913,8 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   /// prices are not an op kind (adding one would change stage_op's and get_op's Candid).
   private func canSetPrices(p : Principal) : Bool { isAdmin(p) or (isApprover(p) and threshold <= 1) };
   private func pricesFields(x : T.Prices) : [(Text, ?Nat)] { [("op_fee_e8s", x.op_fee_e8s)] };
-  private func priceNote(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
-    icrc3_add("guardian_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
+  private func priceNote<system>(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
+    icrc3_add<system>("guardian_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
   };
   private func partnerV(e : ?SP.Partner<T.Prices>) : T3.Value {
     switch (e) { case (?x) { SP.partnerValue(x.label_, pricesFields(x.prices), x.expires_at) }; case null { #Text("none") } };
@@ -924,7 +924,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (not canSetPrices(caller)) { return #err("admins only (or the approver, when it alone is the threshold)") };
     let old = admin_prices;
     admin_prices := p;
-    priceNote(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
+    priceNote<system>(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
     #ok;
   };
   /// Add or replace a partner's op fee. The label is public; `expires_at` (ns) is optional.
@@ -933,14 +933,14 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     switch (SP.validatePartner(partner_prices, partner, e, Time.now())) { case (?why) { return #err(why) }; case null {} };
     let old = Map.get(partner_prices, phash, partner);
     Map.set(partner_prices, phash, partner, e);
-    priceNote(caller, "partner_prices", [("partner", pv(partner))], partnerV(old), partnerV(?e));
+    priceNote<system>(caller, "partner_prices", [("partner", pv(partner))], partnerV(old), partnerV(?e));
     #ok;
   };
   /// Remove a partner's prices.
   public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
     if (not canSetPrices(caller)) { return #err("admins only (or the approver, when it alone is the threshold)") };
     switch (Map.remove(partner_prices, phash, partner)) {
-      case (?old) { priceNote(caller, "partner_prices", [("partner", pv(partner))], partnerV(?old), #Text("removed")); #ok };
+      case (?old) { priceNote<system>(caller, "partner_prices", [("partner", pv(partner))], partnerV(?old), #Text("removed")); #ok };
       case null { #err("no partner prices for that principal") };
     };
   };
@@ -957,7 +957,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   /// Admins record the generic function's id during the trial period (afterwards: a #set_config op).
   public shared ({ caller }) func admin_set_approve_function_id(id : ?Nat64) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admins only") };
-    icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("approve_function_id")), ("old_value", #Text(debug_show(approve_function_id))), ("value", #Text(debug_show(id)))]);
+    icrc3_add<system>("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("approve_function_id")), ("old_value", #Text(debug_show(approve_function_id))), ("value", #Text(debug_show(id)))]);
     approve_function_id := id;
     #Ok;
   };

@@ -301,21 +301,22 @@ shared (deployer) persistent actor class SneedMon() = this {
   type By = { #caller : Principal; #timer };
 
   /// Appends one block `sneedmon_<btype>`: `caller` first, or `via` = "timer".
-  func block(btype : Text, by : By, tx : [(Text, T3.Value)]) {
+  func block<system>(btype : Text, by : By, tx : [(Text, T3.Value)]) {
     let who : (Text, T3.Value) = switch by {
       case (#caller(p)) ("caller", Icrc3Log.principal(p));
       case (#timer) ("via", #Text("timer"));
     };
     ignore Icrc3Log.append(icrc3, "sneedmon_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([who], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
   /// One `config_update` block, only when the value changed.
-  func configBlock(by : By, key : Text, old : T3.Value, new : T3.Value) {
-    if (old != new) block("config_update", by, [("key", #Text(key)), ("old_value", old), ("value", new)]);
+  func configBlock<system>(by : By, key : Text, old : T3.Value, new : T3.Value) {
+    if (old != new) block<system>("config_update", by, [("key", #Text(key)), ("old_value", old), ("value", new)]);
   };
-  func configBlocks(by : By, old : [(Text, T3.Value)], new : [(Text, T3.Value)]) {
+  func configBlocks<system>(by : By, old : [(Text, T3.Value)], new : [(Text, T3.Value)]) {
     var i = 0;
-    while (i < old.size() and i < new.size()) { configBlock(by, old[i].0, old[i].1, new[i].1); i += 1 };
+    while (i < old.size() and i < new.size()) { configBlock<system>(by, old[i].0, old[i].1, new[i].1); i += 1 };
   };
 
   func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
@@ -364,11 +365,11 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   /// The round's charges as one block (nothing when it charged nothing): checks, total, users, and
   /// each user's total and checks when at most ROUND_USERS_LOGGED users were charged.
-  func flushRoundCharges() {
+  func flushRoundCharges<system>() {
     if (icrc3_round_checks > 0) {
       let users = Map.size(icrc3_round_users);
       let base : [(Text, T3.Value)] = [("round", #Nat(icrc3_round_no)), ("checks", #Nat(icrc3_round_checks)), ("charged_e8s", #Nat(icrc3_round_charged_e8s)), ("users", #Nat(users))];
-      block("round_charges", #timer, if (users <= ROUND_USERS_LOGGED) Array.append(base, [("per_user", #Array(Iter.toArray(Iter.map<(Principal, (Nat, Nat)), T3.Value>(Map.entries(icrc3_round_users), func((u, (c, n))) = #Array([pv(u), #Nat(c), #Nat(n)])))))]) else base);
+      block<system>("round_charges", #timer, if (users <= ROUND_USERS_LOGGED) Array.append(base, [("per_user", #Array(Iter.toArray(Iter.map<(Principal, (Nat, Nat)), T3.Value>(Map.entries(icrc3_round_users), func((u, (c, n))) = #Array([pv(u), #Nat(c), #Nat(n)])))))]) else base);
     };
     icrc3_round_checks := 0;
     icrc3_round_charged_e8s := 0;
@@ -549,19 +550,19 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   /// The balance can't pay a check: the user's watches are kept but not checked (nor charged), their
   /// waiting proposals dropped, and one notice is due.
-  func pauseUser(u : Principal, price : Nat) {
+  func pauseUser<system>(u : Principal, price : Nat) {
     putAcct(u, { acct(u) with paused = true; notice_sent = false });
     Map.delete(pending, Map.phash, u);
-    block("user_pause", #timer, [("user", pv(u)), ("balance_e8s", #Nat(acct(u).balance_e8s)), ("price_e8s", #Nat(price))]);
+    block<system>("user_pause", #timer, [("user", pv(u)), ("balance_e8s", #Nat(acct(u).balance_e8s)), ("price_e8s", #Nat(price))]);
   };
 
   /// A paused user whose balance pays one check of each watch is checked again from the next round.
-  func maybeResume(u : Principal, by : By) : Bool {
+  func maybeResume<system>(u : Principal, by : By) : Bool {
     let a = acct(u);
     if (not a.paused) return false;
     if (a.balance_e8s < checksCost(u, watchesOf(u))) return false;
     putAcct(u, { a with paused = false; notice_sent = false });
-    block("user_resume", by, [("user", pv(u)), ("balance_e8s", #Nat(a.balance_e8s))]);
+    block<system>("user_resume", by, [("user", pv(u)), ("balance_e8s", #Nat(a.balance_e8s))]);
     true;
   };
 
@@ -700,7 +701,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     let t = now();
     Map.set(watches, Map.phash, caller, Array.append(watchesOf(caller), [{ target; settings = tuning.defaults; created_at = t; last_check_at = 0; user_refresh_at = t }]));
     if (not Map.has(accounts, Map.phash, caller)) putAcct(caller, NEW_ACCOUNT);
-    ignore maybeResume(caller, #caller(caller)); // capCheck made sure the balance pays a check of each watch
+    ignore maybeResume<system>(caller, #caller(caller)); // capCheck made sure the balance pays a check of each watch
     planRounds<system>(); // the first watch: rounds start (at the next interval, as always)
     // best effort: the request shows up in the user's notification centre
     switch (config.notifications, app_id) {
@@ -749,7 +750,7 @@ shared (deployer) persistent actor class SneedMon() = this {
       };
       case null {};
     };
-    ignore maybeResume(caller, #caller(caller)); // fewer watches may fit the balance again
+    ignore maybeResume<system>(caller, #caller(caller)); // fewer watches may fit the balance again
     planRounds<system>(); // the last watch gone: no more rounds
     #ok("Stopped watching");
   };
@@ -999,8 +1000,8 @@ shared (deployer) persistent actor class SneedMon() = this {
         let a = acct(u);
         putAcct(u, { a with balance_e8s = a.balance_e8s + amount; deposited_e8s = a.deposited_e8s + amount });
         deposits_e8s += amount;
-        block("deposit", #caller(u), [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("ledger_block", #Nat(ledger_block))]);
-        ignore maybeResume(u, #caller(u));
+        block<system>("deposit", #caller(u), [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("ledger_block", #Nat(ledger_block))]);
+        ignore maybeResume<system>(u, #caller(u));
         let b = acct(u);
         #ok({ credited_e8s = amount; balance_e8s = b.balance_e8s; paused = b.paused });
       };
@@ -1036,7 +1037,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     } catch (e) { undo(); return #err("The ledger did not answer (nothing moved): " # Error.message(e)) };
     switch r {
       case (#Ok(ledger_block)) {
-        block("withdraw", #caller(u), [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block))]);
+        block<system>("withdraw", #caller(u), [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block))]);
         #ok(ledger_block);
       };
       case (#Err(#BadFee(x))) { undo(); billing := { billing with ledger_fee_e8s = x.expected_fee }; #err("The ledger fee changed; try again") };
@@ -1124,7 +1125,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func startRound() : async () {
     if (config.paused or busy()) return;
     if (round_open) return await work();
-    flushRoundCharges(); // a round cut short (by an upgrade) is logged before the next begins
+    flushRoundCharges<system>(); // a round cut short (by an upgrade) is logged before the next begins
     round_no += 1;
     round_open := true;
     round_ticks := 0;
@@ -1138,7 +1139,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     pulls_this_round := 0;
     Map.clear(nns_info);
     // paused users whose balance pays again (a lower price) resume
-    for ((u, a) in Map.entries(accounts)) if (a.paused) ignore maybeResume(u, #timer);
+    for ((u, a) in Map.entries(accounts)) if (a.paused) ignore maybeResume<system>(u, #timer);
     // a target with no active watcher forgets its proposals; it starts afresh when one returns
     for (s in Map.vals(targets)) if (activeEvery(s) == null and (s.open.size() > 0 or s.listed_at != 0)) {
       Map.set(targets, Map.thash, s.key, { s with open = []; listed_at = 0; last_polled_at = 0 });
@@ -1181,7 +1182,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     round_cycles += burned;
     addEconomics({ cycles_burned = burned; revenue_e8s = 0; checks = 0; rounds = if (finished or config.paused) 1 else 0 });
     if (finished or config.paused) {
-      flushRoundCharges();
+      flushRoundCharges<system>();
       round_open := false;
       last_round_end := now();
       last_round_duration := last_round_end - last_round_start;
@@ -1256,14 +1257,14 @@ shared (deployer) persistent actor class SneedMon() = this {
         for ((u, amount, f) in fs.vals()) {
           // an unbounded-wait call: a reject means nothing moved (tried again next round)
           let r = try { await f } catch (e) { noteError(null, "auto top-up: " # Error.message(e)); #Err(#TemporarilyUnavailable) };
-          topUpResult(u, amount, r);
+          topUpResult<system>(u, amount, r);
         };
       } finally { for (u in locked.vals()) Map.delete(in_flight, Map.phash, u) };
     };
     true;
   };
 
-  func topUpResult(u : Principal, amount : Nat, r : T.TransferFromResult) {
+  func topUpResult<system>(u : Principal, amount : Nat, r : T.TransferFromResult) {
     let fee = billing.ledger_fee_e8s;
     // one message per failure streak (notice_sent is cleared by a pull or a new setting)
     func failed(reason : Text) {
@@ -1280,8 +1281,8 @@ shared (deployer) persistent actor class SneedMon() = this {
         Map.set(auto_top_ups, Map.phash, u, { t with pulls = t.pulls + 1; pulled_e8s = t.pulled_e8s + amount; last_pull_at = now(); last_block = ?ledger_block; failure = null; retry_at = 0; notice_sent = false });
         addCharge(u, { at = now(); target = #nns; every_min = 0; price_e8s = amount; outcome = "Auto top-up: +" # e8sText(amount) # " ICP from your wallet (ledger block " # Nat.toText(ledger_block) # ")" }, #regular);
         let from_sub = switch (t.settings) { case (?s) s.from_subaccount; case null null };
-        block("auto_top_up", #timer, [("user", pv(u)), ("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("from", Icrc3Log.account(u, from_sub)), ("ledger_block", #Nat(ledger_block))]);
-        ignore maybeResume(u, #timer);
+        block<system>("auto_top_up", #timer, [("user", pv(u)), ("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("from", Icrc3Log.account(u, from_sub)), ("ledger_block", #Nat(ledger_block))]);
+        ignore maybeResume<system>(u, #timer);
       };
       case (#Err(#InsufficientAllowance(x))) failed(
         if (x.allowance == 0) "Sneed Monitor has no allowance left on your wallet (the approval is used up, expired or was never given)"
@@ -1763,7 +1764,7 @@ shared (deployer) persistent actor class SneedMon() = this {
         switch (findWatch(u, key)) {
           case (?w) if (not isPausedUser(u) and isDue(w)) {
             let (price, tier) = priceFor(u, w.settings.every_min);
-            if (not chargeCheck(u, price)) pauseUser(u, price) else {
+            if (not chargeCheck(u, price)) pauseUser<system>(u, price) else {
               updateWatch(u, key, func(x) = { x with last_check_at = now() });
               let first = groups.size();
               let ps = pendingOf(u);
@@ -1870,7 +1871,7 @@ shared (deployer) persistent actor class SneedMon() = this {
           fees_withdrawn_e8s += amount;
           fees_forwarded_e8s += amount;
           fee_forwards += 1;
-          block("fee_forward", #timer, [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block)), ("forwards", #Nat(fee_forwards))]);
+          block<system>("fee_forward", #timer, [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block)), ("forwards", #Nat(fee_forwards))]);
         };
         case (#Err(#BadFee(x))) { billing := { billing with ledger_fee_e8s = x.expected_fee }; noteError(null, "fee forward: the ledger fee changed") };
         case (#Err _) { noteError(null, "fee forward: the ledger refused the transfer"); fee_retry_at := now() + RETRY_IDLE_NS };
@@ -2249,7 +2250,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (c.interval_s < MIN_INTERVAL_S) return #err("The interval is at least 60 seconds");
     if (c.batch_size == 0 or c.batch_size > 100 or c.max_calls_per_tick == 0) return #err("batch_size 1 to 100, max_calls_per_tick at least 1");
     let reset = c.interval_s != config.interval_s;
-    configBlocks(#caller(caller), coreValues(config), coreValues(c));
+    configBlocks<system>(#caller(caller), coreValues(config), coreValues(c));
     config := c;
     if (reset) resetTimer<system>() else planRounds<system>(); // e.g. paused, the notifications canister
     #ok("Saved");
@@ -2261,7 +2262,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     switch (checkSettings(t.defaults)) { case (?e) return #err("defaults: " # e); case null {} };
     if (t.parallel_calls == 0 or t.parallel_calls > 50) return #err("parallel_calls 1 to 50");
     if (t.max_nns_neurons > 100 or t.max_pending_per_user == 0) return #err("max_nns_neurons at most 100, max_pending_per_user at least 1");
-    configBlocks(#caller(caller), tuningValues(tuning), tuningValues(t));
+    configBlocks<system>(#caller(caller), tuningValues(tuning), tuningValues(t));
     tuning := t;
     #ok("Saved");
   };
@@ -2278,7 +2279,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     let kept = func(m : Nat) : Bool = Array.find<Tier>(t.tiers, func(x) = x.every_min == m) != null;
     if (not kept(tuning.defaults.every_min)) return #err("The default frequency (" # Nat.toText(tuning.defaults.every_min) # " min) must stay a tier");
     for (ws in Map.vals(watches)) for (w in ws.vals()) if (not kept(w.settings.every_min)) return #err("Watches use " # Nat.toText(w.settings.every_min) # " min");
-    configBlocks(#caller(caller), tierValues(tier_table), tierValues(t));
+    configBlocks<system>(#caller(caller), tierValues(tier_table), tierValues(t));
     tier_table := t;
     planRounds<system>(); // a lower price may resume paused users
     #ok("Saved");
@@ -2289,7 +2290,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   /// The admin price: an override of the base daily price for people on the admin list (null: none).
   public shared ({ caller }) func set_admin_prices(p : MonPrices) : async SpResult {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "admin_prices", pricesV(admin_prices), pricesV(p));
+    configBlock<system>(#caller(caller), "admin_prices", pricesV(admin_prices), pricesV(p));
     admin_prices := p;
     planRounds<system>();
     #ok;
@@ -2304,8 +2305,8 @@ shared (deployer) persistent actor class SneedMon() = this {
     Map.set(partner_prices, Map.phash, partner, e);
     let base : [(Text, T3.Value)] = [("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", partnerV(e))];
     switch old {
-      case (?o) if (partnerV(o) != partnerV(e)) block("config_update", #caller(caller), Array.append(base, [("old_value", partnerV(o))]));
-      case null block("config_update", #caller(caller), base);
+      case (?o) if (partnerV(o) != partnerV(e)) block<system>("config_update", #caller(caller), Array.append(base, [("old_value", partnerV(o))]));
+      case null block<system>("config_update", #caller(caller), base);
     };
     planRounds<system>();
     #ok;
@@ -2315,7 +2316,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     let old = switch (Map.get(partner_prices, Map.phash, partner)) { case (?o) o; case null return #err("No partner prices for this principal") };
     Map.delete(partner_prices, Map.phash, partner);
-    block("config_update", #caller(caller), [("key", #Text("partner_prices")), ("partner", pv(partner)), ("old_value", partnerV(old)), ("value", #Text("removed"))]);
+    block<system>("config_update", #caller(caller), [("key", #Text("partner_prices")), ("partner", pv(partner)), ("old_value", partnerV(old)), ("value", #Text("removed"))]);
     planRounds<system>();
     #ok;
   };
@@ -2333,8 +2334,8 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   public shared ({ caller }) func admin_set_notifications_canister(p : ?Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "notifications", optPrincipalV(config.notifications), optPrincipalV(p));
-    configBlock(#caller(caller), "app_id", optNatV(app_id), #Text("none"));
+    configBlock<system>(#caller(caller), "notifications", optPrincipalV(config.notifications), optPrincipalV(p));
+    configBlock<system>(#caller(caller), "app_id", optNatV(app_id), #Text("none"));
     config := { config with notifications = p };
     app_id := null;
     planRounds<system>(); // notices to send, or none any more
@@ -2347,7 +2348,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return #err("No notifications canister set") };
     let r = try { await n.register_app(appInput()) } catch (e) { return #err("Sneed Notifications did not answer: " # Error.message(e)) };
-    switch r { case (#ok(id)) { configBlock(#caller(caller), "app_id", optNatV(app_id), #Nat(id)); app_id := ?id }; case (#err _) {} };
+    switch r { case (#ok(id)) { configBlock<system>(#caller(caller), "app_id", optNatV(app_id), #Nat(id)); app_id := ?id }; case (#err _) {} };
     r;
   };
 
@@ -2363,7 +2364,7 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   public shared ({ caller }) func admin_set_app_id(id : ?Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "app_id", optNatV(app_id), optNatV(id));
+    configBlock<system>(#caller(caller), "app_id", optNatV(app_id), optNatV(id));
     app_id := id;
     #ok("Saved");
   };
@@ -2372,7 +2373,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   public shared ({ caller }) func admin_set_fee_destination(a : ?Account) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     switch a { case (?x) switch (x.subaccount) { case (?s) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case null {} }; case null {} };
-    configBlock(#caller(caller), "fee_destination", optAccountV(billing.fee_destination), optAccountV(a));
+    configBlock<system>(#caller(caller), "fee_destination", optAccountV(billing.fee_destination), optAccountV(a));
     billing := { billing with fee_destination = a };
     planRounds<system>(); // fees to forward
     #ok("Saved");
@@ -2380,7 +2381,7 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   public shared ({ caller }) func admin_set_fee_sweep_threshold(e8s : Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "fee_sweep_threshold_e8s", #Nat(billing.fee_sweep_threshold_e8s), #Nat(e8s));
+    configBlock<system>(#caller(caller), "fee_sweep_threshold_e8s", #Nat(billing.fee_sweep_threshold_e8s), #Nat(e8s));
     billing := { billing with fee_sweep_threshold_e8s = e8s };
     planRounds<system>();
     #ok("Saved");
@@ -2391,7 +2392,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   public shared ({ caller }) func admin_set_billing(b : BillingConfig) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (b.icp_ledger != billing.icp_ledger and userBalancesTotal() + feesAvailable() > 0) return #err("Balances are held on the current ledger");
-    configBlocks(#caller(caller), billingValues(billing), billingValues(b));
+    configBlocks<system>(#caller(caller), billingValues(billing), billingValues(b));
     billing := b;
     planRounds<system>();
     #ok("Saved");
@@ -2413,7 +2414,7 @@ shared (deployer) persistent actor class SneedMon() = this {
       } catch (e) { fees_withdrawn_e8s -= amount_e8s; return #err("The ledger did not answer (nothing moved): " # Error.message(e)) };
       switch r {
         case (#Ok(ledger_block)) {
-          block("fee_withdraw", #caller(caller), [("amount_e8s", #Nat(amount_e8s)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block))]);
+          block<system>("fee_withdraw", #caller(caller), [("amount_e8s", #Nat(amount_e8s)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block))]);
           #ok(ledger_block);
         };
         case (#Err(#BadFee(x))) { fees_withdrawn_e8s -= amount_e8s; billing := { billing with ledger_fee_e8s = x.expected_fee }; #err("The ledger fee changed; try again") };
@@ -2424,7 +2425,7 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   public shared ({ caller }) func admin_pause() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "paused", flag(config.paused), flag(true));
+    configBlock<system>(#caller(caller), "paused", flag(config.paused), flag(true));
     config := { config with paused = true };
     stopRounds(); // no timer at all while paused (an open round ends at its next tick)
     #ok("Paused");
@@ -2432,7 +2433,7 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   public shared ({ caller }) func admin_resume() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    configBlock(#caller(caller), "paused", flag(config.paused), flag(false));
+    configBlock<system>(#caller(caller), "paused", flag(config.paused), flag(false));
     config := { config with paused = false };
     planRounds<system>();
     #ok("Resumed");
@@ -2441,7 +2442,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   public shared ({ caller }) func admin_set_interval(seconds : Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (seconds < MIN_INTERVAL_S) return #err("The interval is at least 60 seconds");
-    configBlock(#caller(caller), "interval_s", #Nat(config.interval_s), #Nat(seconds));
+    configBlock<system>(#caller(caller), "interval_s", #Nat(config.interval_s), #Nat(seconds));
     config := { config with interval_s = seconds };
     resetTimer<system>(); // the rounds' grid starts again from now (only armed when there is work)
     #ok("Saved");
@@ -2460,7 +2461,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (not has(admins, p)) {
       admins := Array.append(admins, [p]);
-      block("admin_add", #caller(caller), [("principal", pv(p))]);
+      block<system>("admin_add", #caller(caller), [("principal", pv(p))]);
     };
     #ok("Added");
   };
@@ -2469,7 +2470,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (has(admins, p)) {
       admins := Array.filter<Principal>(admins, func(a) = a != p);
-      block("admin_remove", #caller(caller), [("principal", pv(p))]);
+      block<system>("admin_remove", #caller(caller), [("principal", pv(p))]);
     };
     #ok("Removed");
   };
@@ -2490,7 +2491,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     switch (Icrc3Log.applySettings(icrc3, u)) {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
-        for ((key, old, new) in changes.vals()) configBlock(#caller(caller), key, #Nat(old), #Nat(new));
+        for ((key, old, new) in changes.vals()) configBlock<system>(#caller(caller), key, #Nat(old), #Nat(new));
         #Ok(icrc3.settings);
       };
     };
@@ -2514,7 +2515,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   };
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
   ensure_icrc3_timer<system>();
   planRounds<system>(); // on every install and upgrade (timers are transient), if there is work
 

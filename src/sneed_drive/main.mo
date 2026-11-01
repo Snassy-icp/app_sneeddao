@@ -213,8 +213,9 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     };
   };
 
-  func ev(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+  func ev<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, "sneeddrive_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -559,7 +560,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     (purged, false);
   };
 
-  func purgeTrash(olderThan : ?Int, budget : Nat, caller : Principal) : PurgeResult {
+  func purgeTrash<system>(olderThan : ?Int, budget : Nat, caller : Principal) : PurgeResult {
     var purged = 0;
     var finished = true;
     label roots for ((id, at) in natOps.entries(trash_roots)) {
@@ -569,7 +570,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
         case (?n) {
           let (p, d) = purgeSubtree(n, budget - purged);
           purged += p;
-          if (d) ev("purge", caller, [("node", #Nat(id)), ("nodes", #Nat(p))]) else { finished := false; break roots };
+          if (d) ev<system>("purge", caller, [("node", #Nat(id)), ("nodes", #Nat(p))]) else { finished := false; break roots };
         };
         case null { trash_roots := natOps.delete(trash_roots, id) };
       };
@@ -605,7 +606,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     attach(parent, n);
     countTags(tags, true);
     touch(parent, caller);
-    ev("create", caller, [("node", #Nat(n.id)), ("parent", #Nat(parent.id)), ("kind", #Text("folder"))]);
+    ev<system>("create", caller, [("node", #Nat(n.id)), ("parent", #Nat(parent.id)), ("kind", #Text("folder"))]);
     done(caller, n.id);
   };
 
@@ -626,7 +627,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     attach(parent, n);
     countTags(tags, true);
     touch(parent, caller);
-    ev("create", caller, [("node", #Nat(n.id)), ("parent", #Nat(parent.id)), ("kind", #Text("file")), ("version", #Nat(Option.get(n.head, 0))), ("size", #Nat(bytes.size()))]);
+    ev<system>("create", caller, [("node", #Nat(n.id)), ("parent", #Nat(parent.id)), ("kind", #Text("file")), ("version", #Nat(Option.get(n.head, 0))), ("size", #Nat(bytes.size()))]);
     done(caller, n.id);
   };
 
@@ -643,7 +644,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
       case (#ok(null)) {};
       case (#ok(?vid)) {
         touch(n, caller);
-        ev("save", caller, [("node", #Nat(n.id)), ("version", #Nat(vid)), ("size", #Nat(bytes.size()))]);
+        ev<system>("save", caller, [("node", #Nat(n.id)), ("version", #Nat(vid)), ("size", #Nat(bytes.size()))]);
       };
     };
     done(caller, n.id);
@@ -663,7 +664,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     n.name_key := key;
     attach(parent, n);
     touch(n, caller);
-    ev("rename", caller, [("node", #Nat(id))]);
+    ev<system>("rename", caller, [("node", #Nat(id))]);
     done(caller, id);
   };
 
@@ -686,7 +687,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     attach(dest, n);
     touch(dest, caller);
     touch(n, caller);
-    ev("move", caller, [("node", #Nat(id)), ("from", #Nat(from)), ("to", #Nat(new_parent))]);
+    ev<system>("move", caller, [("node", #Nat(id)), ("from", #Nat(from)), ("to", #Nat(new_parent))]);
     done(caller, id);
   };
 
@@ -699,7 +700,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     countTags(t, true);
     n.tags := t;
     touch(n, caller);
-    ev("tags", caller, [("node", #Nat(id)), ("count", #Nat(t.size()))]);
+    ev<system>("tags", caller, [("node", #Nat(id)), ("count", #Nat(t.size()))]);
     done(caller, id);
   };
 
@@ -718,7 +719,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     n.trashed := ?{ at = now; by = caller; root = true };
     trash_roots := natOps.put(trash_roots, n.id, now);
     touch(n, caller);
-    ev("trash", caller, [("node", #Nat(id))]);
+    ev<system>("trash", caller, [("node", #Nat(id))]);
     done(caller, id);
   };
 
@@ -752,7 +753,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     attach(dest, n);
     touch(dest, caller);
     touch(n, caller);
-    ev("restore", caller, [("node", #Nat(id)), ("parent", #Nat(target))]);
+    ev<system>("restore", caller, [("node", #Nat(id)), ("parent", #Nat(target))]);
     done(caller, id);
   };
 
@@ -775,7 +776,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
       case (#ok(_)) {};
     };
     touch(n, caller);
-    ev("version_restore", caller, [("node", #Nat(id)), ("from_version", #Nat(version)), ("version", #Nat(Option.get(n.head, 0))), ("previous", #Nat(Option.get(before, 0)))]);
+    ev<system>("version_restore", caller, [("node", #Nat(id)), ("from_version", #Nat(version)), ("version", #Nat(Option.get(n.head, 0))), ("previous", #Nat(Option.get(before, 0)))]);
     done(caller, id);
   };
 
@@ -784,13 +785,13 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     let n = switch (Map.get(nodes, Map.nhash, id)) { case (?n) n; case null return #err(#not_found) };
     switch (n.trashed) { case (?t) if (not t.root) return #err(#not_in_trash); case null return #err(#not_in_trash) };
     let (p, d) = purgeSubtree(n, PURGE_BATCH);
-    if (d) ev("purge", caller, [("node", #Nat(id)), ("nodes", #Nat(p))]);
+    if (d) ev<system>("purge", caller, [("node", #Nat(id)), ("nodes", #Nat(p))]);
     #ok({ purged = p; done = d });
   };
 
   public shared ({ caller }) func empty_trash() : async Result<PurgeResult> {
     if (not isOwner(caller)) return #err(#forbidden);
-    #ok(purgeTrash(null, PURGE_BATCH, caller));
+    #ok(purgeTrash<system>(null, PURGE_BATCH, caller));
   };
 
   public shared ({ caller }) func purge_versions(id : NodeId, keep_latest : Nat) : async Result<PurgeResult> {
@@ -803,7 +804,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     for (i in Iter.range(0, drop - 1)) deleteVersion(vs[i]);
     n.versions := Array.tabulate<VersionId>(keep, func(i) = vs[i + drop]);
     touch(n, caller);
-    ev("versions_purge", caller, [("node", #Nat(id)), ("count", #Nat(drop))]);
+    ev<system>("versions_purge", caller, [("node", #Nat(id)), ("count", #Nat(drop))]);
     #ok({ purged = drop; done = true });
   };
 
@@ -828,7 +829,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
       };
     };
     touch(l.node, caller);
-    ev("grant", caller, [("node", #Nat(a.node)), ("principal", Icrc3Log.principal(a.principal)), ("role", #Text(roleText(a.role)))]);
+    ev<system>("grant", caller, [("node", #Nat(a.node)), ("principal", Icrc3Log.principal(a.principal)), ("role", #Text(roleText(a.role)))]);
     #ok(grantsOf(a.node));
   };
 
@@ -844,14 +845,14 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
     if (mine.size() == 0) Map.delete(by_grantee, Map.phash, a.principal) else Map.set(by_grantee, Map.phash, a.principal, mine);
     grants_total -= Nat.min(grants_total, 1);
     touch(l.node, caller);
-    ev("revoke", caller, [("node", #Nat(a.node)), ("principal", Icrc3Log.principal(a.principal))]);
+    ev<system>("revoke", caller, [("node", #Nat(a.node)), ("principal", Icrc3Log.principal(a.principal))]);
     #ok(grantsOf(a.node));
   };
 
   public shared ({ caller }) func set_settings(u : SettingsUpdate) : async Result<Settings> {
     if (not isOwner(caller)) return #err(#forbidden);
     settings := applyUpdate(settings, u);
-    ev("settings", caller, [("max_nodes", #Nat(settings.max_nodes)), ("max_versions_per_node", #Nat(settings.max_versions_per_node)), ("max_total_bytes", #Nat(settings.max_total_bytes)), ("keep_versions", #Nat(settings.retention.keep_versions)), ("trash_days", #Nat(settings.retention.trash_days))]);
+    ev<system>("settings", caller, [("max_nodes", #Nat(settings.max_nodes)), ("max_versions_per_node", #Nat(settings.max_versions_per_node)), ("max_total_bytes", #Nat(settings.max_total_bytes)), ("keep_versions", #Nat(settings.retention.keep_versions)), ("trash_days", #Nat(settings.retention.trash_days))]);
     #ok(settings);
   };
 
@@ -871,7 +872,7 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
       case null {};
     };
     Map.delete(by_grantee, Map.phash, p);
-    ev("owner", caller, Array.append<(Text, T3.Value)>([("owner", Icrc3Log.principal(p))], switch old { case (?o) [("previous", Icrc3Log.principal(o))]; case null [] }));
+    ev<system>("owner", caller, Array.append<(Text, T3.Value)>([("owner", Icrc3Log.principal(p))], switch old { case (?o) [("previous", Icrc3Log.principal(o))]; case null [] }));
     #ok(owner);
   };
 
@@ -1225,12 +1226,12 @@ shared (deployer) persistent actor class SneedDrive(init : ?T.InitArgs) = this {
   // ---------------------------------------------------------------------------------------------
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
   func retention_job() : async () {
     let days = settings.retention.trash_days;
     if (days == 0) return;
-    let r = purgeTrash(?(Time.now() - days * DAY_NS), PURGE_BATCH, self());
+    let r = purgeTrash<system>(?(Time.now() - days * DAY_NS), PURGE_BATCH, self());
     if (r.purged > 0) TextLog.add(textlog, #info, TextLog.correlationId(textlog), self(), "Retention: purged " # Nat.toText(r.purged) # " items older than " # Nat.toText(days) # " days" # (if (r.done) "" else " (more next run)"));
   };
   transient var retention_timer : ?Timer.TimerId = null;

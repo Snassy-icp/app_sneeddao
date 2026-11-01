@@ -520,6 +520,16 @@ git archive "$MON_PREIDLE_COMMIT" src | tar -x -C "$PREV_SRC"
 # shellcheck disable=SC2086
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_mon/main.mo" -o "$OUT/sneed_mon_preidle.wasm" 2>&1 | grep -i "error" | head -5 || true
 test -s "$OUT/sneed_mon_preidle.wasm"
+# the ICRC-3 library demo with the library before spill-on-write (main at c80882bd: a recurring
+# 15-minute spill timer in every logging canister), for the fail-before run of
+# icrc3-spill-on-write.test.js (ICRC3_DEMO_WASM=Icrc3Demo_preidle)
+ICRC3_PREIDLE_COMMIT=c80882bd
+echo "== Icrc3Demo at $ICRC3_PREIDLE_COMMIT (moc, Icrc3Demo_preidle)"
+PREV_SRC="$(mktemp -d)"
+git archive "$ICRC3_PREIDLE_COMMIT" src/icrc3 test/canisters/canisters/Icrc3Demo.mo | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" -c $PKGS -o "$OUT/Icrc3Demo_preidle.wasm" "$PREV_SRC/test/canisters/canisters/Icrc3Demo.mo" 2>&1 | grep -i "error" -A5 || true
+test -s "$OUT/Icrc3Demo_preidle.wasm"
 rm -rf "$PREV_SRC"
 echo "== MockSmsBadReply"
 # shellcheck disable=SC2086

@@ -273,8 +273,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
   };
 
-  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+  func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, "sneednames_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
   func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
@@ -315,7 +316,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     case _ false;
   };
 
-  func newAccount(owner : Principal, via : LinkProof, caller : Principal) : Account {
+  func newAccount<system>(owner : Principal, via : LinkProof, caller : Principal) : Account {
     let id = next_account_id;
     next_account_id += 1;
     let t = now64();
@@ -331,7 +332,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
     Map.set(accounts, Map.nhash, id, a);
     Map.set(pid_account, Map.phash, owner, id);
-    block("account_create", caller, [("account", #Nat(id)), ("owner", pv(owner)), ("via", proofValue(via))]);
+    block<system>("account_create", caller, [("account", #Nat(id)), ("owner", pv(owner)), ("via", proofValue(via))]);
     touch(#account(id));
     a;
   };
@@ -351,14 +352,14 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
   };
 
-  func deleteAccount(a : Account, caller : Principal) {
+  func deleteAccount<system>(a : Account, caller : Principal) {
     switch (a.name) { case (?n) NameIndex.remove<NameRef>(index, 0, n); case null {} };
     for (m in a.members.vals()) Map.delete(pid_account, Map.phash, m.principal);
     for (h in a.hotkeys.vals()) dropHotkeyIndex(h, a.id);
     Map.delete(nft_avatars, Map.nhash, a.id);
     Map.delete(nft_avatar_standards, Map.nhash, a.id);
     Map.delete(accounts, Map.nhash, a.id);
-    block("account_delete", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optText("name", a.name)]));
+    block<system>("account_delete", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optText("name", a.name)]));
     touch(#account(a.id));
   };
 
@@ -375,9 +376,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   };
 
   /// An account with nothing left to show (no name, no avatar, at most one member, no hotkeys) is deleted.
-  func collect(a : Account, caller : Principal) {
+  func collect<system>(a : Account, caller : Principal) {
     if (a.members.size() == 0 or (a.name == null and a.avatar == null and nftAvatarOf(a.id) == null and a.members.size() <= 1 and a.hotkeys.size() == 0)) {
-      deleteAccount(a, caller);
+      deleteAccount<system>(a, caller);
     };
   };
 
@@ -393,7 +394,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   };
 
   /// Set (or with "" clear) an account's name. The caller has validated the name and checked it is free.
-  func applyAccountName(a : Account, name : Text, caller : Principal) {
+  func applyAccountName<system>(a : Account, name : Text, caller : Principal) {
     let old = a.name;
     switch old { case (?o) NameIndex.remove<NameRef>(index, 0, o); case null {} };
     if (name == "") a.name := null else {
@@ -403,17 +404,17 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     let cleared = switch (a.verification) { case (?v) v.name != name; case null false };
     if (cleared) a.verification := null;
     a.updated_at := now64();
-    block("name_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optText("old_name", old), optText("name", a.name), (if (cleared) [("verification_cleared", #Nat(1))] else [])]));
+    block<system>("name_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optText("old_name", old), optText("name", a.name), (if (cleared) [("verification_cleared", #Nat(1))] else [])]));
     touch(#account(a.id));
   };
 
-  func applyCanisterName(canister : Principal, name : Text, caller : Principal, setBy : Principal) {
+  func applyCanisterName<system>(canister : Principal, name : Text, caller : Principal, setBy : Principal) {
     switch (Map.get(canisters, Map.phash, canister)) {
       case (?c) {
         NameIndex.remove<NameRef>(index, 0, c.name);
         if (name == "") {
           Map.delete(canisters, Map.phash, canister);
-          block("canister_name_set", caller, [("canister", pv(canister)), ("old_name", #Text(c.name))]);
+          block<system>("canister_name_set", caller, [("canister", pv(canister)), ("old_name", #Text(c.name))]);
         } else {
           let old = c.name;
           NameIndex.add<NameRef>(index, 0, name, #canister(canister));
@@ -425,14 +426,14 @@ shared (deployer) persistent actor class SneedPidNames() = this {
           if (runByCleared) c.run_by := null;
           c.set_by := setBy;
           c.updated_at := now64();
-          block("canister_name_set", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister)), ("old_name", #Text(old)), ("name", #Text(name))], (if (cleared) [("verification_cleared", #Nat(1))] else []), (if (runByCleared) [("run_by_cleared", #Nat(1))] else [])]));
+          block<system>("canister_name_set", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister)), ("old_name", #Text(old)), ("name", #Text(name))], (if (cleared) [("verification_cleared", #Nat(1))] else []), (if (runByCleared) [("run_by_cleared", #Nat(1))] else [])]));
         };
       };
       case null {
         if (name == "") return;
         NameIndex.add<NameRef>(index, 0, name, #canister(canister));
         Map.set<Principal, CanisterName>(canisters, Map.phash, canister, { canister; var name = name; var verification = null; var avatar = null; var run_by = null; var set_by = setBy; var updated_at = now64() });
-        block("canister_name_set", caller, [("canister", pv(canister)), ("name", #Text(name))]);
+        block<system>("canister_name_set", caller, [("canister", pv(canister)), ("name", #Text(name))]);
       };
     };
     touch(#canister(canister));
@@ -629,15 +630,15 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         if (not isOwner(a, caller)) return #err("Only the account's owners can rename it");
         if (name != "" and not nameFree(name, #account(a.id))) return #err("That name is taken");
         if (a.name == (if (name == "") null else ?name)) return #ok("Unchanged");
-        applyAccountName(a, name, caller);
-        if (name == "") collect(a, caller);
+        applyAccountName<system>(a, name, caller);
+        if (name == "") collect<system>(a, caller);
         #ok(if (name == "") "Name cleared" else "Name set");
       };
       case null {
         if (name == "") return #ok("Unchanged");
         if (not nameFree(name, #account(0))) return #err("That name is taken");
-        let a = newAccount(caller, #self_, caller);
-        applyAccountName(a, name, caller);
+        let a = newAccount<system>(caller, #self_, caller);
+        applyAccountName<system>(a, name, caller);
         #ok("Name set");
       };
     };
@@ -656,14 +657,14 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       };
       case null {
         if (avatar == null) return #ok("Unchanged");
-        newAccount(caller, #self_, caller);
+        newAccount<system>(caller, #self_, caller);
       };
     };
     a.avatar := avatar;
     a.updated_at := now64();
-    block("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optAvatar("avatar", avatar)]));
+    block<system>("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optAvatar("avatar", avatar)]));
     touch(#account(a.id));
-    if (avatar == null) collect(a, caller);
+    if (avatar == null) collect<system>(a, caller);
     #ok(if (avatar == null) "Avatar cleared" else "Avatar set");
   };
 
@@ -680,7 +681,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (hotkey == caller) return #err("That is you");
     let a = switch (accountOf(caller)) {
       case (?a) a;
-      case null newAccount(caller, #self_, caller);
+      case null newAccount<system>(caller, #self_, caller);
     };
     if (not isOwner(a, caller)) return #err("Only the account's owners can add hotkeys");
     if (isHotkey(a, hotkey)) return #ok("Already a hotkey");
@@ -689,18 +690,18 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     a.hotkeys := Array.append(a.hotkeys, [hotkey]);
     addHotkeyIndex(hotkey, a.id);
     a.updated_at := now64();
-    block("hotkey_add", caller, [("account", #Nat(a.id)), ("hotkey", pv(hotkey))]);
+    block<system>("hotkey_add", caller, [("account", #Nat(a.id)), ("hotkey", pv(hotkey))]);
     touch(#account(a.id));
     #ok("Hotkey added");
   };
 
-  func dropHotkey(a : Account, hotkey : Principal, caller : Principal) {
+  func dropHotkey<system>(a : Account, hotkey : Principal, caller : Principal) {
     a.hotkeys := Array.filter<Principal>(a.hotkeys, func(h) = h != hotkey);
     dropHotkeyIndex(hotkey, a.id);
     a.updated_at := now64();
-    block("hotkey_remove", caller, [("account", #Nat(a.id)), ("hotkey", pv(hotkey))]);
+    block<system>("hotkey_remove", caller, [("account", #Nat(a.id)), ("hotkey", pv(hotkey))]);
     touch(#account(a.id));
-    collect(a, caller);
+    collect<system>(a, caller);
   };
 
   /// Owners remove a hotkey from their account; a hotkey may remove itself.
@@ -710,7 +711,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     let a = switch (Map.get(accounts, Map.nhash, account)) { case (?a) a; case null return #err("No such account") };
     if (not isOwner(a, caller) and caller != hotkey) return #err("Only the account's owners can remove hotkeys");
     if (not isHotkey(a, hotkey)) return #err("Not a hotkey of this account");
-    dropHotkey(a, hotkey, caller);
+    dropHotkey<system>(a, hotkey, caller);
     #ok("Hotkey removed");
   };
 
@@ -725,7 +726,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     let n = Nat.min(ids.size(), MAX_LEAVE);
     for (id in Array.subArray<AccountId>(ids, 0, n).vals()) {
       switch (Map.get(accounts, Map.nhash, id)) {
-        case (?a) if (isHotkey(a, caller)) dropHotkey(a, caller, caller) else dropHotkeyIndex(caller, id);
+        case (?a) if (isHotkey(a, caller)) dropHotkey<system>(a, caller, caller) else dropHotkeyIndex(caller, id);
         case null dropHotkeyIndex(caller, id);
       };
     };
@@ -779,8 +780,8 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (Map.get(accounts, Map.nhash, account)) {
       case (?a) {
         if (a.name == (if (name == "") null else ?name)) return #ok("Unchanged");
-        applyAccountName(a, name, caller);
-        if (name == "") collect(a, caller);
+        applyAccountName<system>(a, name, caller);
+        if (name == "") collect<system>(a, caller);
         #ok(if (name == "") "Name cleared" else "Name set");
       };
       case null #err("No such account");
@@ -796,9 +797,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (not canManage(a, caller)) return #err("You do not manage this account");
     a.avatar := avatar;
     a.updated_at := now64();
-    block("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optAvatar("avatar", avatar)]));
+    block<system>("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optAvatar("avatar", avatar)]));
     touch(#account(a.id));
-    if (avatar == null) collect(a, caller);
+    if (avatar == null) collect<system>(a, caller);
     #ok(if (avatar == null) "Avatar cleared" else "Avatar set");
   };
 
@@ -843,13 +844,13 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   func nftValue(n : NftAvatar, standard : NftStandard) : T3.Value = #Map([("collection", pv(n.collection)), ("token_id", #Nat(n.token_id)), ("owner", pv(n.owner)), ("standard", #Text(standardText(standard)))]);
 
-  func clearNftAvatar(a : Account, caller : Principal, reason : Text) {
+  func clearNftAvatar<system>(a : Account, caller : Principal, reason : Text) {
     Map.delete(nft_avatars, Map.nhash, a.id);
     Map.delete(nft_avatar_standards, Map.nhash, a.id);
     a.updated_at := now64();
-    block("nft_avatar_set", caller, [("account", #Nat(a.id)), ("reason", #Text(reason))]);
+    block<system>("nft_avatar_set", caller, [("account", #Nat(a.id)), ("reason", #Text(reason))]);
     touch(#account(a.id));
-    collect(a, caller);
+    collect<system>(a, caller);
   };
 
   /// Show an ICRC-7 NFT as your account's avatar (null stops). One of your account's principals
@@ -877,7 +878,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       case null switch (accountOf(caller)) {
         case (?a) {
           if (nftAvatarOf(a.id) == null) return #ok("Unchanged");
-          clearNftAvatar(a, caller, "cleared by owner");
+          clearNftAvatar<system>(a, caller, "cleared by owner");
           return #ok("NFT avatar cleared");
         };
         case null return #ok("Unchanged");
@@ -905,7 +906,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       };
       case null {
         if (not holds(holder, caller)) return #err("You do not own that NFT");
-        (newAccount(caller, #self_, caller), caller);
+        (newAccount<system>(caller, #self_, caller), caller);
       };
     };
     let v : NftAvatar = { collection = n.collection; token_id = n.token_id; owner; set_at = now64() };
@@ -915,7 +916,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       case (#ext) Map.set(nft_avatar_standards, Map.nhash, a.id, "EXT");
     };
     a.updated_at := now64();
-    block("nft_avatar_set", caller, [("account", #Nat(a.id)), ("nft_avatar", nftValue(v, standard))]);
+    block<system>("nft_avatar_set", caller, [("account", #Nat(a.id)), ("nft_avatar", nftValue(v, standard))]);
     touch(#account(a.id));
     #ok("NFT avatar set");
   };
@@ -933,7 +934,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
     if (still) return #ok("Still owned");
     switch (nftAvatarOf(account), Map.get(accounts, Map.nhash, account)) {
-      case (?cur, ?a) if (cur == v and nftStandardOf(account) == standard) clearNftAvatar(a, caller, "no longer owned"); // unless replaced meanwhile
+      case (?cur, ?a) if (cur == v and nftStandardOf(account) == standard) clearNftAvatar<system>(a, caller, "no longer owned"); // unless replaced meanwhile
       case _ {};
     };
     #ok("Cleared: the NFT changed hands");
@@ -951,7 +952,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (not canManage(src, caller)) return #err("You need a hotkey on that account");
     if (memberIn(src, caller) != null) return #err("You are in that account already");
     switch (accountOf(caller)) { case (?a) if (not isOwner(a, caller)) return #err("Only owners can merge into their account"); case null {} };
-    let dst = switch (accountOf(caller)) { case (?a) a; case null newAccount(caller, #self_, caller) };
+    let dst = switch (accountOf(caller)) { case (?a) a; case null newAccount<system>(caller, #self_, caller) };
     if (dst.members.size() + src.members.size() > config.max_members) return #err("Together the accounts would have more than " # Nat.toText(config.max_members) # " principals");
     let takeName = dst.name == null and src.name != null;
     let srcName = src.name;
@@ -959,19 +960,19 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     let moved = src.members;
     // free the source first (its name, principals and hotkeys)
     src.members := [];
-    deleteAccount(src, caller);
+    deleteAccount<system>(src, caller);
     for (m in moved.vals()) {
-      addMember(dst, { principal = m.principal; role = #member; dapp = m.dapp; linked_at = now64(); via = #hotkey }, caller);
+      addMember<system>(dst, { principal = m.principal; role = #member; dapp = m.dapp; linked_at = now64(); via = #hotkey }, caller);
     };
     if (takeName) {
       switch srcName {
         case (?n) if (nameFree(n, #account(dst.id))) {
-          applyAccountName(dst, n, caller);
+          applyAccountName<system>(dst, n, caller);
           switch srcVerification {
             case (?v) if (v.name == n) {
               dst.verification := ?v;
               // the checkmark moves with the name: logged so the log alone replays the state
-              block("verify", caller, [("account", #Nat(dst.id)), ("name", #Text(n)), ("source", sourceValue(v.source)), ("verified_at", Icrc3Log.nat64(v.at)), ("merged_from", #Nat(from))]);
+              block<system>("verify", caller, [("account", #Nat(dst.id)), ("name", #Text(n)), ("source", sourceValue(v.source)), ("verified_at", Icrc3Log.nat64(v.at)), ("merged_from", #Nat(from))]);
             };
             case null {};
           };
@@ -982,20 +983,20 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (dst.avatar == null) switch (src.avatar) {
       case (?av) {
         dst.avatar := ?av;
-        block("avatar_set", caller, [("account", #Nat(dst.id)), ("avatar", avatarValue(av)), ("merged_from", #Nat(from))]);
+        block<system>("avatar_set", caller, [("account", #Nat(dst.id)), ("avatar", avatarValue(av)), ("merged_from", #Nat(from))]);
       };
       case null {};
     };
-    block("account_merge", caller, [("from", #Nat(from)), ("into", #Nat(dst.id)), ("principals", #Nat(moved.size()))]);
+    block<system>("account_merge", caller, [("from", #Nat(from)), ("into", #Nat(dst.id)), ("principals", #Nat(moved.size()))]);
     touch(#account(dst.id));
     #ok("Merged");
   };
 
-  func addMember(a : Account, m : Member, caller : Principal) {
+  func addMember<system>(a : Account, m : Member, caller : Principal) {
     a.members := Array.append(a.members, [m]);
     Map.set(pid_account, Map.phash, m.principal, a.id);
     a.updated_at := now64();
-    block("member_link", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id)), ("principal", pv(m.principal)), ("role", #Text(roleText(m.role))), ("via", proofValue(m.via))], (switch (m.dapp) { case (?d) [("dapp", #Nat(d))]; case null [] })]));
+    block<system>("member_link", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id)), ("principal", pv(m.principal)), ("role", #Text(roleText(m.role))), ("via", proofValue(m.via))], (switch (m.dapp) { case (?d) [("dapp", #Nat(d))]; case null [] })]));
     touch(#account(a.id));
   };
 
@@ -1029,10 +1030,10 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         if (not isOwner(a, caller)) return #err("Only the account's owners can link principals");
         a;
       };
-      case null newAccount(caller, #self_, caller);
+      case null newAccount<system>(caller, #self_, caller);
     };
     if (a.members.size() >= config.max_members) return #err("The account is full");
-    addMember(a, { principal; role = #member; dapp; linked_at = now64(); via = #neuron_stake({ sns_root; neuron_id; memo }) }, caller);
+    addMember<system>(a, { principal; role = #member; dapp; linked_at = now64(); via = #neuron_stake({ sns_root; neuron_id; memo }) }, caller);
     #ok("Linked");
   };
 
@@ -1049,9 +1050,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     a.members := Array.filter<Member>(a.members, func(x) = x.principal != principal);
     Map.delete(pid_account, Map.phash, principal);
     a.updated_at := now64();
-    block("member_unlink", caller, [("account", #Nat(a.id)), ("principal", pv(principal))]);
+    block<system>("member_unlink", caller, [("account", #Nat(a.id)), ("principal", pv(principal))]);
     touch(#account(a.id));
-    collect(a, caller);
+    collect<system>(a, caller);
     #ok(if (principal == caller) "Left the account" else "Removed");
   };
 
@@ -1065,7 +1066,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (m.role == #owner and role == #member and ownerCount(a) == 1) return #err("An account needs an owner");
     a.members := Array.map<Member, Member>(a.members, func(x) = if (x.principal == principal) { { x with role; dapp } } else x);
     a.updated_at := now64();
-    block("member_update", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id)), ("principal", pv(principal)), ("role", #Text(roleText(role)))], (switch dapp { case (?d) [("dapp", #Nat(d))]; case null [] })]));
+    block<system>("member_update", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id)), ("principal", pv(principal)), ("role", #Text(roleText(role)))], (switch dapp { case (?d) [("dapp", #Nat(d))]; case null [] })]));
     touch(#account(a.id));
     #ok("Updated");
   };
@@ -1088,7 +1089,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       switch (await* Moderation.check(config.moderator, caller, name, true)) { case (#err(e)) return #err(e); case (#ok) {} };
       if (not nameFree(name, #canister(canister))) return #err("That name is taken");
     };
-    applyCanisterName(canister, name, caller, caller);
+    applyCanisterName<system>(canister, name, caller, caller);
     #ok(if (name == "") "Name cleared" else "Name set");
   };
 
@@ -1101,7 +1102,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       case (?c) {
         c.avatar := avatar;
         c.updated_at := now64();
-        block("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister))], optAvatar("avatar", avatar)]));
+        block<system>("avatar_set", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister))], optAvatar("avatar", avatar)]));
         touch(#canister(canister));
         #ok("Avatar set");
       };
@@ -1134,7 +1135,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         };
         c.run_by := account;
         c.updated_at := now64();
-        block("canister_run_by", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister))], (switch account { case (?id) [("account", #Nat(id))]; case null [] })]));
+        block<system>("canister_run_by", caller, Array.flatten<(Text, T3.Value)>([[("canister", pv(canister))], (switch account { case (?id) [("account", #Nat(id))]; case null [] })]));
         touch(#canister(canister));
         #ok("Updated");
       };
@@ -1157,14 +1158,14 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
   };
 
-  func applyVerify(ref : NameRef, expected : Text, source : T.VerifySource, caller : Principal) {
+  func applyVerify<system>(ref : NameRef, expected : Text, source : T.VerifySource, caller : Principal) {
     let v : Verification = { name = expected; source; at = now64() };
     switch ref {
       case (#account(id)) switch (Map.get(accounts, Map.nhash, id)) {
         case (?a) {
           a.verification := ?v;
           a.updated_at := now64();
-          block("verify", caller, [("account", #Nat(id)), ("name", #Text(expected)), ("source", sourceValue(source))]);
+          block<system>("verify", caller, [("account", #Nat(id)), ("name", #Text(expected)), ("source", sourceValue(source))]);
           touch(#account(id));
         };
         case null {};
@@ -1173,7 +1174,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         case (?c) {
           c.verification := ?v;
           c.updated_at := now64();
-          block("verify", caller, [("canister", pv(p)), ("name", #Text(expected)), ("source", sourceValue(source))]);
+          block<system>("verify", caller, [("canister", pv(p)), ("name", #Text(expected)), ("source", sourceValue(source))]);
           touch(#canister(p));
         };
         case null {};
@@ -1181,13 +1182,13 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     };
   };
 
-  func applyUnverify(p : Principal, caller : Principal) : Result {
+  func applyUnverify<system>(p : Principal, caller : Principal) : Result {
     switch (accountOf(p)) {
       case (?a) {
         if (a.verification == null) return #err("Not verified");
         a.verification := null;
         a.updated_at := now64();
-        block("unverify", caller, [("account", #Nat(a.id))]);
+        block<system>("unverify", caller, [("account", #Nat(a.id))]);
         touch(#account(a.id));
         return #ok("Unverified");
       };
@@ -1198,7 +1199,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         if (c.verification == null) return #err("Not verified");
         c.verification := null;
         c.updated_at := now64();
-        block("unverify", caller, [("canister", pv(p))]);
+        block<system>("unverify", caller, [("canister", pv(p))]);
         touch(#canister(p));
         #ok("Unverified");
       };
@@ -1210,21 +1211,21 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func verify(principal : Principal, expected_name : Text) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     switch (checkVerify(principal, expected_name)) {
-      case (#ok(ref)) { applyVerify(ref, expected_name, #admin(caller), caller); #ok("Verified") };
+      case (#ok(ref)) { applyVerify<system>(ref, expected_name, #admin(caller), caller); #ok("Verified") };
       case (#err(e)) #err(e);
     };
   };
 
   public shared ({ caller }) func unverify(principal : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    applyUnverify(principal, caller);
+    applyUnverify<system>(principal, caller);
   };
 
   /// Generic nervous system function target: Sneed DAO verifies a name.
   public shared ({ caller }) func verify_by_dao(principal : Principal, expected_name : Text) : async () {
     if (caller != config.dao_governance) Error_trap("Only Sneed DAO governance");
     switch (checkVerify(principal, expected_name)) {
-      case (#ok(ref)) applyVerify(ref, expected_name, #dao, caller);
+      case (#ok(ref)) applyVerify<system>(ref, expected_name, #dao, caller);
       case (#err(e)) Error_trap(e);
     };
   };
@@ -1238,7 +1239,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   public shared ({ caller }) func unverify_by_dao(principal : Principal) : async () {
     if (caller != config.dao_governance) Error_trap("Only Sneed DAO governance");
-    switch (applyUnverify(principal, caller)) { case (#ok _) {}; case (#err(e)) Error_trap(e) };
+    switch (applyUnverify<system>(principal, caller)) { case (#ok _) {}; case (#err(e)) Error_trap(e) };
   };
 
   public query func validate_unverify_by_dao(principal : Principal) : async T.ValidationResult {
@@ -1260,20 +1261,20 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         switch (NameRules.problem(name, 2)) { case (?p) return #err(p); case null {} };
         if (not nameFree(name, #canister(principal))) return #err("That name is taken");
       };
-      applyCanisterName(principal, name, caller, caller);
+      applyCanisterName<system>(principal, name, caller, caller);
       return #ok("Set");
     };
     if (name != "") switch (NameRules.problem(name, 1)) { case (?p) return #err(p); case null {} };
     switch (accountOf(principal)) {
       case (?a) {
         if (name != "" and not nameFree(name, #account(a.id))) return #err("That name is taken");
-        applyAccountName(a, name, caller);
-        if (name == "") collect(a, caller);
+        applyAccountName<system>(a, name, caller);
+        if (name == "") collect<system>(a, caller);
       };
       case null {
         if (name == "") return #ok("Unchanged");
         if (not nameFree(name, #account(0))) return #err("That name is taken");
-        applyAccountName(newAccount(principal, #admin, caller), name, caller);
+        applyAccountName<system>(newAccount<system>(principal, #admin, caller), name, caller);
       };
     };
     #ok("Set");
@@ -1285,9 +1286,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (accountOf(principal)) {
       case (?a) {
         a.avatar := null;
-        block("avatar_set", caller, [("account", #Nat(a.id))]);
+        block<system>("avatar_set", caller, [("account", #Nat(a.id))]);
         touch(#account(a.id));
-        if (nftAvatarOf(a.id) != null) clearNftAvatar(a, caller, "cleared by admin") else collect(a, caller);
+        if (nftAvatarOf(a.id) != null) clearNftAvatar<system>(a, caller, "cleared by admin") else collect<system>(a, caller);
         return #ok("Cleared");
       };
       case null {};
@@ -1295,7 +1296,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (Map.get(canisters, Map.phash, principal)) {
       case (?c) {
         c.avatar := null;
-        block("avatar_set", caller, [("canister", pv(principal))]);
+        block<system>("avatar_set", caller, [("canister", pv(principal))]);
         touch(#canister(principal));
         #ok("Cleared");
       };
@@ -1309,7 +1310,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (c.max_hotkeys > 100) return #err("max_hotkeys must be at most 100");
     if (c.archive_controllers.size() > 10) return #err("At most 10 archive controllers");
     config := c;
-    block("config_update", caller, [("config", #Text(debug_show (c)))]);
+    block<system>("config_update", caller, [("config", #Text(debug_show (c)))]);
     #ok("Config updated");
   };
 
@@ -1324,7 +1325,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       case (#err(e)) #err(e);
       case (#ok(r)) {
         rate_rules := r;
-        block("config_update", caller, [("rate_limit", #Text(action # " " # debug_show (rule)))]);
+        block<system>("config_update", caller, [("rate_limit", #Text(action # " " # debug_show (rule)))]);
         #ok("Rate limit updated");
       };
     };
@@ -1334,14 +1335,14 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
     admins := Array.append(admins, [p]);
-    block("config_update", caller, [("admin_added", pv(p))]);
+    block<system>("config_update", caller, [("admin_added", pv(p))]);
     #ok("Added");
   };
 
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     admins := Array.filter<Principal>(admins, func(a) = a != p);
-    block("config_update", caller, [("admin_removed", pv(p))]);
+    block<system>("config_update", caller, [("admin_removed", pv(p))]);
     #ok("Removed");
   };
 
@@ -1354,10 +1355,13 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (not isAdmin(caller)) Error_trap("Admins only");
     if (import_closed) Error_trap("Import is closed");
     if (items.size() > MAX_BATCH) Error_trap("At most 500 items per call");
-    Array.map<ImportItem, ImportResult>(items, func(it) = { principal = it.principal; result = importOne(it, caller) });
+    // a loop, not Array.map: importOne appends log blocks, which needs the system capability
+    let out = Buffer.Buffer<ImportResult>(items.size());
+    for (it in items.vals()) { out.add({ principal = it.principal; result = importOne<system>(it, caller) }) };
+    Buffer.toArray(out);
   };
 
-  func importOne(it : ImportItem, caller : Principal) : Result {
+  func importOne<system>(it : ImportItem, caller : Principal) : Result {
     if (Principal.isAnonymous(it.principal)) return #err("anonymous");
     let canister = T.isCanisterId(it.principal);
     // an account may come with an avatar and no name (the backend kept avatars apart from names)
@@ -1367,7 +1371,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (canister) {
       if (Map.has(canisters, Map.phash, it.principal)) return #err("already imported");
       if (not nameFree(it.name, #canister(it.principal))) return #err("name taken");
-      applyCanisterName(it.principal, it.name, caller, caller);
+      applyCanisterName<system>(it.principal, it.name, caller, caller);
       switch (Map.get(canisters, Map.phash, it.principal)) {
         case (?c) {
           c.avatar := it.avatar;
@@ -1378,12 +1382,12 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     } else {
       if (Option.isSome(accountOf(it.principal))) return #err("already imported");
       if (not avatarOnly and not nameFree(it.name, #account(0))) return #err("name taken");
-      let a = newAccount(it.principal, #import_, caller);
-      if (not avatarOnly) applyAccountName(a, it.name, caller);
+      let a = newAccount<system>(it.principal, #import_, caller);
+      if (not avatarOnly) applyAccountName<system>(a, it.name, caller);
       a.avatar := it.avatar;
       if (it.verified and not avatarOnly) a.verification := ?{ name = it.name; source = #import_; at = now64() };
     };
-    block("import", caller, Array.flatten<(Text, T3.Value)>([[("principal", pv(it.principal)), ("name", #Text(it.name)), ("verified", #Nat(if (it.verified) 1 else 0))], optAvatar("avatar", it.avatar)]));
+    block<system>("import", caller, Array.flatten<(Text, T3.Value)>([[("principal", pv(it.principal)), ("name", #Text(it.name)), ("verified", #Nat(if (it.verified) 1 else 0))], optAvatar("avatar", it.avatar)]));
     touch(if canister #canister(it.principal) else #account(switch (accountOf(it.principal)) { case (?a) a.id; case null 0 }));
     #ok("imported");
   };
@@ -1392,7 +1396,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func admin_finish_import() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     import_closed := true;
-    block("config_update", caller, [("import_closed", #Nat(1))]);
+    block<system>("config_update", caller, [("import_closed", #Nat(1))]);
     #ok("Import closed");
   };
 
@@ -1412,7 +1416,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (Icrc3Log.applySettings(icrc3, u)) {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
-        for ((key, old, new) in changes.vals()) block("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
+        for ((key, old, new) in changes.vals()) block<system>("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
         #Ok(icrc3.settings);
       };
     };
@@ -1430,7 +1434,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   };
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
   system func postupgrade() {
     Icrc3Log.certify(icrc3);

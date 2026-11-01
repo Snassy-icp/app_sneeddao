@@ -255,8 +255,10 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
     };
   };
 
-  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) : Nat {
-    Icrc3Log.append(icrc3, "sneedproxy_" # btype, nowNs(), Array.append<(Text, T3.Value)>([("caller", pv(caller))], tx));
+  func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) : Nat {
+    let index = Icrc3Log.append(icrc3, "sneedproxy_" # btype, nowNs(), Array.append<(Text, T3.Value)>([("caller", pv(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
+    index;
   };
 
   /// The payload's hash: the ICRC-3 representation-independent hash of its fields, so anyone can
@@ -423,7 +425,7 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
       };
       case _ {};
     };
-    let index = block("forwarded", caller, Buffer.toArray(tx));
+    let index = block<system>("forwarded", caller, Buffer.toArray(tx));
     record({
       block = index;
       ts = now64();
@@ -577,11 +579,11 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
     let diff = switch (checkUpdate(u)) { case (#ok(t)) t; case (#err(e)) Debug.trap(e) };
     for (n in u.names.vals()) {
       Map.set(names, Map.phash, n.canister, n.name);
-      ignore block("canister_named", caller, [("target", pv(n.canister)), ("name", #Text(n.name))]);
+      ignore block<system>("canister_named", caller, [("target", pv(n.canister)), ("name", #Text(n.name))]);
     };
     for ((c, m) in u.remove.vals()) {
       switch (Map.remove(entries, pthash, (c, m))) {
-        case (?old) ignore block("allowlist_removed", caller, [("target", pv(c)), ("method", #Text(m)), ("old_class", #Text(className(old.class_)))]);
+        case (?old) ignore block<system>("allowlist_removed", caller, [("target", pv(c)), ("method", #Text(m)), ("old_class", #Text(className(old.class_)))]);
         case null {};
       };
     };
@@ -597,11 +599,11 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
       tx.add(("reply", #Text(replyName(e.reply))));
       tx.add(("enabled", #Nat(if (e.enabled) 1 else 0)));
       switch (old) { case (?o) tx.add(("old_class", #Text(className(o.class_)))); case null {} };
-      ignore block("allowlist_set", caller, Buffer.toArray(tx));
+      ignore block<system>("allowlist_set", caller, Buffer.toArray(tx));
     };
     for (c in u.remove_names.vals()) {
       Map.delete(names, Map.phash, c);
-      ignore block("canister_named", caller, [("target", pv(c)), ("name", #Text(""))]);
+      ignore block<system>("canister_named", caller, [("target", pv(c)), ("name", #Text(""))]);
     };
     diff;
   };
@@ -614,8 +616,8 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
     if (caller != self()) Debug.trap("Only the proxy itself (through an execute_dapp proposal)");
   };
 
-  func configBlock(key : Text, old : Nat, new : Nat) {
-    ignore block("config", self(), [("key", #Text(key)), ("old", #Nat(old)), ("new", #Nat(new))]);
+  func configBlock<system>(key : Text, old : Nat, new : Nat) {
+    ignore block<system>("config", self(), [("key", #Text(key)), ("old", #Nat(old)), ("new", #Nat(new))]);
   };
 
   public shared ({ caller }) func self_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
@@ -623,7 +625,7 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
     switch (Icrc3Log.applySettings(icrc3, u)) {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
-        for ((key, old, new) in changes.vals()) configBlock(key, old, new);
+        for ((key, old, new) in changes.vals()) configBlock<system>(key, old, new);
         #Ok(icrc3.settings);
       };
     };
@@ -645,7 +647,7 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
     if (n < 1 or n > 100) return #Err("max_in_flight must be 1-100");
     let old = max_in_flight;
     max_in_flight := n;
-    if (old != n) configBlock("max_in_flight", old, n);
+    if (old != n) configBlock<system>("max_in_flight", old, n);
     #Ok(n);
   };
 
@@ -756,7 +758,7 @@ shared (deployer) persistent actor class SneedProxy(init : ?T.InitArgs) = this {
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
 
   func ensure_timers<system>() {
-    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+    Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job);
     if (refresh_timers_started) return;
     refresh_timers_started := true;
     ignore Timer.setTimer<system>(#seconds 0, refreshSnsCanisters);

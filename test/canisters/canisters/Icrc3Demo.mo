@@ -58,10 +58,16 @@ shared ({ caller = deployer }) persistent actor class Icrc3Demo(init : { extra_c
 
   func isAdmin(p : Principal) : Bool { Principal.isController(p) or p == deployer };
 
-  // 4. append
+  // 4. append (the canister's one append helper: the block, then arm the spill if the store is full)
+  func append<system>(btype : Text, tx : [(Text, T3.Value)]) : Nat {
+    let index = Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    Log.armIfNeeded<system>(icrc3, icrc3_rt);
+    index;
+  };
+
   public shared ({ caller }) func record(fields : [(Text, T3.Value)]) : async Nat {
     let tx = Array.append([("cid", #Nat(new_cid()) : T3.Value), ("caller", Log.principal(caller))], fields);
-    Log.append(icrc3, "demo_event", Int.abs(Time.now()), tx);
+    append<system>("demo_event", tx);
   };
 
   /// Append `n` blocks in one call (for filling the live store quickly).
@@ -69,7 +75,7 @@ shared ({ caller = deployer }) persistent actor class Icrc3Demo(init : { extra_c
     var last = 0;
     var i = 0;
     while (i < n) {
-      last := Log.append(icrc3, "demo_event", Int.abs(Time.now()), [("caller", Log.principal(caller)), ("n", #Nat(i))]);
+      last := append<system>("demo_event", [("caller", Log.principal(caller)), ("n", #Nat(i))]);
       i += 1;
     };
     last;
@@ -91,7 +97,7 @@ shared ({ caller = deployer }) persistent actor class Icrc3Demo(init : { extra_c
       case (#Ok(changes)) {
         let cid = new_cid();
         for ((key, old_value, new_value) in changes.vals()) {
-          ignore Log.append(icrc3, "demo_config_update", Int.abs(Time.now()), [("cid", #Nat(cid)), ("caller", Log.principal(caller)), ("key", #Text(key)), ("value", #Nat(new_value)), ("old_value", #Nat(old_value))]);
+          ignore append<system>("demo_config_update", [("cid", #Nat(cid)), ("caller", Log.principal(caller)), ("key", #Text(key)), ("value", #Nat(new_value)), ("old_value", #Nat(old_value))]);
         };
         #Ok(icrc3.settings);
       };
@@ -127,7 +133,11 @@ shared ({ caller = deployer }) persistent actor class Icrc3Demo(init : { extra_c
     ignore await* Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
     ignore await* Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
   };
-  private func ensure_icrc3_timer<system>() { Log.ensureTimer<system>(icrc3_rt, init.timer_seconds, icrc3_timer_job) };
+  // no timer while the store has room: append() arms the spill when it fills; timer_seconds is the
+  // first back-off delay of a spill (or SNS registration) that cannot finish
+  private func ensure_icrc3_timer<system>() {
+    Log.ensureSpillWith<system>(icrc3, icrc3_rt, init.timer_seconds, icrc3_timer_job, func() : Bool { Sns.pending(icrc3_sns, icrc3.archives) });
+  };
   system func postupgrade() { Log.certify(icrc3); ensure_icrc3_timer<system>() };
 
   // ---- test helpers ----

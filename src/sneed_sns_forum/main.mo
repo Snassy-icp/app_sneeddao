@@ -231,7 +231,13 @@ persistent actor SneedSNSForum {
     };
 
     /// Appends one block: `sneedforum_<btype>`, with the calling principal first.
-    func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+    func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+        appendBlock(btype, caller, tx);
+        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
+    };
+    // lib.mo's `log` callback (forum and topic creation, the proposals topic) has no system
+    // capability, so it only appends; the next block() arms the spill if these filled the store
+    func appendBlock(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
         ignore Icrc3Log.append(icrc3, "sneedforum_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
     };
 
@@ -279,7 +285,7 @@ persistent actor SneedSNSForum {
         user_posts = stable_user_posts;
         user_threads = stable_user_threads;
         user_reply_inbox = stable_user_reply_inbox;
-        log = block;
+        log = appendBlock;
     };
 
 
@@ -354,7 +360,7 @@ persistent actor SneedSNSForum {
             case (#ok rules) stable_rate_rules := rules;
         };
         let new = rateRule(action);
-        if (old != new) configBlock(caller, "rate_limit." # action, rateValue(old), rateValue(new));
+        if (old != new) configBlock<system>(caller, "rate_limit." # action, rateValue(old), rateValue(new));
         #ok
     };
 
@@ -370,7 +376,7 @@ persistent actor SneedSNSForum {
         if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admin access required"));
         let was = Map.has(stable_rate_exempt, Map.phash, principal);
         if (exempt) Map.set(stable_rate_exempt, Map.phash, principal, ()) else Map.delete(stable_rate_exempt, Map.phash, principal);
-        if (was != exempt) block("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", pv(principal)),
+        if (was != exempt) block<system>("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", pv(principal)),
             ("old_value", #Nat(if was 1 else 0)), ("value", #Nat(if exempt 1 else 0))]);
         #ok
     };
@@ -378,13 +384,13 @@ persistent actor SneedSNSForum {
     // Admin management endpoints
     public shared ({ caller }) func add_admin(new_admin: Principal) : async T.Result<(), T.ForumError> {
         let r = Lib.add_admin(state, caller, new_admin);
-        switch (r) { case (#ok) block("admin_add", caller, [("principal", pv(new_admin))]); case _ {} };
+        switch (r) { case (#ok) block<system>("admin_add", caller, [("principal", pv(new_admin))]); case _ {} };
         r
     };
 
     public shared ({ caller }) func remove_admin(admin_to_remove: Principal) : async T.Result<(), T.ForumError> {
         let r = Lib.remove_admin(state, caller, admin_to_remove);
-        switch (r) { case (#ok) block("admin_remove", caller, [("principal", pv(admin_to_remove))]); case _ {} };
+        switch (r) { case (#ok) block<system>("admin_remove", caller, [("principal", pv(admin_to_remove))]); case _ {} };
         r
     };
 
@@ -404,7 +410,7 @@ persistent actor SneedSNSForum {
     public shared ({ caller }) func update_forum(id: Nat, input: T.CreateForumInput) : async T.Result<(), T.ForumError> {
         let r = Lib.update_forum(state, caller, id, input);
         switch (r, Map.get(state.forums, Map.nhash, id)) {
-            case (#ok, ?f) block("forum_update", caller, cat([[("forum_id", #Nat(id)), ("title", #Text(f.title))],
+            case (#ok, ?f) block<system>("forum_update", caller, cat([[("forum_id", #Nat(id)), ("title", #Text(f.title))],
                 switch (f.sns_root_canister_id) { case (?root) [("sns_root", pv(root))]; case null [] }]));
             case _ {};
         };
@@ -434,7 +440,7 @@ persistent actor SneedSNSForum {
         let old_parent = switch (Map.get(state.topics, Map.nhash, id)) { case (?t) t.parent_topic_id; case null null };
         let r = Lib.update_topic(state, caller, id, input);
         switch (r, Map.get(state.topics, Map.nhash, id)) {
-            case (#ok, ?t) block("topic_update", caller, cat([[("topic_id", #Nat(id)), ("forum_id", #Nat(t.forum_id)), ("title", #Text(t.title))],
+            case (#ok, ?t) block<system>("topic_update", caller, cat([[("topic_id", #Nat(id)), ("forum_id", #Nat(t.forum_id)), ("title", #Text(t.title))],
                 optNat("parent_topic_id", t.parent_topic_id), if (old_parent != t.parent_topic_id) optNat("old_parent_topic_id", old_parent) else []]));
             case _ {};
         };
@@ -501,7 +507,7 @@ persistent actor SneedSNSForum {
         let before = Map.get(state.threads, Map.nhash, id);
         let r = Lib.update_thread(state, caller, id, title, body, body_max_override);
         switch (r, before) {
-            case (#ok, ?old) logEdit(caller, "thread", id, old.created_by, old.title, old.body, title, body);
+            case (#ok, ?old) logEdit<system>(caller, "thread", id, old.created_by, old.title, old.body, title, body);
             case _ {};
         };
         switch (r) { case (#ok) { let m = recordMentions(caller, id, null, body); await* notifyMentions(id, null, body, m) }; case _ {} };
@@ -592,7 +598,7 @@ persistent actor SneedSNSForum {
         let before = Map.get(state.posts, Map.nhash, id);
         let r = Lib.update_post(state, caller, id, title, body, body_max_override);
         switch (r, before) {
-            case (#ok, ?old) logEdit(caller, "post", id, old.created_by, old.title, old.body, title, body);
+            case (#ok, ?old) logEdit<system>(caller, "post", id, old.created_by, old.title, old.body, title, body);
             case _ {};
         };
         switch (r, Map.get(state.posts, Map.nhash, id)) {
@@ -751,7 +757,7 @@ persistent actor SneedSNSForum {
             case (#unchecked reason) recordTip(caller, input, #unchecked, ?reason, ?key);
             case (#verified) {
                 let r = recordTip(caller, input, #verified, null, ?key);
-                switch (r) { case (#ok id) logTip("tip", caller, id, []); case _ {} };
+                switch (r) { case (#ok id) logTip<system>("tip", caller, id, []); case _ {} };
                 switch (r) {
                     case (#ok _) if (to_principal != caller) await* sendNotifications([{
                         user = to_principal; topic = "tip"; title = "Your post got a tip"; body = "Someone tipped your post in " # threadName(post.thread_id) # ".";
@@ -777,10 +783,10 @@ persistent actor SneedSNSForum {
     };
 
     /// A tip block: the tip as recorded, the ledger block that backs it and `extra` fields.
-    func logTip(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
+    func logTip<system>(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
         let ?tip = Map.get(state.tips, Map.nhash, tip_id) else return;
         let who = func(i : Nat32) : T3.Value = switch (authorOf(i)) { case (?p) pv(p); case null #Text("unknown") };
-        block(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
+        block<system>(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
             ("post_id", #Nat(tip.post_id)), ("thread_id", #Nat(tip.thread_id)), ("ledger", pv(tip.token_ledger_principal)), ("amount", #Nat(tip.amount))],
             optNat("ledger_block", tip.transaction_block_index), extra]));
     };
@@ -798,22 +804,22 @@ persistent actor SneedSNSForum {
             case (?{ status = #rejected }) return #ok(false);
             case _ {};
         };
-        let set = func(status : T.TipCheckStatus, note : ?Text) {
+        func set<system>(status : T.TipCheckStatus, note : ?Text) {
             Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() });
             switch (status, note) {
-                case (#verified, _) logTip("tip_verified", caller, tip_id, []);
-                case (#rejected, ?reason) logTip("tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
+                case (#verified, _) logTip<system>("tip_verified", caller, tip_id, []);
+                case (#rejected, ?reason) logTip<system>("tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
                 case _ {};
             };
         };
-        let ?block = tip.transaction_block_index else { set(#unchecked, ?"No block index was given"); return #ok(false) };
+        let ?block = tip.transaction_block_index else { set<system>(#unchecked, ?"No block index was given"); return #ok(false) };
         let (?from, ?to) = (authorOf(tip.from_principal), authorOf(tip.to_principal)) else return #err(#InternalError("Unknown principal index"));
         let post_author = switch (Map.get(state.posts, Map.nhash, tip.post_id)) { case (?p) authorOf(p.created_by); case null null };
-        if (post_author != ?to) { set(#rejected, ?"The recipient is not the post's author"); return #ok(false) };
+        if (post_author != ?to) { set<system>(#rejected, ?"The recipient is not the post's author"); return #ok(false) };
         let key = TipVerify.blockKey(tip.token_ledger_principal, block);
         switch (Map.get(stable_tip_blocks, Map.thash, key)) {
             case (?other) if (other != tip_id) {
-                set(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
+                set<system>(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
                 return #ok(false);
             };
             case _ {};
@@ -825,15 +831,15 @@ persistent actor SneedSNSForum {
         // another tip may have claimed the block while we waited
         switch (Map.get(stable_tip_blocks, Map.thash, key)) {
             case (?other) if (other != tip_id) {
-                set(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
+                set<system>(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
                 return #ok(false);
             };
             case _ {};
         };
         switch (outcome) {
-            case (#verified) { set(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
-            case (#rejected reason) { set(#rejected, ?reason); #ok(false) };
-            case (#unchecked reason) { set(#unchecked, ?reason); #ok(false) };
+            case (#verified) { set<system>(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
+            case (#rejected reason) { set<system>(#rejected, ?reason); #ok(false) };
+            case (#unchecked reason) { set<system>(#unchecked, ?reason); #ok(false) };
         };
     };
 
@@ -1021,7 +1027,7 @@ persistent actor SneedSNSForum {
         if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admins only"));
         let old = stable_notifications;
         stable_notifications := canister;
-        if (old != canister) configBlock(caller, "notifications_canister", optPrincipal(old), optPrincipal(canister));
+        if (old != canister) configBlock<system>(caller, "notifications_canister", optPrincipal(old), optPrincipal(canister));
         #ok();
     };
 
@@ -1124,21 +1130,21 @@ persistent actor SneedSNSForum {
 
     /// An edit of someone else's thread or post (only admins can): hashes of the texts before and
     /// after, never the texts. Authors editing their own content are not logged.
-    func logEdit(caller : Principal, kind : Text, id : Nat, author : Nat32, old_title : ?Text, old_body : Text, title : ?Text, body : Text) {
+    func logEdit<system>(caller : Principal, kind : Text, id : Nat, author : Nat32, old_title : ?Text, old_body : Text, title : ?Text, body : Text) {
         if (isAuthor(caller, author)) return;
-        block("edit", caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))),
+        block<system>("edit", caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))),
             ("old_body_sha256", sha(old_body)), ("body_sha256", sha(body))], optSha("old_title_sha256", old_title), optSha("title_sha256", title)]));
     };
 
     /// A delete or undelete that changed the item's state. Forums and topics are always logged;
     /// threads and posts with their author and the hashes of their texts, a delete only when the
     /// caller is not the author (a moderator's act, not the author's own retraction).
-    func logModeration(btype : Text, caller : Principal, kind : Text, id : Nat, content : ?(Nat32, ?Text, Text)) {
+    func logModeration<system>(btype : Text, caller : Principal, kind : Text, id : Nat, content : ?(Nat32, ?Text, Text)) {
         switch (content) {
-            case null block(btype, caller, [("kind", #Text(kind)), ("id", #Nat(id))]);
+            case null block<system>(btype, caller, [("kind", #Text(kind)), ("id", #Nat(id))]);
             case (?(author, title, body)) {
                 if (btype == "delete" and isAuthor(caller, author)) return;
-                block(btype, caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))), ("body_sha256", sha(body))], optSha("title_sha256", title)]));
+                block<system>(btype, caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))), ("body_sha256", sha(body))], optSha("title_sha256", title)]));
             };
         };
     };
@@ -1149,16 +1155,16 @@ persistent actor SneedSNSForum {
     func postContent(id : Nat) : ?(Bool, (Nat32, ?Text, Text)) = switch (Map.get(state.posts, Map.nhash, id)) { case (?p) ?(p.deleted, (p.created_by, p.title, p.body)); case null null };
 
     /// Runs a delete (`to` = true) or undelete of a forum or topic and logs it when the flag changed.
-    func structureFlag(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?Bool, r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
+    func structureFlag<system>(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?Bool, r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
         switch (r, was) {
-            case (#ok, ?w) if (w != to) logModeration(if to "delete" else "undelete", caller, kind, id, null);
+            case (#ok, ?w) if (w != to) logModeration<system>(if to "delete" else "undelete", caller, kind, id, null);
             case _ {};
         };
         r
     };
-    func contentFlag(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?(Bool, (Nat32, ?Text, Text)), r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
+    func contentFlag<system>(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?(Bool, (Nat32, ?Text, Text)), r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
         switch (r, was) {
-            case (#ok, ?(w, content)) if (w != to) logModeration(if to "delete" else "undelete", caller, kind, id, ?content);
+            case (#ok, ?(w, content)) if (w != to) logModeration<system>(if to "delete" else "undelete", caller, kind, id, ?content);
             case _ {};
         };
         r
@@ -1167,43 +1173,43 @@ persistent actor SneedSNSForum {
     // Admin delete endpoints
     public shared ({ caller }) func delete_forum(id: Nat) : async T.Result<(), T.ForumError> {
         let was = forumDeleted(id);
-        structureFlag(caller, "forum", id, true, was, Lib.soft_delete_forum(state, caller, id))
+        structureFlag<system>(caller, "forum", id, true, was, Lib.soft_delete_forum(state, caller, id))
     };
 
     public shared ({ caller }) func delete_topic(id: Nat) : async T.Result<(), T.ForumError> {
         let was = topicDeleted(id);
-        structureFlag(caller, "topic", id, true, was, Lib.soft_delete_topic(state, caller, id))
+        structureFlag<system>(caller, "topic", id, true, was, Lib.soft_delete_topic(state, caller, id))
     };
 
     public shared ({ caller }) func delete_thread(id: Nat) : async T.Result<(), T.ForumError> {
         let was = threadContent(id);
-        contentFlag(caller, "thread", id, true, was, Lib.soft_delete_thread(state, caller, id))
+        contentFlag<system>(caller, "thread", id, true, was, Lib.soft_delete_thread(state, caller, id))
     };
 
     public shared ({ caller }) func delete_post(id: Nat) : async T.Result<(), T.ForumError> {
         let was = postContent(id);
-        contentFlag(caller, "post", id, true, was, Lib.soft_delete_post(state, caller, id))
+        contentFlag<system>(caller, "post", id, true, was, Lib.soft_delete_post(state, caller, id))
     };
 
     // Admin undelete endpoints
     public shared ({ caller }) func undelete_forum(id: Nat) : async T.Result<(), T.ForumError> {
         let was = forumDeleted(id);
-        structureFlag(caller, "forum", id, false, was, Lib.undelete_forum(state, caller, id))
+        structureFlag<system>(caller, "forum", id, false, was, Lib.undelete_forum(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_topic(id: Nat) : async T.Result<(), T.ForumError> {
         let was = topicDeleted(id);
-        structureFlag(caller, "topic", id, false, was, Lib.undelete_topic(state, caller, id))
+        structureFlag<system>(caller, "topic", id, false, was, Lib.undelete_topic(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_thread(id: Nat) : async T.Result<(), T.ForumError> {
         let was = threadContent(id);
-        contentFlag(caller, "thread", id, false, was, Lib.undelete_thread(state, caller, id))
+        contentFlag<system>(caller, "thread", id, false, was, Lib.undelete_thread(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_post(id: Nat) : async T.Result<(), T.ForumError> {
         let was = postContent(id);
-        contentFlag(caller, "post", id, false, was, Lib.undelete_post(state, caller, id))
+        contentFlag<system>(caller, "post", id, false, was, Lib.undelete_post(state, caller, id))
     };
 
     // Admin query functions that show deleted items
@@ -1276,8 +1282,8 @@ persistent actor SneedSNSForum {
         let old = Map.get(state.proposal_topics, Map.nhash, input.forum_id);
         let r = Lib.set_proposals_topic(state, caller, input);
         switch (r, old) {
-            case (#ok, ?o) if (o.proposals_topic_id != input.topic_id) block("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
-            case (#ok, null) block("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id))]);
+            case (#ok, ?o) if (o.proposals_topic_id != input.topic_id) block<system>("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
+            case (#ok, null) block<system>("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id))]);
             case _ {};
         };
         r
@@ -1296,7 +1302,7 @@ persistent actor SneedSNSForum {
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create proposal threads"));
         };
-        logProposalThread(caller, input, Lib.create_proposal_thread(state, caller, input))
+        logProposalThread<system>(caller, input, Lib.create_proposal_thread(state, caller, input))
     };
 
     public shared ({ caller }) func create_proposal_thread_with_auto_setup(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
@@ -1315,7 +1321,7 @@ persistent actor SneedSNSForum {
             Map.delete(pending_sns_setups, Map.thash, key);
         };
         sns_cache := updated_cache;
-        logProposalThread(caller, input, result)
+        logProposalThread<system>(caller, input, result)
     };
 
     // Create forum with governance and proposals topics for an SNS
@@ -1354,18 +1360,18 @@ persistent actor SneedSNSForum {
         let old = Map.get(state.proposal_topics, Map.nhash, forum_id);
         let r = Lib.remove_proposals_topic(state, caller, forum_id);
         switch (r, old) {
-            case (#ok, ?o) block("proposals_topic_remove", caller, [("forum_id", #Nat(forum_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
+            case (#ok, ?o) block<system>("proposals_topic_remove", caller, [("forum_id", #Nat(forum_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
             case _ {};
         };
         r
     };
 
     /// A proposal's discussion thread was created (the thread's text is standard: forum title and proposal id).
-    func logProposalThread(caller : Principal, input : T.CreateProposalThreadInput, r : T.Result<Nat, T.ForumError>) : T.Result<Nat, T.ForumError> {
+    func logProposalThread<system>(caller : Principal, input : T.CreateProposalThreadInput, r : T.Result<Nat, T.ForumError>) : T.Result<Nat, T.ForumError> {
         switch (r) {
             case (#ok thread_id) {
                 let topic = switch (Map.get(state.threads, Map.nhash, thread_id)) { case (?t) optNat("topic_id", ?t.topic_id); case null [] };
-                block("proposal_thread_create", caller, cat([[("thread_id", #Nat(thread_id)), ("sns_root", pv(input.sns_root_canister_id)), ("proposal_id", #Nat(input.proposal_id))], topic]));
+                block<system>("proposal_thread_create", caller, cat([[("thread_id", #Nat(thread_id)), ("sns_root", pv(input.sns_root_canister_id)), ("proposal_id", #Nat(input.proposal_id))], topic]));
             };
             case _ {};
         };
@@ -1402,7 +1408,7 @@ persistent actor SneedSNSForum {
                     ("topic_description_max_length", o.topic_description_max_length, n.topic_description_max_length),
                     ("forum_title_max_length", o.forum_title_max_length, n.forum_title_max_length),
                     ("forum_description_max_length", o.forum_description_max_length, n.forum_description_max_length),
-                ].vals()) if (a != b) configBlock(caller, key, #Nat(a), #Nat(b));
+                ].vals()) if (a != b) configBlock<system>(caller, key, #Nat(a), #Nat(b));
             };
             case _ {};
         };
@@ -1410,8 +1416,8 @@ persistent actor SneedSNSForum {
     };
 
     /// A setting changed: its key, the old and the new value.
-    func configBlock(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
-        block("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
+    func configBlock<system>(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
+        block<system>("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
     };
     
     // Premium configuration management endpoints
@@ -1445,9 +1451,9 @@ persistent actor SneedSNSForum {
         // Sync to stable storage
         stable_premium_config := state.premium_config;
         let n = state.premium_config;
-        if (o.sneed_premium_canister_id != n.sneed_premium_canister_id) configBlock(caller, "sneed_premium_canister_id", optPrincipal(o.sneed_premium_canister_id), optPrincipal(n.sneed_premium_canister_id));
-        if (o.premium_post_body_max_length != n.premium_post_body_max_length) configBlock(caller, "premium_post_body_max_length", #Nat(o.premium_post_body_max_length), #Nat(n.premium_post_body_max_length));
-        if (o.premium_thread_body_max_length != n.premium_thread_body_max_length) configBlock(caller, "premium_thread_body_max_length", #Nat(o.premium_thread_body_max_length), #Nat(n.premium_thread_body_max_length));
+        if (o.sneed_premium_canister_id != n.sneed_premium_canister_id) configBlock<system>(caller, "sneed_premium_canister_id", optPrincipal(o.sneed_premium_canister_id), optPrincipal(n.sneed_premium_canister_id));
+        if (o.premium_post_body_max_length != n.premium_post_body_max_length) configBlock<system>(caller, "premium_post_body_max_length", #Nat(o.premium_post_body_max_length), #Nat(n.premium_post_body_max_length));
+        if (o.premium_thread_body_max_length != n.premium_thread_body_max_length) configBlock<system>(caller, "premium_thread_body_max_length", #Nat(o.premium_thread_body_max_length), #Nat(n.premium_thread_body_max_length));
         
         #ok(())
     };
@@ -1499,7 +1505,7 @@ persistent actor SneedSNSForum {
         switch (Icrc3Log.applySettings(icrc3, u)) {
             case (#Err(e)) #Err(e);
             case (#Ok(changes)) {
-                for ((key, old, new) in changes.vals()) configBlock(caller, key, #Nat(old), #Nat(new));
+                for ((key, old, new) in changes.vals()) configBlock<system>(caller, key, #Nat(old), #Nat(new));
                 #Ok(icrc3.settings);
             };
         };
@@ -1523,7 +1529,7 @@ persistent actor SneedSNSForum {
     };
 
     func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-    func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+    func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
     system func postupgrade() {
         Icrc3Log.certify(icrc3);
@@ -1846,10 +1852,10 @@ persistent actor SneedSNSForum {
         #ok(id)
     };
 
-    func logThreadTip(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
+    func logThreadTip<system>(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
         let ?tip = Map.get(stable_thread_level_tips, Map.nhash, tip_id) else return;
         let who = func(i : Nat32) : T3.Value = switch (authorOf(i)) { case (?p) pv(p); case null #Text("unknown") };
-        block(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
+        block<system>(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
             ("thread_id", #Nat(tip.thread_id)), ("ledger", pv(tip.token_ledger_principal)), ("amount", #Nat(tip.amount))],
             optNat("ledger_block", tip.transaction_block_index), extra]));
     };
@@ -1884,7 +1890,7 @@ persistent actor SneedSNSForum {
             case (#unchecked reason) recordThreadTip(caller, to_principal, thread_id, token_ledger_principal, amount, ?blk, #unchecked, ?reason, ?key);
             case (#verified) {
                 let r = recordThreadTip(caller, to_principal, thread_id, token_ledger_principal, amount, ?blk, #verified, null, ?key);
-                switch (r) { case (#ok id) logThreadTip("thread_tip", caller, id, []); case _ {} };
+                switch (r) { case (#ok id) logThreadTip<system>("thread_tip", caller, id, []); case _ {} };
                 if (to_principal != caller) await* sendNotifications([{
                     user = to_principal; topic = "tip"; title = "Your thread got a tip"; body = "Someone tipped your thread " # threadName(thread_id) # ".";
                     link = ?threadLink(thread_id); dedupe = null; sponsored = false }]);
@@ -1903,28 +1909,28 @@ persistent actor SneedSNSForum {
             case (?{ status = #rejected }) return #ok(false);
             case _ {};
         };
-        let set = func(status : T.TipCheckStatus, note : ?Text) {
+        func set<system>(status : T.TipCheckStatus, note : ?Text) {
             Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() });
             switch (status, note) {
-                case (#verified, _) logThreadTip("thread_tip_verified", caller, tip_id, []);
-                case (#rejected, ?reason) logThreadTip("thread_tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
+                case (#verified, _) logThreadTip<system>("thread_tip_verified", caller, tip_id, []);
+                case (#rejected, ?reason) logThreadTip<system>("thread_tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
                 case _ {};
             };
         };
-        let ?blk = tip.transaction_block_index else { set(#unchecked, ?"No block index was given"); return #ok(false) };
+        let ?blk = tip.transaction_block_index else { set<system>(#unchecked, ?"No block index was given"); return #ok(false) };
         let (?from, ?to) = (authorOf(tip.from_principal), authorOf(tip.to_principal)) else return #err(#InternalError("Unknown principal index"));
         let key = TipVerify.blockKey(tip.token_ledger_principal, blk);
         let claimedElsewhere = func() : Bool = switch (Map.get(stable_tip_blocks, Map.thash, key)) { case (?other) other != tip_id; case null false };
-        if (claimedElsewhere()) { set(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
+        if (claimedElsewhere()) { set<system>(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
         if (Map.has(pending_tip_blocks, Map.thash, key)) return #err(#AlreadyExists("This tip's block is being checked by another call"));
         Map.set(pending_tip_blocks, Map.thash, key, ());
         let outcome = await* TipVerify.verify(tip.token_ledger_principal, blk, from, to, tip.amount);
         Map.delete(pending_tip_blocks, Map.thash, key);
-        if (claimedElsewhere()) { set(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
+        if (claimedElsewhere()) { set<system>(#rejected, ?("Block " # Nat.toText(blk) # " of this ledger is the transfer of another tip")); return #ok(false) };
         switch (outcome) {
-            case (#verified) { set(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
-            case (#rejected reason) { set(#rejected, ?reason); #ok(false) };
-            case (#unchecked reason) { set(#unchecked, ?reason); #ok(false) };
+            case (#verified) { set<system>(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
+            case (#rejected reason) { set<system>(#rejected, ?reason); #ok(false) };
+            case (#unchecked reason) { set<system>(#unchecked, ?reason); #ok(false) };
         };
     };
 

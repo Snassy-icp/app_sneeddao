@@ -112,6 +112,20 @@ module {
     { governance = env.governance; neuron = state.neuron; registrations = state.registrations };
   };
 
+  /// Whether `registerMissing` would submit something: a neuron is configured
+  /// and an archive has no proposal yet with attempts left. Pass it to
+  /// `Log.ensureSpillWith` so failed submissions are retried with back-off.
+  public func pending(state : State, archives : [T.ArchiveInfo]) : Bool {
+    if (state.neuron == null) { return false };
+    for (a in archives.vals()) {
+      switch (Array.find<Registration>(state.registrations, func(r) { r.canister_id == a.canister_id })) {
+        case null { return true };
+        case (?r) { if (r.proposal_id == null and r.attempts < MAX_ATTEMPTS) { return true } };
+      };
+    };
+    false;
+  };
+
   /// Make sure every archive has a registration entry (in archive order).
   func sync(state : State, archives : [T.ArchiveInfo]) {
     for (a in archives.vals()) {

@@ -51,11 +51,12 @@ block types, listed below with the original catalogue.
 - **Append** happens synchronously inside the update call that performed the action,
   after the state change is committed to local state. No cross-canister call is
   involved, so a block can never be lost or reordered relative to the action.
-- **Spill** is a separate background step: a recurring timer (every 15 minutes)
-  checks the live store and moves the oldest blocks to the newest archive in batched
-  calls, forgetting them locally only once the archive has acknowledged. An admin can
-  run the same routine on demand. The timer keeps the user's own call free of any
-  cross-canister work and of the system capability the timer API needs.
+- **Spill** is a separate background step: the append that fills the live store
+  arms a one-shot timer, whose job moves the oldest blocks to the newest archive in
+  batched calls, forgetting them locally only once the archive has acknowledged. An
+  admin can run the same routine on demand. The timer keeps the user's own call free
+  of any cross-canister work; the append helper needs the system capability to arm it.
+  (Until 2026-11 a recurring 15-minute timer did this check, burning cycles while idle.)
 - **Archives** are instances of an actor class compiled into `sneed_lock`, created by
   `sneed_lock` with a cycle grant, controlled by `sneed_lock` and SNS root. They store
   encoded blocks in stable memory `Region`s, so their capacity is the canister's
@@ -297,7 +298,9 @@ Settings (defaults): `max_live_blocks = 2000`, `spill_batch_size = 500`,
 the canister creation fee (0.5 T on 13-node subnets) out of the initial grant, so a
 new archive starts with about 1 T.
 
-1. A recurring timer (every 15 minutes, restarted in `postupgrade`) runs `spill()`.
+1. A one-shot timer runs `spill()` when an append fills the live store (and after
+   an install or upgrade that finds it full); a run that moves nothing retries after
+   15 minutes, then with a doubling back-off of at most a day.
    `admin_icrc3_spill_now` runs the same function with `force`, which moves every
    live block regardless of the threshold (useful for tests and before upgrades).
 2. `spill()` returns immediately if a spill is in flight (transient flag) or the live

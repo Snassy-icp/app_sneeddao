@@ -191,20 +191,21 @@ persistent actor SneedSMS {
     };
 
     /// Appends one block: `sneedsms_<btype>`, with the calling principal first.
-    func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+    func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
         ignore Icrc3Log.append(icrc3, "sneedsms_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
     };
 
     /// A setting changed: its key, the old and the new value.
-    func configBlock(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
-        block("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
+    func configBlock<system>(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
+        block<system>("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
     };
-    func natChange(caller : Principal, key : Text, old : Nat, value : Nat) {
-        if (old != value) configBlock(caller, key, #Nat(old), #Nat(value));
+    func natChange<system>(caller : Principal, key : Text, old : Nat, value : Nat) {
+        if (old != value) configBlock<system>(caller, key, #Nat(old), #Nat(value));
     };
     func optPrincipal(p : ?Principal) : T3.Value = switch p { case (?x) Icrc3Log.principal(x); case null #Text("none") };
-    func principalChange(caller : Principal, key : Text, old : ?Principal, value : ?Principal) {
-        if (old != value) configBlock(caller, key, optPrincipal(old), optPrincipal(value));
+    func principalChange<system>(caller : Principal, key : Text, old : ?Principal, value : ?Principal) {
+        if (old != value) configBlock<system>(caller, key, optPrincipal(old), optPrincipal(value));
     };
 
     // Runtime config (mutable wrapper around stable values)
@@ -490,7 +491,7 @@ persistent actor SneedSMS {
         };
 
         Vector.add(state.admins, admin_info);
-        block("admin_add", caller, [("principal", Icrc3Log.principal(new_admin))]);
+        block<system>("admin_add", caller, [("principal", Icrc3Log.principal(new_admin))]);
         #ok()
     };
 
@@ -526,7 +527,7 @@ persistent actor SneedSMS {
         for (admin in Vector.vals(new_admins)) {
             Vector.add(state.admins, admin);
         };
-        block("admin_remove", caller, [("principal", Icrc3Log.principal(admin_to_remove))]);
+        block<system>("admin_remove", caller, [("principal", Icrc3Log.principal(admin_to_remove))]);
 
         #ok()
     };
@@ -568,10 +569,10 @@ persistent actor SneedSMS {
             case (?count) state.config.max_recipients := count;
             case null {};
         };
-        natChange(caller, "rate_limit_minutes", o.rate, state.config.rate_limit_minutes);
-        natChange(caller, "max_subject_length", o.subject, state.config.max_subject_length);
-        natChange(caller, "max_body_length", o.body, state.config.max_body_length);
-        natChange(caller, "max_recipients", o.recipients, state.config.max_recipients);
+        natChange<system>(caller, "rate_limit_minutes", o.rate, state.config.rate_limit_minutes);
+        natChange<system>(caller, "max_subject_length", o.subject, state.config.max_subject_length);
+        natChange<system>(caller, "max_body_length", o.body, state.config.max_body_length);
+        natChange<system>(caller, "max_recipients", o.recipients, state.config.max_recipients);
 
         #ok()
     };
@@ -640,11 +641,11 @@ persistent actor SneedSMS {
             case (?count) stable_premium_max_recipients := count;
             case null {};
         };
-        principalChange(caller, "sneed_premium_canister_id", o.id, stable_sneed_premium_canister_id);
-        natChange(caller, "premium_max_subject_length", o.subject, stable_premium_max_subject_length);
-        natChange(caller, "premium_max_body_length", o.body, stable_premium_max_body_length);
-        natChange(caller, "premium_rate_limit_minutes", o.rate, stable_premium_rate_limit_minutes);
-        natChange(caller, "premium_max_recipients", o.recipients, stable_premium_max_recipients);
+        principalChange<system>(caller, "sneed_premium_canister_id", o.id, stable_sneed_premium_canister_id);
+        natChange<system>(caller, "premium_max_subject_length", o.subject, stable_premium_max_subject_length);
+        natChange<system>(caller, "premium_max_body_length", o.body, stable_premium_max_body_length);
+        natChange<system>(caller, "premium_rate_limit_minutes", o.rate, stable_premium_rate_limit_minutes);
+        natChange<system>(caller, "premium_max_recipients", o.recipients, stable_premium_max_recipients);
 
         #ok()
     };
@@ -686,7 +687,7 @@ persistent actor SneedSMS {
         };
         buffer.add(sender);
         stable_authorized_senders := Buffer.toArray(buffer);
-        block("authorized_sender_add", caller, [("principal", Icrc3Log.principal(sender))]);
+        block<system>("authorized_sender_add", caller, [("principal", Icrc3Log.principal(sender))]);
         
         #ok()
     };
@@ -702,7 +703,7 @@ persistent actor SneedSMS {
         };
         
         stable_authorized_senders := Array.filter<Principal>(stable_authorized_senders, func(p) = not Principal.equal(p, sender));
-        block("authorized_sender_remove", caller, [("principal", Icrc3Log.principal(sender))]);
+        block<system>("authorized_sender_remove", caller, [("principal", Icrc3Log.principal(sender))]);
         #ok()
     };
     
@@ -717,7 +718,7 @@ persistent actor SneedSMS {
         };
         let old = stable_system_sender_principal;
         stable_system_sender_principal := principal;
-        principalChange(caller, "system_sender_principal", old, principal);
+        principalChange<system>(caller, "system_sender_principal", old, principal);
         #ok()
     };
     
@@ -818,7 +819,7 @@ persistent actor SneedSMS {
             case (#ok rules) stable_rate_rules := rules;
         };
         let v = func(r : RateRule) : T3.Value = #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]);
-        if (old != rule) configBlock(caller, "send_rate_limit", v(old), v(rule));
+        if (old != rule) configBlock<system>(caller, "send_rate_limit", v(old), v(rule));
         #ok()
     };
 
@@ -833,7 +834,7 @@ persistent actor SneedSMS {
         if (not is_admin(caller)) return #err(#Unauthorized("Only admins can set rate limit exemptions"));
         let was = Map.has(stable_rate_exempt, Map.phash, principal);
         if (exempt) Map.set(stable_rate_exempt, Map.phash, principal, ()) else Map.delete(stable_rate_exempt, Map.phash, principal);
-        if (was != exempt) block("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", Icrc3Log.principal(principal)),
+        if (was != exempt) block<system>("config_update", caller, [("key", #Text("rate_limit_exempt")), ("principal", Icrc3Log.principal(principal)),
             ("old_value", #Nat(if was 1 else 0)), ("value", #Nat(if exempt 1 else 0))]);
         #ok()
     };
@@ -1026,7 +1027,7 @@ persistent actor SneedSMS {
         if (not is_admin(caller)) return #err(#Unauthorized("Admins only"));
         let old = stable_notifications;
         stable_notifications := canister;
-        principalChange(caller, "notifications_canister", old, canister);
+        principalChange<system>(caller, "notifications_canister", old, canister);
         #ok()
     };
 
@@ -1376,7 +1377,7 @@ persistent actor SneedSMS {
             // Skip if already admin
             if (not is_admin(admin_info.principal)) {
                 Vector.add(state.admins, admin_info);
-                block("admin_add", caller, [("principal", Icrc3Log.principal(admin_info.principal)), ("source", #Text("import_admins"))]);
+                block<system>("admin_add", caller, [("principal", Icrc3Log.principal(admin_info.principal)), ("source", #Text("import_admins"))]);
                 imported += 1;
             };
         };
@@ -1436,7 +1437,7 @@ persistent actor SneedSMS {
             };
         };
         // how many, never what: the messages' contents and parties stay out of the log
-        if (imported > 0) block("messages_import", caller, [("count", #Nat(imported)), ("next_id", #Nat(state.next_id))]);
+        if (imported > 0) block<system>("messages_import", caller, [("count", #Nat(imported)), ("next_id", #Nat(state.next_id))]);
         
         #ok(imported)
     };
@@ -1510,7 +1511,7 @@ persistent actor SneedSMS {
         switch (Icrc3Log.applySettings(icrc3, u)) {
             case (#Err(e)) #Err(e);
             case (#Ok(changes)) {
-                for ((key, old, new) in changes.vals()) configBlock(caller, key, #Nat(old), #Nat(new));
+                for ((key, old, new) in changes.vals()) configBlock<system>(caller, key, #Nat(old), #Nat(new));
                 #Ok(icrc3.settings);
             };
         };
@@ -1534,7 +1535,7 @@ persistent actor SneedSMS {
     };
 
     func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-    func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+    func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
     // Limit of the ingress guard below: a reply names the message(s) it answers
     transient let MAX_REPLY_TO : Nat = 100;
