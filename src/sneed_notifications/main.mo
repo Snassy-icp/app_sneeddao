@@ -67,6 +67,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public type Withdrawal = T.Withdrawal;
   public type PendingWithdrawal = T.PendingWithdrawal;
   public type PrepaidView = T.PrepaidView;
+  public type TimerStatus = T.TimerStatus;
 
   type Notification = {
     id : Nat;
@@ -167,7 +168,6 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       block("admin_add", #upgrade, [("principal", pv(BOOTSTRAP_ADMIN))]);
     };
     Icrc3Log.certify(icrc3);
-    ensure_icrc3_timer<system>();
     seedTopUpRecords();
   };
   /// Each relay kind's public key (base64 SPKI, RSA-OAEP-256): clients encrypt addresses to it.
@@ -201,7 +201,6 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   let sns : SnsDirectory.State = SnsDirectory.init();
 
   transient var ticking = false;
-  transient var ticks : Nat = 0;
 
   // Revenue forwarding (added 2026-10-21; spec §"Revenue"). Prices deducted from balances are the
   // DAO's revenue: they go to `fee_destination` (the RLL ICP splitter, where Sneed Premium, Sneedex
@@ -228,7 +227,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   var fee_events : [(Int, Text)] = [];
   var fee_last_check : Int = 0;
   transient var fee_forwarding = false;
-  transient var fee_next_check : Int = 0; // 0 after an install or upgrade: the first tick checks
+  transient var fee_next_check : Int = 0; // 0 after an install or upgrade: the first run checks
   transient var pulling_e8s : Nat = 0; // top-ups the ledger may have moved but this canister hasn't credited yet
   transient let FEE_CHECK_NS : Int = 300_000_000_000; // every 5 minutes at most
 
@@ -1047,7 +1046,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     switch (args.to.subaccount) { case (?s) if (s.size() != 32) return #err(#invalid("A subaccount is 32 bytes")); case null {} };
     if (args.to.owner == Principal.fromActor(this)) return #err(#invalid("Not to this canister itself"));
     if (not withdrawLock(caller)) return #err(#busy);
-    try { await* withdrawLocked(caller, args) } finally { Map.delete(withdrawing, Map.phash, caller) };
+    let r = try { await* withdrawLocked(caller, args) } finally { Map.delete(withdrawing, Map.phash, caller) };
+    rearm<system>(); // a withdrawal left pending (unknown outcome) needs the timer's retry
+    r;
   };
 
   func withdrawLocked(user : Principal, args : WithdrawArgs) : async* WithdrawResult {
@@ -1133,6 +1134,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for ((u, p) in due.vals()) if (withdrawLock(u)) {
       try { ignore await* retryWithdrawal(u, p, #timer) } catch (_) {} finally { Map.delete(withdrawing, Map.phash, u) };
     };
+    afterWork<system>();
   };
 
   /// Your prepaid balance: spendable, held for deliveries not final yet, and the money in and out.
@@ -1245,7 +1247,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public query func get_config() : async Config { config };
   public query func get_relay_keys() : async [(ChannelKind, Text)] { relay_keys };
   public query func get_admins() : async [Principal] { admins };
-  /// `last_tick_at`: when the delivery timer last ran (every 30 s); `ticking`: a run in progress.
+  /// `last_tick_at`: when the delivery timer last ran (it runs only when something is due; see
+  /// get_timer_status); `ticking`: a run in progress.
   public query func stats() : async { apps : Nat; users : Nat; notifications : Nat; pending : Nat; last_tick_at : Int; ticking : Bool } {
     { apps = Map.size(apps); users = Map.size(channels); notifications = Map.size(notifications); pending = Map.size(pending); last_tick_at; ticking };
   };
@@ -1280,6 +1283,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     for (j in gone.vals()) finish(j, #failed({ reason = "channel removed" }), #caller(caller));
     for (jid in missing.vals()) Map.delete(pending, Map.nhash, jid);
+    if (out.size() > 0) rearm<system>(); // the leases lapse in relay_lease_ns unless acknowledged
     Buffer.toArray(out);
   };
 
@@ -1295,6 +1299,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       };
       case null {};
     };
+    // a final delivery is no longer refundable: the unforwarded fees may reach the threshold
+    if (results.size() > 0) afterWork<system>(); // and an acknowledged lease needs no lapse run
   };
 
   func finish(j : Job, state : JobState, by : By) {
@@ -1362,7 +1368,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   };
   func feeError(m : Text) { fee_last_error := ?m; feeNote(m) };
 
-  func feeTick() : async () { ignore await* forwardFees(false, #timer) };
+  func feeTick() : async () { ignore await* forwardFees(false, #timer); afterWork<system>() };
 
   /// Forward the unforwarded fees in one transfer once they reach the threshold (`force`: any
   /// amount above the ledger fee). Before each transfer the ledger balance is read again and the
@@ -1497,6 +1503,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     switch (a) { case (?{ subaccount = ?s }) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case _ {} };
     configBlock(#caller(caller), "fee_destination", optAccountV(fee_destination), optAccountV(a));
     fee_destination := a;
+    rearm<system>();
     feeNote(switch a { case (?x) "destination set to " # Principal.toText(x.owner); case null "destination cleared: fees stay in the canister" });
     #ok("Saved");
   };
@@ -1505,13 +1512,16 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlock(#caller(caller), "fee_sweep_threshold_e8s", #Nat(fee_sweep_threshold_e8s), #Nat(e8s));
     fee_sweep_threshold_e8s := e8s;
+    rearm<system>(); // a lower threshold may make a forward due
     #ok("Saved");
   };
 
   /// Forward now, whatever the threshold (still only what exceeds the liabilities, minus the ledger fee).
   public shared ({ caller }) func admin_forward_fees_now() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    await* forwardFees(true, #caller(caller));
+    let r = await* forwardFees(true, #caller(caller));
+    rearm<system>(); // a transfer of unknown outcome is retried by the timer
+    r;
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -1524,24 +1534,150 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     ("[" # appName # "] " # n.title, body);
   };
 
+  // Timers (2026-10-30). There used to be a recurring 30-second timer: each run is a few messages
+  // with a base fee each, so an idle canister burned ~100-200 B cycles a day doing nothing. Now:
+  //   - one one-shot work timer, armed only for the earliest thing that is due:
+  //       - Sneed SMS jobs queued (at their `not_before`; right away after a `notify`, through kick),
+  //       - relay leases (when one lapses),
+  //       - the fee check and withdrawal retries (every FEE_CHECK_NS at most) only while they have
+  //         work: a withdrawal or fee forward of unknown outcome, the first measurement of the
+  //         books, or unforwarded fees at the threshold,
+  //       - the ICRC-3 spill check (every SPILL_CHECK_NS at most) only while the live store is full;
+  //     each run arms the next one, and nothing is armed when nothing is due;
+  //   - one recurring hourly housekeeping timer: prunes old notifications and dedupe keys, checks
+  //     the log spill, and re-arms the work timer if anything is due (a safety net: a run that
+  //     trapped before it could arm the next one is picked up within the hour).
+  // Admins can pause both (admin_pause_timers): `notify` still records and queues, relays still
+  // pull and ack, and the work waits for admin_resume_timers. Timers are transient: the actor body
+  // arms them again on every install and upgrade, unless paused.
+
+  /// Admins stopped the timers (admin_pause_timers); kept across upgrades.
+  var timers_paused : Bool = false;
+  var timers_paused_at : ?Int = null;
+  transient var work_timer : ?Timer.TimerId = null;
+  transient var work_at : Int = 0; // when the armed work timer fires
+  transient var housekeeping_timer : ?Timer.TimerId = null;
+  transient let HOUR_NS : Int = 3_600_000_000_000;
+  transient let SPILL_CHECK_NS : Int = 900_000_000_000; // the ICRC-3 spill check: every 15 minutes at most
+  transient let TRAP_RETRY_NS : Int = 30_000_000_000; // after a run that trapped: again in 30 s, not at once
+  transient let START_DELAY_NS : Int = 30_000_000_000; // the first fee check after an install or upgrade
+  transient let CHECK_DEFER_NS : Int = 30_000_000_000; // a fee or spill check that just became due
+  transient var next_housekeeping : Int = Time.now() + HOUR_NS;
+  transient var last_housekeeping : Int = 0;
+  transient var spill_next_check : Int = Time.now() + SPILL_CHECK_NS; // as the old 15-minute timer
+  /// When the planned fee check runs (0: none planned). Planned once when the fee work becomes due
+  /// and kept, so runs for other things (a notify) neither do it early nor push it back; the first
+  /// one 30 s after an install or upgrade, as with the old timer.
+  transient var fee_check_at : Int = Time.now() + START_DELAY_NS;
+
+  /// Whether the fee check has anything to do that needs a ledger call (the conditions under which
+  /// forwardFees goes past its cheap early returns), or a withdrawal waits for its retry.
+  func feeWorkDue() : Bool {
+    for (p in Map.vals(withdraw_pending)) switch (p.state) { case (#too_old) {}; case _ return true };
+    if (fee_destination == null) return false;
+    if (fee_pending != null) return true;
+    switch (unforwardedE8s()) { case (?u) u >= fee_sweep_threshold_e8s; case null true };
+  };
+
+  func spillDue() : Bool = icrc3.live.count > 0 and icrc3.live.count >= icrc3.settings.max_live_blocks;
+
+  /// When the work timer must run next (null: nothing is due): the earliest due Sneed SMS job,
+  /// lapsing lease or check.
+  func nextDue() : ?Int {
+    var due : ?Int = null;
+    func at(x : Int) { switch due { case (?d) if (x < d) due := ?x; case null due := ?x } };
+    for (jid in Map.keys(pending)) switch (Map.get(jobs, Map.nhash, jid)) {
+      case (?j) switch (j.state) {
+        case (#sending(s)) at(s.since + config.relay_lease_ns + 1);
+        case (#queued) if (j.kind == #sneed_sms) at(j.not_before);
+        case _ {};
+      };
+      case null {};
+    };
+    // checks that became due by a call (a delivery acknowledged, a setting changed) run in 30 s at
+    // the earliest, as with the next run of the old 30-second timer, not in the middle of the
+    // caller's work
+    let soon = now() + CHECK_DEFER_NS;
+    if (feeWorkDue()) {
+      if (fee_check_at == 0) fee_check_at := Int.max(fee_next_check, soon);
+      at(fee_check_at);
+    } else fee_check_at := 0;
+    if (spillDue()) at(Int.max(spill_next_check, soon));
+    due;
+  };
+
+  /// Arms the work timer for `at` unless it is armed for that time or earlier already. A recorded
+  /// timer whose time has passed is replaced: it fired in a run that trapped and was rolled back.
+  func schedule<system>(at : Int) {
+    if (timers_paused) return;
+    let t = now();
+    switch (work_timer) {
+      case (?id) { if (work_at <= at and work_at >= t) return; Timer.cancelTimer(id) };
+      case null {};
+    };
+    work_at := Int.max(at, t);
+    work_timer := ?Timer.setTimer<system>(#nanoseconds(Int.abs(work_at - t)), tick);
+  };
+
+  /// Arms the work timer for whatever is due next (after anything that may add work).
+  func rearm<system>() { switch (nextDue()) { case (?at) schedule<system>(at); case null {} } };
+
+  /// Arms the work timer for what is due next, replacing an armed one (also one armed for earlier).
+  func replan<system>() {
+    switch (work_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    work_timer := null;
+    rearm<system>();
+  };
+
+  /// After a check the timer spawned (fee forward, withdrawal retries, spill) or a relay's
+  /// acknowledgement: plan the next run from what is left, so a run armed for work that is gone
+  /// does not fire for nothing. While a run is in progress it does that itself when it ends (and
+  /// its fallback must stay).
+  func afterWork<system>() { if (ticking) rearm<system>() else replan<system>() };
+
+  /// Deliver soon after a notify instead of waiting.
+  func kick<system>() { schedule<system>(now()) };
+
+  func startTimers<system>() {
+    if (timers_paused) return;
+    switch (housekeeping_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    next_housekeeping := now() + HOUR_NS;
+    housekeeping_timer := ?Timer.recurringTimer<system>(#nanoseconds(Int.abs(HOUR_NS)), housekeeping);
+    rearm<system>();
+  };
+
+  func stopTimers() {
+    switch (work_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    work_timer := null;
+    switch (housekeeping_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    housekeeping_timer := null;
+  };
+
   func tick() : async () {
-    if (ticking) return;
+    work_timer := null; // only one work timer is ever armed: this is it
+    // a fallback run in 30 s, in case this run (or the one in progress) traps after an await:
+    // `finally` cannot arm timers, and right away would retry a job that traps in a tight loop
+    schedule<system>(now() + TRAP_RETRY_NS);
+    if (ticking) return; // the run in progress arms the next one when it ends
     ticking := true;
     // `finally` clears the flag even when a later part of the run traps (e.g. an answer that does
     // not decode): otherwise every later run would return at once and deliveries would stop
     try { await* tickBody() } finally { ticking := false };
+    replan<system>(); // the run ended normally: replaces the fallback
   };
 
   func tickBody() : async* () {
-    ticks += 1;
     last_tick_at := now();
     let t = now();
-    // housekeeping first, so a delivery that traps below cannot hold it up
-    if (ticks % 120 == 0) prune(t);
-    if (t >= fee_next_check) {
+    if (fee_check_at != 0 and t >= fee_check_at and feeWorkDue()) {
+      fee_check_at := 0; // the next one is planned when this run ends, if there is work left
       fee_next_check := t + FEE_CHECK_NS;
       ignore feeTick(); // its own message: deliveries don't wait for the ledger
       if (Map.size(withdraw_pending) > 0) ignore withdrawRetryTick();
+    };
+    if (t >= spill_next_check and spillDue()) {
+      spill_next_check := t + SPILL_CHECK_NS;
+      ignore icrc3_timer_job();
     };
     let due = Buffer.Buffer<Job>(20);
     let lapsed = Buffer.Buffer<Job>(4);
@@ -1571,6 +1707,20 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
   };
 
+  /// The hourly housekeeping (its own recurring timer, so a trap in it or in a delivery run never
+  /// stops it): prune, the log spill check, and the work timer's safety net.
+  func housekeeping() : async () {
+    let t = now();
+    last_housekeeping := t;
+    next_housekeeping := t + HOUR_NS;
+    prune(t);
+    if (t >= spill_next_check and spillDue()) {
+      spill_next_check := t + SPILL_CHECK_NS;
+      ignore icrc3_timer_job();
+    };
+    rearm<system>();
+  };
+
   func prune(t : Int) {
     let old = Buffer.Buffer<Nat>(50);
     label scan for (n in Map.vals(notifications)) {
@@ -1595,10 +1745,45 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for (k in stale.vals()) Map.delete(dedupes, Map.thash, k);
   };
 
-  /// Deliver soon after a notify instead of waiting for the next tick.
-  func kick<system>() { ignore Timer.setTimer<system>(#seconds 0, tick) };
+  /// Admins stop every timer of this canister: no Sneed SMS delivery, lapsed relay lease, fee check,
+  /// withdrawal retry, prune or log spill runs until admin_resume_timers. `notify` still records
+  /// and queues (relays still pull and ack their jobs). Kept across upgrades.
+  public shared ({ caller }) func admin_pause_timers() : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (timers_paused) return #ok("Already paused");
+    configBlock(#caller(caller), "timers_paused", #Nat(0), #Nat(1));
+    timers_paused := true;
+    timers_paused_at := ?now();
+    stopTimers();
+    #ok("Paused");
+  };
 
-  transient let _timer = Timer.recurringTimer<system>(#seconds 30, tick);
+  /// Admins start the timers again; the first run comes at once and does whatever waited.
+  public shared ({ caller }) func admin_resume_timers() : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (not timers_paused) return #ok("Not paused");
+    configBlock(#caller(caller), "timers_paused", #Nat(1), #Nat(0));
+    timers_paused := false;
+    timers_paused_at := null;
+    startTimers<system>();
+    schedule<system>(now()); // at once
+    #ok("Resumed");
+  };
+
+  /// The timers: whether admins paused them (and since when), when the work timer runs next (null:
+  /// nothing is due, or paused), when it last ran and whether a run is in progress, and the hourly
+  /// housekeeping's last and next run (next: null when paused).
+  public query func get_timer_status() : async TimerStatus {
+    {
+      paused = timers_paused;
+      paused_at = timers_paused_at;
+      next_run_at = switch (work_timer) { case (?_) ?work_at; case null null };
+      last_tick_at;
+      ticking;
+      last_housekeeping_at = last_housekeeping;
+      next_housekeeping_at = switch (housekeeping_timer) { case (?_) ?next_housekeeping; case null null };
+    };
+  };
 
   // ---------------------------------------------------------------------------------------------
   // Admin
@@ -1608,6 +1793,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     configBlocks(#caller(caller), configValues(config), configValues(c));
     config := c;
+    rearm<system>(); // e.g. a shorter relay lease
     #ok("Saved");
   };
   public shared ({ caller }) func admin_set_relay_key(kind : ChannelKind, key : Text) : async Result {
@@ -1812,6 +1998,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
         for ((key, old, new) in changes.vals()) configBlock(#caller(caller), key, #Nat(old), #Nat(new));
+        rearm<system>(); // a lower max_live_blocks may make a spill due
         #Ok(icrc3.settings);
       };
     };
@@ -1834,9 +2021,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     TextLog.get(icrc3_textlog, start, length);
   };
 
-  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
-  ensure_icrc3_timer<system>();
+  // the spill check runs from the work timer (tickBody): every 15 minutes while the live store is
+  // full, and with the hourly housekeeping; no recurring timer of its own
+  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false); afterWork<system>() };
+
+  // the timers are transient: armed again on every install and upgrade (unless paused)
+  startTimers<system>();
 
   // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
   // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
@@ -1923,16 +2113,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #withdraw : Any;
     #get_my_prepaid : Any;
     #admin_resolve_withdraw : Any;
+    #admin_pause_timers : Any;
+    #admin_resume_timers : Any;
+    #get_timer_status : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
       case (#admin_get_user _ or #admin_get_removed_app _ or #get_my_prepaid _) false;
-      case (#get_rate_limits _) false;
+      case (#get_rate_limits _ or #get_timer_status _) false;
       case (#admin_set_rate_limit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
-      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _ or #admin_resolve_withdraw _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _ or #admin_resolve_withdraw _ or #admin_pause_timers _ or #admin_resume_timers _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "register_app");
       case (#update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG and rateAllows(caller, "update_app");

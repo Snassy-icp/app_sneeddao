@@ -485,6 +485,18 @@ for c in app_sneeddao_backend sneed_notifications; do
   test -s "$OUT/${c}_preaudit.wasm"
 done
 rm -rf "$PREV_SRC"
+# sneed_notifications before the idle-burn fix (a recurring 30-second timer; its source last changed
+# at 98eb7c79, what staging and production run since 2026-10-27/30), for notifications-timers.test.js:
+# the upgrade with keep from it, and the fail-before run of its idle-cost test
+# (NOTIF_WASM=sneed_notifications_preidle npx vitest run tests/notifications-timers.test.js -t "idle:")
+NOTIF_PREIDLE_COMMIT=c2743feb
+echo "== sneed_notifications at $NOTIF_PREIDLE_COMMIT (moc, EOP, sneed_notifications_preidle)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NOTIF_PREIDLE_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_notifications/main.mo" -o "$OUT/sneed_notifications_preidle.wasm" 2>&1 | grep -i "error" | head -5 || true
+test -s "$OUT/sneed_notifications_preidle.wasm"
+rm -rf "$PREV_SRC"
 echo "== MockSmsBadReply"
 # shellcheck disable=SC2086
 "$MOC" -c $PKGS -o "$OUT/MockSmsBadReply.wasm" "$HERE/canisters/MockSmsBadReply.mo" 2>&1 | grep -i "error" -A5 || true
