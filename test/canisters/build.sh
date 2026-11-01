@@ -508,6 +508,7 @@ git archive "$ATT_PREIDLE_COMMIT" src | tar -x -C "$PREV_SRC"
 # shellcheck disable=SC2086
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_attestations/main.mo" -o "$OUT/sneed_attestations_preidle.wasm" 2>&1 | grep -i "error" | head -5 || true
 test -s "$OUT/sneed_attestations_preidle.wasm"
+rm -rf "$PREV_SRC"
 # sneed_mon before the idle fix (a recurring round timer every interval_s, even with nothing to watch
 # or admin-paused; main at c80882bd, its source unchanged since cf2afe95, what staging runs), for
 # mon-timers.test.js: the upgrade with keep from it, and the fail-before run of its idle-cost test
