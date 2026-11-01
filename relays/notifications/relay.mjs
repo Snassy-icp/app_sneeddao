@@ -19,6 +19,7 @@ import { HttpAgent, Actor } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import webpush from 'web-push';
 import { notificationPage as pageOf, pushLink, shownLink } from './links.mjs';
+import { shouldPull } from './gate.mjs';
 
 const DIR = process.env.RELAY_DIR || `${process.env.HOME}/.config/mr-sneed/relay`;
 const CANISTER = process.argv[2];
@@ -39,6 +40,7 @@ const idl = ({ IDL }) => {
     return IDL.Service({
         relay_pull: IDL.Func([IDL.Nat], [IDL.Vec(RelayJob)], []),
         relay_ack: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Variant({ ok: IDL.Null, err: IDL.Text })))], [], []),
+        stats: IDL.Func([], [IDL.Record({ pending: IDL.Nat })], ['query']),
     });
 };
 
@@ -99,6 +101,12 @@ async function push(job, sub) {
 }
 
 async function round(r) {
+    // relay_pull is a paid update call: only when the free stats query shows work (or the safety pull)
+    let pending = null;
+    try { pending = (await r.actor.stats()).pending; } catch (e) { log(r.kind, 'stats failed, pulling anyway:', String(e.message || e).slice(0, 120)); }
+    const now = Date.now();
+    if (!shouldPull(pending, r.lastPullAt || 0, now)) return 0;
+    r.lastPullAt = now;
     const jobs = await r.actor.relay_pull(20n);
     if (!jobs.length) return 0;
     const acks = [];
