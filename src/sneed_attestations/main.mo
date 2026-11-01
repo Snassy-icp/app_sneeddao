@@ -73,6 +73,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
   public type Limits = T.Limits;
   public type Stats = T.Stats;
   public type LogEntry = T.LogEntry;
+  public type TimerStatus = T.TimerStatus;
 
   // ---------------------------------------------------------------------------------------------
   // Constants (transient: a changed value takes effect on upgrade)
@@ -215,9 +216,6 @@ shared (deployer) persistent actor class SneedAttestations() = this {
 
   transient var running : Bool = false;
   transient var run_started : Int = 0;
-  transient var kick_pending : Bool = false;
-  transient var tick_timer : ?Timer.TimerId = null;
-  transient var timers_started : Bool = false;
 
   transient let icrc3_catalogue : Icrc3Log.Config = {
     block_types_url = "https://app.sneeddao.com/api/sneed_attestations#block-types";
@@ -486,11 +484,9 @@ shared (deployer) persistent actor class SneedAttestations() = this {
 
   func subjectGovernance(s : Subject) : ?Principal = switch s { case (#proposal(p)) ?p.governance; case (#release _) null };
 
-  func kick<system>() {
-    if (kick_pending or config.paused) return;
-    kick_pending := true;
-    ignore Timer.setTimer<system>(#seconds 1, tickJob);
-  };
+  /// Start watching right away (a second after an attestation or a recheck, as before) instead of
+  /// waiting: a burst of attestations shares one run.
+  func kick<system>() { schedule<system>(now() + SEC_NS) };
 
   /// Attest what you rebuilt for one subject. The caller is the builder; the IC's signature on
   /// this call is the attestation. Attesting again for the same subject replaces your current one
@@ -716,7 +712,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
 
 
   // ---------------------------------------------------------------------------------------------
-  // Polling: jobs, run by a recurring timer with at most max_in_flight calls in flight
+  // Polling: jobs, run by the work timer (see Timers) with at most max_in_flight calls in flight
   // ---------------------------------------------------------------------------------------------
 
   type StepRef = { key : Text; step : Nat };
@@ -1245,30 +1241,157 @@ shared (deployer) persistent actor class SneedAttestations() = this {
     };
   };
 
-  func tickJob() : async () {
-    kick_pending := false;
+  // Timers (2026-11-01). There used to be a recurring tick_s (60 s) timer plus the ICRC-3 library's
+  // 15-minute spill timer, always: each Motoko timer run is a few messages with a base fee each
+  // (~35 M cycles), so the idle registry burned ~50 B cycles a day doing nothing. Now:
+  //   - one one-shot work timer, armed only for the earliest thing that is due: a watched
+  //     proposal's next read (at its next_at: hourly while open, a minute after the deadline,
+  //     every poll_executing_s once adopted), a live check of an executed step (at once), a
+  //     release check (at its next_at), a function list or SNS-root lookup that is wanted, each
+  //     no earlier than the DAO's call budget allows again (its back-off or the next hour), and the
+  //     ICRC-3 spill check (every 15 minutes at most) only while the live store is full. Right away
+  //     after an attestation or a recheck (kick). Nothing is armed when nothing is due, while
+  //     paused (config.paused), or while the cycles are below min_cycles (the housekeeping looks
+  //     again every hour);
+  //   - after a run, the next one comes tick_s later at the earliest (work left over from a run
+  //     capped by max_calls_per_tick, a live check to retry), as with the old recurring tick;
+  //   - one recurring hourly housekeeping timer: the spill check, and re-arming the work timer if
+  //     anything is due (a safety net: a run that trapped before it could arm the next one is
+  //     picked up within the hour).
+  // A run arms a fallback (tick_s later) before it awaits, so a trap after an await is retried,
+  // never in a tight loop. Timers are transient: the actor body arms them on every install and
+  // upgrade (the work timer not while paused).
+
+  transient var work_timer : ?Timer.TimerId = null;
+  transient var work_at : Int = 0; // when the armed work timer fires
+  transient var housekeeping_timer : ?Timer.TimerId = null;
+  transient var next_housekeeping : Int = Time.now() + HOUR_NS;
+  transient var last_housekeeping : ?Int = null;
+  transient let SPILL_CHECK_NS : Int = 900_000_000_000; // the ICRC-3 spill check: every 15 minutes at most
+  transient var spill_next_check : Int = Time.now() + SPILL_CHECK_NS; // as the old 15-minute timer
+
+  func tickNs() : Int = config.tick_s * SEC_NS;
+
+  func spillDue() : Bool = icrc3.live.count > 0 and icrc3.live.count >= icrc3.settings.max_live_blocks;
+
+  /// When the DAO's call budget allows a billed call again (now, if it does).
+  func budgetAt(g : GovRec, t : Int) : Int {
+    var at = t;
+    switch (g.backoff_until) { case (?u) if (u > at) at := u; case null {} };
+    if (g.calls_in_window >= config.calls_per_hour_per_dao and t - g.window_start < HOUR_NS) at := Int.max(at, g.window_start + HOUR_NS);
+    at;
+  };
+
+  /// When the work timer must run next (null: nothing is due): the same work `round` issues calls
+  /// for, at the time it becomes due.
+  func nextDue() : ?Int {
+    if (config.paused) return null;
+    if (Cycles.balance() < config.min_cycles) return null; // no calls anyway; the housekeeping looks again
+    let t = now();
+    var due : ?Int = null;
+    func at(x : Int) { switch due { case (?d) if (x < d) due := ?x; case null due := ?x } };
+    // the SNS roots matter only for live checks of watched proposals: not a reason to run otherwise
+    if (sns_roots_wanted and Map.size(active) > 0) at(sns_roots_at + HOUR_NS);
+    for (k in Map.keys(active)) switch (Map.get(proposals, Map.thash, k)) {
+      case (?p) {
+        let g = govRec(p.governance);
+        switch (p.read) {
+          case (?r) for (s in r.steps.vals()) switch (liveNeed(p, s), s.target) {
+            case (#info, ?_) at(t); // canister_info: not billed to the DAO
+            case (#assets, ?_) at(budgetAt(g, t));
+            case _ {};
+          };
+          case null {};
+        };
+        if (not p.reads_done) {
+          // a read waits for the DAO's function list (below) while one is wanted
+          if (not g.fns_wanted) at(Int.max(p.next_at, budgetAt(g, t)));
+        };
+      };
+      case null {};
+    };
+    for (r in Map.vals(releases)) switch (r.next_at) { case (?x) at(x); case null {} };
+    for (g in Map.vals(govs)) if (g.fns_wanted and g.kind == ?#sns) at(budgetAt(g, t));
+    if (spillDue()) at(spill_next_check);
+    due;
+  };
+
+  /// Arms the work timer for `at` unless it is armed for that time or earlier already. A recorded
+  /// timer whose time has passed is replaced: it fired in a run that trapped and was rolled back.
+  func schedule<system>(at : Int) {
     if (config.paused) return;
-    if (running and now() - run_started < STALE_RUN_NS) return;
+    let t = now();
+    switch (work_timer) {
+      case (?id) { if (work_at <= at and work_at >= t) return; Timer.cancelTimer(id) };
+      case null {};
+    };
+    work_at := Int.max(at, t);
+    work_timer := ?Timer.setTimer<system>(#nanoseconds(Int.abs(work_at - t)), tickJob);
+  };
+
+  func cancelWork() {
+    switch (work_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    work_timer := null;
+  };
+
+  /// Arms the work timer for whatever is due next (after anything that may add work).
+  func rearm<system>() { switch (nextDue()) { case (?at) schedule<system>(at); case null {} } };
+
+  /// Plans the work timer from scratch (also replacing one armed for earlier, e.g. for work that is
+  /// gone). While a run is in progress it only adds: the run plans the next one when it ends, and
+  /// its fallback must stay.
+  func replan<system>() {
+    if (running) return rearm<system>();
+    cancelWork();
+    rearm<system>();
+  };
+
+  func startTimers<system>() {
+    switch (housekeeping_timer) { case (?id) Timer.cancelTimer(id); case null {} };
+    next_housekeeping := now() + HOUR_NS;
+    housekeeping_timer := ?Timer.recurringTimer<system>(#nanoseconds(Int.abs(HOUR_NS)), housekeeping);
+    // after an install or upgrade, the first run comes tick_s later at the earliest (as with the old
+    // recurring timer), not in the middle of the upgrade's follow-up calls
+    cancelWork();
+    switch (nextDue()) { case (?at) schedule<system>(Int.max(at, now() + tickNs())); case null {} };
+  };
+
+  func tickJob() : async () {
+    work_timer := null; // only one work timer is ever armed: this is it
+    if (config.paused) return;
+    // a fallback run tick_s later, in case this run (or the one in progress) traps after an await
+    schedule<system>(now() + tickNs());
+    if (running and now() - run_started < STALE_RUN_NS) return; // the run in progress plans the next one
+    if (now() >= spill_next_check and spillDue()) {
+      spill_next_check := now() + SPILL_CHECK_NS;
+      ignore icrc3_timer_job(); // its own message: the run doesn't wait for archive calls
+    };
     running := true;
     run_started := now();
     ticks += 1;
     last_tick_at := ?now();
     try { await* run() } catch (e) { logError(self(), "Tick failed: " # Error.message(e)) } finally { running := false };
+    // the run ended normally: replace the fallback with what is due, tick_s from now at the earliest
+    cancelWork();
+    switch (nextDue()) { case (?at) schedule<system>(Int.max(at, now() + tickNs())); case null {} };
   };
 
-  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-
-  func restartTick<system>() {
-    switch tick_timer { case (?id) Timer.cancelTimer(id); case null {} };
-    tick_timer := ?Timer.recurringTimer<system>(#seconds(config.tick_s), tickJob);
+  /// The hourly housekeeping (its own recurring timer, so a trap in a work run never stops it):
+  /// the log spill check, and the work timer's safety net.
+  func housekeeping() : async () {
+    let t = now();
+    last_housekeeping := ?t;
+    next_housekeeping := t + HOUR_NS;
+    if (t >= spill_next_check and spillDue()) {
+      spill_next_check := t + SPILL_CHECK_NS;
+      ignore icrc3_timer_job();
+    };
+    rearm<system>();
   };
 
-  func ensure_timers<system>() {
-    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
-    if (timers_started) return;
-    timers_started := true;
-    restartTick<system>();
-  };
+  // the spill check runs from the work timer (every 15 minutes while the live store is full) and
+  // with the hourly housekeeping; no recurring timer of its own
+  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false); replan<system>() };
 
   // ---------------------------------------------------------------------------------------------
   // Views
@@ -1650,7 +1773,8 @@ shared (deployer) persistent actor class SneedAttestations() = this {
     if (o.sns_wasm != c.sns_wasm) configBlock(caller, "sns_wasm", pv(o.sns_wasm), pv(c.sns_wasm));
     if (o.archive_controllers != c.archive_controllers) configBlock(caller, "archive_controllers", #Array(Array.map<Principal, T3.Value>(o.archive_controllers, pv)), #Array(Array.map<Principal, T3.Value>(c.archive_controllers, pv)));
     config := c;
-    if (o.tick_s != c.tick_s) restartTick<system>();
+    // paused: nothing armed; otherwise e.g. a new call budget or an unpause changes what is due
+    if (c.paused) cancelWork() else replan<system>();
     logInfo(caller, "Config updated" # (if (c.paused) " (paused)" else ""));
     #ok(c);
   };
@@ -1695,10 +1819,9 @@ shared (deployer) persistent actor class SneedAttestations() = this {
     };
   };
 
-  /// Runs a polling round now (it also runs every tick_s seconds).
+  /// Runs a polling round now (it also runs whenever something is due; see get_timer_status).
   public shared ({ caller }) func admin_run_now() : async T.Result<()> {
     if (not isController(caller)) return #err("Controllers only");
-    kick_pending := false;
     kick<system>();
     #ok(());
   };
@@ -1717,6 +1840,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
         for ((key, old, new) in changes.vals()) configBlock(caller, "icrc3." # key, #Nat(old), #Nat(new));
+        rearm<system>(); // a lower max_live_blocks may make a spill due
         #Ok(icrc3.settings);
       };
     };
@@ -1746,7 +1870,20 @@ shared (deployer) persistent actor class SneedAttestations() = this {
 
   system func postupgrade() {
     Icrc3Log.certify(icrc3);
-    ensure_timers<system>();
+  };
+
+  /// The timers: whether polling is paused (config.paused), when the work timer runs next (null:
+  /// nothing is due, or paused), when a run last started and whether one is in progress, and the
+  /// hourly housekeeping's last run (null: none since the last install or upgrade) and next one.
+  public query func get_timer_status() : async TimerStatus {
+    {
+      paused = config.paused;
+      next_run_at = switch (work_timer) { case (?_) ?work_at; case null null };
+      last_tick_at;
+      running;
+      last_housekeeping_at = last_housekeeping;
+      next_housekeeping_at = switch (housekeeping_timer) { case (?_) ?next_housekeeping; case null null };
+    };
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -1778,6 +1915,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
     #get_rate_limits : Any;
     #get_release_status : Any;
     #get_stats : Any;
+    #get_timer_status : Any;
     #get_tree_hash_format : Any;
     #icrc10_supported_standards : Any;
     #icrc3_get_archives : Any;
@@ -1793,7 +1931,7 @@ shared (deployer) persistent actor class SneedAttestations() = this {
   } }) : Bool {
     switch msg {
       // queries (the validator included) are free as queries; as updates the canister would pay
-      case (#get_api_doc _ or #get_attestation_history _ or #get_attestations _ or #get_builder _ or #get_call_budget _ or #get_config _ or #get_known_builders _ or #get_limits _ or #get_log _ or #get_proposal_status _ or #get_proposal_summaries _ or #get_rate_limits _ or #get_release_status _ or #get_stats _ or #get_tree_hash_format _ or #list_builders _ or #list_proposals _ or #validate_set_known_builders _) false;
+      case (#get_api_doc _ or #get_attestation_history _ or #get_attestations _ or #get_builder _ or #get_call_budget _ or #get_config _ or #get_known_builders _ or #get_limits _ or #get_log _ or #get_proposal_status _ or #get_proposal_summaries _ or #get_rate_limits _ or #get_release_status _ or #get_stats _ or #get_timer_status _ or #get_tree_hash_format _ or #list_builders _ or #list_proposals _ or #validate_set_known_builders _) false;
       case (#icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _) false;
       // a DAO's governance canister calls this, always inter-canister
       case (#set_known_builders _) false;
@@ -1804,5 +1942,6 @@ shared (deployer) persistent actor class SneedAttestations() = this {
     };
   };
 
-  ensure_timers<system>();
+  // the timers are transient: armed again on every install and upgrade (the work timer not while paused)
+  startTimers<system>();
 };

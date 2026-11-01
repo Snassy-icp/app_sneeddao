@@ -291,7 +291,7 @@ module {
 
   public type Config = {
     paused : Bool; // no polling (attesting still works)
-    tick_s : Nat;
+    tick_s : Nat; // the least time between two polling runs (and a run's retry after a trap); runs happen only when work is due
     max_in_flight : Nat;
     max_calls_per_tick : Nat;
     calls_per_hour_per_dao : Nat;
@@ -363,9 +363,19 @@ module {
     live_checks : Nat;
     calls : [(Text, Nat)]; // per method: calls made
     call_errors : Nat;
-    ticks : Nat;
-    last_tick_at : ?Int;
+    ticks : Nat; // polling runs (they run only when work is due; see get_timer_status)
+    last_tick_at : ?Int; // when a polling run last started
     cycles : Nat;
+  };
+
+  /// get_timer_status: the work timer (armed only when something is due) and the hourly housekeeping.
+  public type TimerStatus = {
+    paused : Bool; // config.paused: no polling, nothing armed
+    next_run_at : ?Int; // when the work timer fires; null: nothing is due (or paused)
+    last_tick_at : ?Int; // when a polling run last started
+    running : Bool; // a polling run in progress
+    last_housekeeping_at : ?Int; // null: none since the last install or upgrade
+    next_housekeeping_at : ?Int;
   };
 
   public type LogEntry = { id : Nat; ts : Int; level : { #info; #error }; cid : Nat; caller : Principal; message : Text };
