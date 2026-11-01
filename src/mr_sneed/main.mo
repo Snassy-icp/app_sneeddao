@@ -189,8 +189,9 @@ shared (deployer) persistent actor class MrSneed() = this {
       log_error = func(cid : Nat, m : Text) = TextLog.add(textlog, #error, cid, self(), m);
     };
   };
-  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+  func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
   func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
   func texts(ts : [Text]) : T3.Value = #Array(Array.map<Text, T3.Value>(ts, func(t) = #Text(t)));
@@ -265,7 +266,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     Map.set(writes_today, Map.phash, caller, (day, used + 1));
   };
 
-  func store(caller : Principal, m : MemoryInput, supersedes : ?Nat) : Nat {
+  func store<system>(caller : Principal, m : MemoryInput, supersedes : ?Nat) : Nat {
     let id = next_id;
     next_id += 1;
     let bytes = bytesOf(m.title) + bytesOf(m.body);
@@ -281,7 +282,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     active_bytes += bytes;
     if (m.pinned) pinned_count += 1;
     countWrite(caller);
-    block("mrs_memory", caller, Array.flatten<(Text, T3.Value)>([
+    block<system>("mrs_memory", caller, Array.flatten<(Text, T3.Value)>([
       [("id", #Nat(id)), ("path", #Text(m.path)), ("kind", kindValue(m.kind)), ("title", #Text(m.title)), ("body_hash", #Blob(sha(m.body))),
        ("tags", texts(m.tags)), ("links", texts(m.links)), ("pinned", #Nat(if (m.pinned) 1 else 0))],
       switch supersedes { case (?old) [("supersedes", #Nat(old))]; case null [] },
@@ -297,12 +298,12 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (m.pinned) { m.pinned := false; pinned_count -= 1 };
   };
 
-  func tombstone(m : Stored, by : Principal, reason : Text, who : Text) {
+  func tombstone<system>(m : Stored, by : Principal, reason : Text, who : Text) {
     let wasActive = isActive(m);
     if (wasActive) deactivate(m);
     m.status := #removed({ by; reason; at = Time.now() });
     m.body := "";
-    block("mrs_forget", by, [("id", #Nat(m.id)), ("reason", #Text(reason)), ("by", #Text(who))]);
+    block<system>("mrs_forget", by, [("id", #Nat(m.id)), ("reason", #Text(reason)), ("by", #Text(who))]);
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -344,7 +345,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     let version = personalities.size() + 1;
     let p : Personality = { version; text = a.text; hash = sha(a.text); set_at = Time.now(); set_by_proposal = null; reason = a.reason };
     personalities := Array.append(personalities, [p]);
-    block("mrs_personality", caller, [("version", #Nat(version)), ("text_hash", #Blob(p.hash)), ("reason", #Text(a.reason)), ("by", #Text(if (caller == governance) "dao" else "operator"))]);
+    block<system>("mrs_personality", caller, [("version", #Nat(version)), ("text_hash", #Blob(p.hash)), ("reason", #Text(a.reason)), ("by", #Text(if (caller == governance) "dao" else "operator"))]);
     version;
   };
 
@@ -378,7 +379,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (not isWriter(caller)) return #err("Only Mr Sneed's writers can remember");
     switch (checkInput(m)) { case (?e) return #err(e); case null {} };
     switch (checkBudget(caller, bytesOf(m.title) + bytesOf(m.body), true, m.pinned)) { case (?e) return #err(e); case null {} };
-    #ok(store(caller, m, null));
+    #ok(store<system>(caller, m, null));
   };
 
   public shared ({ caller }) func revise(id : Nat, m : MemoryInput) : async IdResult {
@@ -391,7 +392,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     let room : Nat = if (bytes > old.bytes) Int.abs((bytes : Int) - old.bytes) else 0;
     switch (checkBudget(caller, room, false, m.pinned and not old.pinned)) { case (?e) return #err(e); case null {} };
     deactivate(old);
-    let newId = store(caller, m, ?id);
+    let newId = store<system>(caller, m, ?id);
     old.status := #superseded(newId);
     #ok(newId);
   };
@@ -401,7 +402,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (reason.size() == 0 or reason.size() > REASON_MAX) return #err("Give a reason, at most 500 characters");
     let m = switch (Map.get(memories, Map.nhash, id)) { case (?x) x; case null return #err("No such memory") };
     switch (m.status) { case (#removed _) return #err("Already removed"); case _ {} };
-    tombstone(m, caller, reason, "writer");
+    tombstone<system>(m, caller, reason, "writer");
     #ok("Forgotten");
   };
 
@@ -413,7 +414,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (pinned and pinned_count >= limits.max_pinned) return #err("At most " # Nat.toText(limits.max_pinned) # " pinned memories");
     m.pinned := pinned;
     if (pinned) pinned_count += 1 else pinned_count -= 1;
-    block("mrs_pin", caller, [("id", #Nat(id)), ("pinned", #Nat(if pinned 1 else 0))]);
+    block<system>("mrs_pin", caller, [("id", #Nat(id)), ("pinned", #Nat(if pinned 1 else 0))]);
     #ok(if pinned "Pinned" else "Unpinned");
   };
 
@@ -434,7 +435,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     let m = switch (Map.get(memories, Map.nhash, id)) { case (?x) x; case null return #err("No such memory") };
     switch (m.kind) { case (#member p) if (p != caller) return #err("That memory is not about you"); case _ return #err("That memory is not about a member") };
     switch (m.status) { case (#removed _) return #err("Already removed"); case _ {} };
-    tombstone(m, caller, reason, "member");
+    tombstone<system>(m, caller, reason, "member");
     #ok("Removed");
   };
 
@@ -457,7 +458,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (not isGoverning(caller)) trap("Only Sneed DAO governance or the operator");
     switch (checkWriters(ps)) { case (?e) trap(e); case null {} };
     writers := ps;
-    block("mrs_config", caller, [("method", #Text("set_writers")), ("writers", principals(ps))]);
+    block<system>("mrs_config", caller, [("method", #Text("set_writers")), ("writers", principals(ps))]);
   };
   public query func validate_set_writers(ps : [Principal]) : async ValidationResult {
     switch (checkWriters(ps)) {
@@ -470,7 +471,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (not isGoverning(caller)) trap("Only Sneed DAO governance or the operator");
     switch (checkLimits(l)) { case (?e) trap(e); case null {} };
     limits := l;
-    block("mrs_config", caller, [("method", #Text("set_limits")), ("writes_per_day", #Nat(l.writes_per_day)), ("max_pinned", #Nat(l.max_pinned)), ("max_active", #Nat(l.max_active)), ("max_bytes", #Nat(l.max_bytes))]);
+    block<system>("mrs_config", caller, [("method", #Text("set_limits")), ("writes_per_day", #Nat(l.writes_per_day)), ("max_pinned", #Nat(l.max_pinned)), ("max_active", #Nat(l.max_active)), ("max_bytes", #Nat(l.max_bytes))]);
   };
   public query func validate_set_limits(l : Limits) : async ValidationResult {
     switch (checkLimits(l)) {
@@ -486,7 +487,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (reason.size() == 0 or reason.size() > REASON_MAX) trap("Give a reason, at most 500 characters");
     let m = switch (Map.get(memories, Map.nhash, id)) { case (?x) x; case null trap("No such memory") };
     switch (m.status) { case (#removed _) trap("Already removed"); case _ {} };
-    tombstone(m, caller, reason, if (caller == governance) "dao" else "operator");
+    tombstone<system>(m, caller, reason, if (caller == governance) "dao" else "operator");
   };
   public query func validate_remove_memory(id : Nat, reason : Text) : async ValidationResult {
     switch (Map.get(memories, Map.nhash, id)) {
@@ -504,7 +505,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (not isOperator(caller)) return #err("Operator only");
     governance := g;
     archive_controllers := archives;
-    block("mrs_config", caller, [("method", #Text("operator_set_config")), ("governance", pv(g)), ("archive_controllers", principals(archives))]);
+    block<system>("mrs_config", caller, [("method", #Text("operator_set_config")), ("governance", pv(g)), ("archive_controllers", principals(archives))]);
     #ok("Config set");
   };
 
@@ -513,7 +514,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     if (not isGoverning(caller)) return #err("Only Sneed DAO governance or the operator");
     if (operator == null) return #ok("There is no operator");
     operator := null;
-    block("mrs_config", caller, [("method", #Text("end_operator"))]);
+    block<system>("mrs_config", caller, [("method", #Text("end_operator"))]);
     #ok("The operator's powers have ended");
   };
 
@@ -668,7 +669,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   };
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
   system func postupgrade() {
     Icrc3Log.certify(icrc3);
@@ -740,7 +741,7 @@ shared (deployer) persistent actor class MrSneed() = this {
 
   if (not initialized) {
     initialized := true;
-    block("mrs_init", deployer.caller, [("operator", pv(deployer.caller)), ("frame_hash", #Blob(sha(FRAME)))]);
+    block<system>("mrs_init", deployer.caller, [("operator", pv(deployer.caller)), ("frame_hash", #Blob(sha(FRAME)))]);
   };
   ensure_icrc3_timer<system>();
 };

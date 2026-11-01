@@ -514,7 +514,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         rate_rules := r;
         let now = rate_rule(action);
         let v = func(x : RateLimit.Rule) : T3.Value { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) };
-        icrc3_config(?caller, "rate_limit:" # action, v(now), ?v(old));
+        icrc3_config<system>(?caller, "rate_limit:" # action, v(now), ?v(old));
         #ok("Rate limit for " # action # ": " # Nat.toText(now.capacity) # " at once, " # Nat.toText(now.per_minute) # " a minute" # (if (now.capacity == 0) " (no limit)" else ""));
       };
     };
@@ -587,7 +587,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     // Start the main loop and store the timer ID
     main_loop_timer_id := ?Timer.setTimer<system>(#seconds 0, main_loop_tick);
     Debug.print("Started main loop with timer id " # debug_show(main_loop_timer_id));
-    icrc3_config(?caller, "main_loop", #Text("on"), null);
+    icrc3_config<system>(?caller, "main_loop", #Text("on"), null);
     #ok("Started main loop with timer id " # debug_show(main_loop_timer_id))
   };
 
@@ -600,7 +600,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         main_loop_timer_id := null;
         main_loop_last_stopped := ?Int.abs(Time.now());
         main_loop_next_scheduled := null;
-        icrc3_config(?caller, "main_loop", #Text("off"), null);
+        icrc3_config<system>(?caller, "main_loop", #Text("off"), null);
         #ok("Stopped main loop")
       };
       case (null) {
@@ -669,7 +669,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     current_distribution_token := null;
 
     orchestrator_stage := #idle;
-    icrc3_admin(caller, "distribution_cycle_stop", []);
+    icrc3_admin<system>(caller, "distribution_cycle_stop", []);
     #ok("Distribution cycle stopped")
   };
 
@@ -678,7 +678,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     let result = await run_distribution_cycle();
     switch (result) {
-      case (#ok(_)) { icrc3_admin(caller, "distribution_cycle_start", []) };
+      case (#ok(_)) { icrc3_admin<system>(caller, "distribution_cycle_start", []) };
       case (#err(_)) {};
     };
     result;
@@ -1015,7 +1015,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
       // ICRC-3: what the ledger holds against what is owed, and what this cycle shares now
       let icrc3_undistributed : Nat = if (server_balance > total_distributed) { server_balance - total_distributed } else { 0 };
-      icrc3_add("rll_reconciliation", [
+      icrc3_add<system>("rll_reconciliation", [
         ("token", Icrc3Log.principal(token_id)), ("ledger_balance", #Nat(server_balance)), ("claimable", #Nat(claimable)),
         ("reserved", #Nat(reserved)), ("undistributed", #Nat(icrc3_undistributed)),
         ("underflow", #Nat(if (total_distributed > server_balance) { total_distributed - server_balance } else { 0 })),
@@ -1099,7 +1099,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     import_next_neuron_id := null;
     neuron_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_next_neurons_tick);
     //await import_next_neurons_tick();
-    icrc3_admin(caller, "neuron_import_start", [("mode", #Text("all"))]);
+    icrc3_admin<system>(caller, "neuron_import_start", [("mode", #Text("all"))]);
     #ok("Started full neuron import")
   };
 
@@ -1118,7 +1118,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     import_neuron_ticks := 0;
     neuron_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_next_neurons_tick);
-    icrc3_admin(caller, "neuron_import_start", [("mode", #Text("new"))]);
+    icrc3_admin<system>(caller, "neuron_import_start", [("mode", #Text("new"))]);
     await import_next_neurons_tick();
     #ok("Started incremental neuron import")
   };
@@ -1140,7 +1140,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     imported_proposal_max := 0;
     proposal_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_proposals_tick);
     //await import_proposals_tick();
-    icrc3_admin(caller, "proposal_import_start", [("mode", #Text("all")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
+    icrc3_admin<system>(caller, "proposal_import_start", [("mode", #Text("all")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
     #ok("Started full proposal import from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(proposal_import_timer_id))
   };
 
@@ -1161,7 +1161,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     imported_proposal_max := getHighestClosedProposalId();
     proposal_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_proposals_tick);
     //await import_proposals_tick();
-    icrc3_admin(caller, "proposal_import_start", [("mode", #Text("new")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
+    icrc3_admin<system>(caller, "proposal_import_start", [("mode", #Text("new")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
     #ok("Started incremental proposal import from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(proposal_import_timer_id))
   };
 
@@ -1174,7 +1174,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (?timer_id) {
         Timer.cancelTimer(timer_id);
         neuron_import_timer_id := null;
-        icrc3_admin(caller, "neuron_import_stop", []);
+        icrc3_admin<system>(caller, "neuron_import_stop", []);
         #ok("Stopped neuron import process with timer id " # debug_show(timer_id))
       };
       case (null) {
@@ -1193,7 +1193,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         Timer.cancelTimer(timer_id);
         proposal_import_timer_id := null;
         import_prop_ticks := 0;
-        icrc3_admin(caller, "proposal_import_stop", []);
+        icrc3_admin<system>(caller, "proposal_import_stop", []);
         #ok("Stopped proposal import process from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(timer_id))
       };
       case (null) {
@@ -1298,7 +1298,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
             case (#Ok(index)) {
                 // Log successful claim with tx_index
                 log_claim(seq, hotkey, icrc1_ledger_canister_id, amount, fee, #Success, null, ?index);
-                icrc3_add("rll_claim", [
+                icrc3_add<system>("rll_claim", [
                     ("caller", Icrc3Log.principal(hotkey)), ("token", Icrc3Log.principal(icrc1_ledger_canister_id)),
                     ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("total", #Nat(total_balance)),
                     ("owners", icrc3_owner_amounts(owner_balances)), ("to", Icrc3Log.account(hotkey, null)),
@@ -1354,7 +1354,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
             claim_created_at,
             Error.message(e)
         );
-        icrc3_add("rll_claim_incident", [
+        icrc3_add<system>("rll_claim_incident", [
             ("incident_id", #Nat(incident_id)), ("caller", Icrc3Log.principal(hotkey)), ("token", Icrc3Log.principal(icrc1_ledger_canister_id)),
             ("total", #Nat(total_balance)), ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("owners", icrc3_owner_amounts(owner_balances)),
             ("seq", #Nat(seq)), ("memo", #Blob(claim_memo)), ("created_at_time", Icrc3Log.nat64(claim_created_at)), ("error", #Text(Error.message(e))),
@@ -1399,7 +1399,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     switch (target) {
       case (null) { #err("Incident #" # Nat.toText(id) # " not found or already resolved"); };
       case (?inc) {
-        icrc3_add("rll_claim_incident_resolve", Array.append<(Text, T3.Value)>([
+        icrc3_add<system>("rll_claim_incident_resolve", Array.append<(Text, T3.Value)>([
           ("caller", Icrc3Log.principal(caller)), ("incident_id", #Nat(id)), ("token", Icrc3Log.principal(inc.token_id)),
           ("landed", #Nat(if (landed) 1 else 0)), ("recredited", #Nat(if (landed) 0 else inc.total)),
         ], if (landed) { [] } else { [("owners", icrc3_owner_amounts(inc.owners))] }));
@@ -1570,7 +1570,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       let token_v = Icrc3Log.principal(icrc1_ledger_canister_id);
       var credited_owners = 0;
       for ((_, amount) in dist_list.vals()) { if (amount > 0) { credited_owners += 1 } };
-      let summary = icrc3_add_i("rll_distribution", [
+      let summary = icrc3_add_i<system>("rll_distribution", [
         ("token", token_v), ("amount", #Nat(total_distributed)), ("requested", #Nat(amount_to_share)),
         ("owners", #Nat(credited_owners)), ("neurons", #Nat(dist.neurons)), ("voting_power", Icrc3Log.nat64(dist.vp_total)),
         ("first_proposal", Icrc3Log.nat64(first_proposal_id.id)), ("last_proposal", Icrc3Log.nat64(last_proposal_id.id)), ("via", #Text("cycle")),
@@ -1578,7 +1578,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       for ((owner, amount) in dist_list.vals()) {
         if (amount > 0) {
           let vp = switch (dist.owner_vp.get(owner)) { case (?v) v; case null 0 };
-          icrc3_add("rll_credit", [
+          icrc3_add<system>("rll_credit", [
             ("owner", Icrc3Log.principal(owner)), ("token", token_v), ("amount", #Nat(amount)),
             ("voting_power", #Nat(vp)), ("distribution", #Nat(summary)),
           ]);
@@ -1602,7 +1602,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       record_distribution(icrc1_ledger_canister_id, total_distributed);
       append_distribution_event({ token_id = icrc1_ledger_canister_id; amount = total_distributed; timestamp; proposal_range });
       let token_v = Icrc3Log.principal(icrc1_ledger_canister_id);
-      let summary = icrc3_add_i("rll_distribution", [
+      let summary = icrc3_add_i<system>("rll_distribution", [
         ("token", token_v), ("amount", #Nat(total_distributed)), ("requested", #Nat(amount_to_share)),
         ("owners", #Nat(credited_owners)), ("neurons", #Nat(dist.neurons)), ("voting_power", Icrc3Log.nat64(dist.vp_total)),
         ("first_proposal", Icrc3Log.nat64(first_proposal_id.id)), ("last_proposal", Icrc3Log.nat64(last_proposal_id.id)), ("via", #Text("cycle")),
@@ -1623,7 +1623,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         remove_pending_credit(icrc1_ledger_canister_id, amount);
         if (amount > 0) {
           let vp = switch (dist.owner_vp.get(owner)) { case (?v) v; case null 0 };
-          icrc3_add("rll_credit", [
+          icrc3_add<system>("rll_credit", [
             ("owner", Icrc3Log.principal(owner)), ("token", token_v), ("amount", #Nat(amount)),
             ("voting_power", #Nat(vp)), ("distribution", #Nat(summary)),
           ]);
@@ -1666,7 +1666,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     if (size == 0 or size > 100_000) return #err("The chunk size must be between 1 and 100000");
     let old = credit_chunk_size;
     credit_chunk_size := size;
-    icrc3_config(?caller, "credit_chunk_size", #Nat(size), ?#Nat(old));
+    icrc3_config<system>(?caller, "credit_chunk_size", #Nat(size), ?#Nat(old));
     #ok("Owners credited per message: " # Nat.toText(size));
   };
 
@@ -2521,21 +2521,21 @@ shared (deployer) persistent actor class SneedRLL() = this {
     let owners_before = balances.size();
     let totals_before = icrc3_ledger_amounts(get_all_token_balances());
     for (key in balances.keys()) { balances.delete(key); }; 
-    icrc3_admin(caller, "clear_balances", [("owners", #Nat(owners_before)), ("totals", totals_before)]);
+    icrc3_admin<system>(caller, "clear_balances", [("owners", #Nat(owners_before)), ("totals", totals_before)]);
   };
 
   public shared ({ caller }) func clear_total_distributions() : async () { 
     assert is_admin(caller);
     let totals_before = icrc3_ledger_amounts(Iter.toArray(total_distributions.entries()));
     for (key in total_distributions.keys()) { total_distributions.delete(key); };
-    icrc3_admin(caller, "clear_total_distributions", [("totals", totals_before)]);
+    icrc3_admin<system>(caller, "clear_total_distributions", [("totals", totals_before)]);
   };
 
   public shared ({ caller }) func clear_user_distributions() : async () { 
     assert is_admin(caller);
     let count = user_distributions.size();
     for (key in user_distributions.keys()) { user_distributions.delete(key); };
-    icrc3_admin(caller, "clear_user_distributions", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_user_distributions", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_user_distribution_events() : async () { 
@@ -2543,7 +2543,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     let count = user_distribution_events.size();
     user_distribution_events.clear(); 
     rebuild_event_stats();
-    icrc3_admin(caller, "clear_user_distribution_events", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_user_distribution_events", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_distribution_events() : async () { 
@@ -2551,7 +2551,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     let count = distribution_events.size();
     distribution_events.clear(); 
     rebuild_event_stats();
-    icrc3_admin(caller, "clear_distribution_events", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_distribution_events", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_claim_events() : async () { 
@@ -2559,7 +2559,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     let count = claim_events.size();
     claim_events.clear(); 
     rebuild_event_stats();
-    icrc3_admin(caller, "clear_claim_events", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_claim_events", [("count", #Nat(count))]);
   };
   
   public shared ({ caller }) func clear_all_balances_and_distributions() : async () { 
@@ -2578,7 +2578,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     distribution_events.clear(); 
     claim_events.clear(); 
     rebuild_event_stats();
-    icrc3_admin(caller, "clear_all_balances_and_distributions", Array.append<(Text, T3.Value)>([("owners", #Nat(owners_before)), ("totals", totals_before)], counts));
+    icrc3_admin<system>(caller, "clear_all_balances_and_distributions", Array.append<(Text, T3.Value)>([("owners", #Nat(owners_before)), ("totals", totals_before)], counts));
   };
 
 
@@ -2594,20 +2594,20 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert is_admin(caller);
     let count = neurons.size();
     for (key in neurons.keys()) { neurons.delete(key); }; 
-    icrc3_admin(caller, "clear_imported_neurons", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_imported_neurons", [("count", #Nat(count))]);
   };
   public shared ({ caller }) func clear_imported_owners() : async () { 
     assert is_admin(caller);
     let count = owners.size();
     for (key in owners.keys()) { owners.delete(key); }; 
-    icrc3_admin(caller, "clear_imported_owners", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_imported_owners", [("count", #Nat(count))]);
   };
   public shared ({ caller }) func clear_imported_props() : async () {
     assert is_admin(caller);
     let count = props.size();
     for (key in props.keys()) { props.delete(key); }; 
     start_vote_index_rebuild<system>(); // nothing left: done at the first slice
-    icrc3_admin(caller, "clear_imported_props", [("count", #Nat(count))]);
+    icrc3_admin<system>(caller, "clear_imported_props", [("count", #Nat(count))]);
   };
 
 /*
@@ -2744,7 +2744,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       };
 
       known_tokens.put(token_ledger_id, metadata);
-      icrc3_config(?caller, "known_token_added", icrc3_token_value(token_ledger_id, metadata, null), null);
+      icrc3_config<system>(?caller, "known_token_added", icrc3_token_value(token_ledger_id, metadata, null), null);
     } catch e {
       throw Error.reject("Failed to fetch token metadata: " # Error.message(e));
     };
@@ -2753,7 +2753,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
   public shared ({ caller }) func remove_known_token(token_ledger_id : Principal) : async () {
     assert is_admin(caller);
     switch (known_tokens.remove(token_ledger_id)) {
-      case (?_) { icrc3_config(?caller, "known_token_removed", Icrc3Log.principal(token_ledger_id), null) };
+      case (?_) { icrc3_config<system>(?caller, "known_token_removed", Icrc3Log.principal(token_ledger_id), null) };
       case null {};
     };
   };
@@ -3023,7 +3023,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     for (key in whitelisted_tokens.keys()) {
       whitelisted_tokens.delete(key);
     };
-    if (count > 0) { icrc3_config(?caller, "whitelist_cleared", #Nat(count), null) };
+    if (count > 0) { icrc3_config<system>(?caller, "whitelist_cleared", #Nat(count), null) };
   };
 
   public shared  ({ caller }) func clear_known_tokens() : async () {
@@ -3032,7 +3032,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     for (key in known_tokens.keys()) {
       known_tokens.delete(key);
     };
-    if (count > 0) { icrc3_config(?caller, "known_tokens_cleared", #Nat(count), null) };
+    if (count > 0) { icrc3_config<system>(?caller, "known_tokens_cleared", #Nat(count), null) };
   };
 
   transient var import_whitelisted_running = false;
@@ -3101,7 +3101,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         let first_i = next_i;
         let n = Nat.min(100, added.size() - first_i);
         let chunk = Array.tabulate<T3.Value>(n, func(i) { Icrc3Log.principal(added.get(first_i + i)) });
-        icrc3_config(by, "whitelist_tokens_added", #Array(chunk), null);
+        icrc3_config<system>(by, "whitelist_tokens_added", #Array(chunk), null);
         next_i += n;
       };
 
@@ -3129,7 +3129,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     // Add to admin list
     admin_principals := Array.append(admin_principals, [principal]);
-    icrc3_config(?caller, "admin_added", Icrc3Log.principal(principal), null);
+    icrc3_config<system>(?caller, "admin_added", Icrc3Log.principal(principal), null);
     #ok("Added admin " # Principal.toText(principal))
   };
 
@@ -3155,7 +3155,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     };
 
     admin_principals := new_admins;
-    icrc3_config(?caller, "admin_removed", Icrc3Log.principal(principal), null);
+    icrc3_config<system>(?caller, "admin_removed", Icrc3Log.principal(principal), null);
     #ok("Removed admin " # Principal.toText(principal))
   };
 
@@ -3349,7 +3349,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
               Debug.print("Adding token " # Principal.toText(ledger_id) # " to known tokens with balance " # debug_show(balance));
               known_tokens.put(ledger_id, metadata);
               cntImportedWithBalance += 1;
-              icrc3_config(null, "known_token_added", icrc3_token_value(ledger_id, metadata, ?balance), null);
+              icrc3_config<system>(null, "known_token_added", icrc3_token_value(ledger_id, metadata, ?balance), null);
             };
           } catch e {
             Debug.print("Error getting balance for token " # Principal.toText(ledger_id) # ": " # Error.message(e));
@@ -3549,7 +3549,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     let old_min = token_min_distributions.get(token_id);
     token_min_distributions.put(token_id, min_amount);
-    icrc3_config(?caller, "token_min_distribution", icrc3_limit_value(token_id, ?min_amount), ?icrc3_limit_value(token_id, old_min));
+    icrc3_config<system>(?caller, "token_min_distribution", icrc3_limit_value(token_id, ?min_amount), ?icrc3_limit_value(token_id, old_min));
     #ok("Set minimum distribution amount for token " # Principal.toText(token_id) # " to " # debug_show(min_amount))
   };
 
@@ -3562,7 +3562,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       };
       case (?old_min) {
         token_min_distributions.delete(token_id);
-        icrc3_config(?caller, "token_min_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_min));
+        icrc3_config<system>(?caller, "token_min_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_min));
         #ok("Removed minimum distribution amount for token " # Principal.toText(token_id))
       };
     }
@@ -3597,7 +3597,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     let old_max = token_max_distributions.get(token_id);
     token_max_distributions.put(token_id, max_amount);
-    icrc3_config(?caller, "token_max_distribution", icrc3_limit_value(token_id, ?max_amount), ?icrc3_limit_value(token_id, old_max));
+    icrc3_config<system>(?caller, "token_max_distribution", icrc3_limit_value(token_id, ?max_amount), ?icrc3_limit_value(token_id, old_max));
     #ok("Set maximum distribution amount for token " # Principal.toText(token_id) # " to " # debug_show(max_amount))
   };
 
@@ -3610,7 +3610,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       };
       case (?old_max) {
         token_max_distributions.delete(token_id);
-        icrc3_config(?caller, "token_max_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_max));
+        icrc3_config<system>(?caller, "token_max_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_max));
         #ok("Removed maximum distribution amount for token " # Principal.toText(token_id))
       };
     }
@@ -4418,23 +4418,26 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };
 
   // Append one block for a change that has just been committed to local state.
-  private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+  private func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
-  private func icrc3_add_i(btype : Text, tx : [(Text, T3.Value)]) : Nat {
-    Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+  private func icrc3_add_i<system>(btype : Text, tx : [(Text, T3.Value)]) : Nat {
+    let index = Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
+    index;
   };
 
   /// A setting changed: by `by` (an admin), or by the distribution cycle when null.
-  private func icrc3_config(by : ?Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
+  private func icrc3_config<system>(by : ?Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
     let who : (Text, T3.Value) = switch (by) { case (?p) ("caller", Icrc3Log.principal(p)); case null ("via", #Text("cycle")) };
     let base : [(Text, T3.Value)] = [who, ("key", #Text(key)), ("value", value)];
-    icrc3_add("rll_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
+    icrc3_add<system>("rll_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
   };
 
-  private func icrc3_admin(caller : Principal, action : Text, fields : [(Text, T3.Value)]) {
-    icrc3_add("rll_admin_action", Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller)), ("action", #Text(action))], fields));
+  private func icrc3_admin<system>(caller : Principal, action : Text, fields : [(Text, T3.Value)]) {
+    icrc3_add<system>("rll_admin_action", Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller)), ("action", #Text(action))], fields));
   };
 
   /// Owners and amounts (zero amounts left out) as an Array of Map { owner; amount }.
@@ -4498,7 +4501,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (#Err(e)) { #Err(e) };
       case (#Ok(changes)) {
         for ((key, old_value, new_value) in changes.vals()) {
-          icrc3_config(?caller, key, #Nat(new_value), ?#Nat(old_value));
+          icrc3_config<system>(?caller, key, #Nat(new_value), ?#Nat(old_value));
         };
         #Ok(icrc3.settings);
       };
@@ -4536,7 +4539,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (#Err(e)) { #Err(e) };
       case (#Ok) {
         let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
-        icrc3_config(?caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+        icrc3_config<system>(?caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
         #Ok;
       };
     };
@@ -4551,7 +4554,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
   /// Forget an archive's proposal (after a rejection) so a new one is submitted.
   public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
     if (not is_admin(caller)) { return #Err("Only admins can reset a registration") };
-    #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+    let found = Icrc3Sns.reset(icrc3_sns, canister_id);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // a reset registration wants a new proposal
+    #Ok(found);
   };
 
   // ---- background work ----
@@ -4562,7 +4567,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };
 
   private func ensure_icrc3_timer<system>() {
-    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+    Icrc3Log.ensureSpillWith<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job, func() : Bool { Icrc3Sns.pending(icrc3_sns, icrc3.archives) });
   };
 
   // the ICRC-3 spill check (every 15 minutes; started on install, and on upgrade before

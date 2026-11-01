@@ -278,8 +278,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     // ---- ICRC-3 block helpers ----
 
     /// Append one block for a change that has just been committed to local state.
-    func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+    func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) {
         ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
     };
     func pv(p : Principal) : T3.Value { Icrc3Log.principal(p) };
     func av(a : T.Account) : T3.Value { Icrc3Log.account(a.owner, a.subaccount) };
@@ -295,12 +296,12 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     func vpTierValue(t : T.VotingPowerTier) : T3.Value {
         #Map([("name", #Text(t.name)), ("min_voting_power_e8s", #Nat(t.minVotingPowerE8s)), ("duration_ns", #Nat(t.durationNs)), ("active", flag(t.active))]);
     };
-    func icrc3_tier(btype : Text, caller : Principal, kind : Text, index : Nat, fields : [(Text, T3.Value)]) {
-        icrc3_add(btype, Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("kind", #Text(kind)), ("index", #Nat(index))], fields));
+    func icrc3_tier<system>(btype : Text, caller : Principal, kind : Text, index : Nat, fields : [(Text, T3.Value)]) {
+        icrc3_add<system>(btype, Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("kind", #Text(kind)), ("index", #Nat(index))], fields));
     };
-    func icrc3_config(caller : Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
+    func icrc3_config<system>(caller : Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
         let base : [(Text, T3.Value)] = [("caller", pv(caller)), ("key", #Text(key)), ("value", value)];
-        icrc3_add("premium_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
+        icrc3_add<system>("premium_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
     };
     func samePrincipals(a : [Principal], b : [Principal]) : Bool {
         if (a.size() != b.size()) return false;
@@ -312,16 +313,16 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         Principal.equal(a.owner, b.owner) and a.subaccount == b.subaccount;
     };
     /// One config-update block per field of the Config record that changed.
-    func icrc3_config_changes(caller : Principal, old : T.Config, new : T.Config) {
+    func icrc3_config_changes<system>(caller : Principal, old : T.Config, new : T.Config) {
         let principals = func(ps : [Principal]) : T3.Value { #Array(Array.map<Principal, T3.Value>(ps, pv)) };
-        if (not samePrincipals(old.admins, new.admins)) { icrc3_config(caller, "admins", principals(new.admins), ?principals(old.admins)) };
-        if (not Principal.equal(old.icpLedgerId, new.icpLedgerId)) { icrc3_config(caller, "icp_ledger_id", pv(new.icpLedgerId), ?pv(old.icpLedgerId)) };
-        if (not Principal.equal(old.sneedGovernanceId, new.sneedGovernanceId)) { icrc3_config(caller, "sneed_governance_id", pv(new.sneedGovernanceId), ?pv(old.sneedGovernanceId)) };
-        if (not sameAccount(old.paymentRecipient, new.paymentRecipient)) { icrc3_config(caller, "payment_recipient", av(new.paymentRecipient), ?av(old.paymentRecipient)) };
-        if (old.minClaimIntervalNs != new.minClaimIntervalNs) { icrc3_config(caller, "min_claim_interval_ns", #Nat(new.minClaimIntervalNs), ?#Nat(old.minClaimIntervalNs)) };
+        if (not samePrincipals(old.admins, new.admins)) { icrc3_config<system>(caller, "admins", principals(new.admins), ?principals(old.admins)) };
+        if (not Principal.equal(old.icpLedgerId, new.icpLedgerId)) { icrc3_config<system>(caller, "icp_ledger_id", pv(new.icpLedgerId), ?pv(old.icpLedgerId)) };
+        if (not Principal.equal(old.sneedGovernanceId, new.sneedGovernanceId)) { icrc3_config<system>(caller, "sneed_governance_id", pv(new.sneedGovernanceId), ?pv(old.sneedGovernanceId)) };
+        if (not sameAccount(old.paymentRecipient, new.paymentRecipient)) { icrc3_config<system>(caller, "payment_recipient", av(new.paymentRecipient), ?av(old.paymentRecipient)) };
+        if (old.minClaimIntervalNs != new.minClaimIntervalNs) { icrc3_config<system>(caller, "min_claim_interval_ns", #Nat(new.minClaimIntervalNs), ?#Nat(old.minClaimIntervalNs)) };
     };
-    func icrc3_promo(btype : Text, caller : Principal, code : Text, fields : [(Text, T3.Value)]) {
-        icrc3_add(btype, Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("code_id", #Nat(ensurePromoCodeId(code)))], fields));
+    func icrc3_promo<system>(btype : Text, caller : Principal, code : Text, fields : [(Text, T3.Value)]) {
+        icrc3_add<system>(btype, Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("code_id", #Nat(ensurePromoCodeId(code)))], fields));
     };
 
     // Record a claim log entry
@@ -572,7 +573,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
         switch (result) {
             case (#Ok(blockIndex)) {
-                icrc3_add("premium_deposit_withdraw", [
+                icrc3_add<system>("premium_deposit_withdraw", [
                     ("caller", pv(caller)), ("amount_e8s", #Nat(balance - fee)), ("fee_e8s", #Nat(fee)), ("to", av(to)), ("icp_tx", #Nat(blockIndex)),
                 ]);
                 #ok({ amountE8s = balance - fee; blockIndex; to });
@@ -635,7 +636,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
         switch (result) {
             case (#Ok(blockIndex)) {
-                icrc3_add("premium_deposit_token_withdraw", [
+                icrc3_add<system>("premium_deposit_token_withdraw", [
                     ("caller", pv(caller)), ("ledger", pv(ledgerId)), ("amount", #Nat(balance - fee)), ("fee", #Nat(fee)), ("to", av(to)), ("ledger_tx", #Nat(blockIndex)),
                 ]);
                 #ok({ amountE8s = balance - fee; blockIndex; to });
@@ -739,7 +740,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             null
         );
 
-        icrc3_add("premium_icp_purchase", Array.flatten<(Text, T3.Value)>([
+        icrc3_add<system>("premium_icp_purchase", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("tier", #Text(tier.name)), ("duration_ns", #Nat(tier.durationNs)), ("amount_e8s", #Nat(balance)),
              ("fee_e8s", #Nat(fee)), ("to", av(recipient)), ("icp_tx", #Nat(transactionId)), ("price_tier", #Text(SP.tierText(priceTier)))],
             prevExp(previous),
@@ -871,7 +872,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             null
         );
 
-        icrc3_add("premium_vp_claim", Array.flatten<(Text, T3.Value)>([
+        icrc3_add<system>("premium_vp_claim", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("voting_power", #Nat(totalVp)), ("tier", #Text(tier.name)), ("duration_ns", #Nat(tier.durationNs))],
             prevExp(previous),
             [("new_expiration", tv(newExpiration))],
@@ -975,7 +976,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 };
                 updatePromoCode(updatedPromoCode);
 
-                icrc3_promo("premium_promo_claim", caller, code, Array.flatten<(Text, T3.Value)>([
+                icrc3_promo<system>("premium_promo_claim", caller, code, Array.flatten<(Text, T3.Value)>([
                     [("duration_ns", #Nat(promoCode.durationNs)), ("claim_count", #Nat(updatedPromoCode.claimCount))],
                     prevExp(previous),
                     [("new_expiration", tv(newExpiration))],
@@ -997,7 +998,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
         let old = config;
         config := newConfig;
-        icrc3_config_changes(caller, old, newConfig);
+        icrc3_config_changes<system>(caller, old, newConfig);
         #ok(());
     };
     
@@ -1014,7 +1015,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = config.minClaimIntervalNs;
         };
-        if (not wasAdmin) { icrc3_config(caller, "admin_added", pv(newAdmin), null) };
+        if (not wasAdmin) { icrc3_config<system>(caller, "admin_added", pv(newAdmin), null) };
         #ok(());
     };
     
@@ -1031,7 +1032,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = config.minClaimIntervalNs;
         };
-        if (wasAdmin) { icrc3_config(caller, "admin_removed", pv(admin), null) };
+        if (wasAdmin) { icrc3_config<system>(caller, "admin_removed", pv(admin), null) };
         #ok(());
     };
     
@@ -1051,7 +1052,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             return #err(#InvalidInput("Amount and duration must be positive"));
         };
         icpTiers := Array.append(icpTiers, [tier]);
-        icrc3_tier("premium_tier_add", caller, "icp", icpTiers.size() - 1, [("tier", icpTierValue(tier))]);
+        icrc3_tier<system>("premium_tier_add", caller, "icp", icpTiers.size() - 1, [("tier", icpTierValue(tier))]);
         #ok(());
     };
     
@@ -1067,7 +1068,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         icpTiers := Array.tabulate<T.IcpTier>(icpTiers.size(), func(i : Nat) : T.IcpTier {
             if (i == index) { tier } else { icpTiers[i] };
         });
-        icrc3_tier("premium_tier_update", caller, "icp", index, [("tier", icpTierValue(tier)), ("old_tier", icpTierValue(old))]);
+        icrc3_tier<system>("premium_tier_update", caller, "icp", index, [("tier", icpTierValue(tier)), ("old_tier", icpTierValue(old))]);
         #ok(());
     };
     
@@ -1083,7 +1084,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         icpTiers := Array.tabulate<T.IcpTier>(icpTiers.size() - 1, func(i : Nat) : T.IcpTier {
             if (i < index) { icpTiers[i] } else { icpTiers[i + 1] };
         });
-        icrc3_tier("premium_tier_remove", caller, "icp", index, [("old_tier", icpTierValue(old))]);
+        icrc3_tier<system>("premium_tier_remove", caller, "icp", index, [("old_tier", icpTierValue(old))]);
         #ok(());
     };
     
@@ -1098,7 +1099,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             return #err(#InvalidInput("Duration must be positive"));
         };
         vpTiers := Array.append(vpTiers, [tier]);
-        icrc3_tier("premium_tier_add", caller, "vp", vpTiers.size() - 1, [("tier", vpTierValue(tier))]);
+        icrc3_tier<system>("premium_tier_add", caller, "vp", vpTiers.size() - 1, [("tier", vpTierValue(tier))]);
         #ok(());
     };
     
@@ -1114,7 +1115,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         vpTiers := Array.tabulate<T.VotingPowerTier>(vpTiers.size(), func(i : Nat) : T.VotingPowerTier {
             if (i == index) { tier } else { vpTiers[i] };
         });
-        icrc3_tier("premium_tier_update", caller, "vp", index, [("tier", vpTierValue(tier)), ("old_tier", vpTierValue(old))]);
+        icrc3_tier<system>("premium_tier_update", caller, "vp", index, [("tier", vpTierValue(tier)), ("old_tier", vpTierValue(old))]);
         #ok(());
     };
     
@@ -1130,7 +1131,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         vpTiers := Array.tabulate<T.VotingPowerTier>(vpTiers.size() - 1, func(i : Nat) : T.VotingPowerTier {
             if (i < index) { vpTiers[i] } else { vpTiers[i + 1] };
         });
-        icrc3_tier("premium_tier_remove", caller, "vp", index, [("old_tier", vpTierValue(old))]);
+        icrc3_tier<system>("premium_tier_remove", caller, "vp", index, [("old_tier", vpTierValue(old))]);
         #ok(());
     };
     
@@ -1153,7 +1154,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             lastUpdated = now;
         };
         setMembership(membership);
-        icrc3_add("premium_admin_set", Array.flatten<(Text, T3.Value)>([
+        icrc3_add<system>("premium_admin_set", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("principal", pv(principal))], prevExp(previous), [("new_expiration", tv(expirationNs))],
         ]));
         #ok(membership);
@@ -1180,7 +1181,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             lastUpdated = now;
         };
         setMembership(membership);
-        icrc3_add("premium_admin_extend", Array.flatten<(Text, T3.Value)>([
+        icrc3_add<system>("premium_admin_extend", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("principal", pv(principal)), ("duration_ns", #Nat(durationNs))], prevExp(previous), [("new_expiration", tv(newExpiration))],
         ]));
         #ok(membership);
@@ -1201,7 +1202,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         Map.delete(memberIndex, phash, principal);
         // revoking a non-member changes nothing and logs nothing
         if (previous != null) {
-            icrc3_add("premium_admin_revoke", Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("principal", pv(principal))], prevExp(previous)));
+            icrc3_add<system>("premium_admin_revoke", Array.append<(Text, T3.Value)>([("caller", pv(caller)), ("principal", pv(principal))], prevExp(previous)));
         };
         #ok(());
     };
@@ -1219,7 +1220,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = config.minClaimIntervalNs;
         };
-        icrc3_config(caller, "icp_ledger_id", pv(ledgerId), ?pv(old));
+        icrc3_config<system>(caller, "icp_ledger_id", pv(ledgerId), ?pv(old));
         #ok(());
     };
     
@@ -1236,7 +1237,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = config.minClaimIntervalNs;
         };
-        icrc3_config(caller, "sneed_governance_id", pv(governanceId), ?pv(old));
+        icrc3_config<system>(caller, "sneed_governance_id", pv(governanceId), ?pv(old));
         #ok(());
     };
     
@@ -1253,7 +1254,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = recipient;
             minClaimIntervalNs = config.minClaimIntervalNs;
         };
-        icrc3_config(caller, "payment_recipient", av(recipient), ?av(old));
+        icrc3_config<system>(caller, "payment_recipient", av(recipient), ?av(old));
         #ok(());
     };
     
@@ -1270,7 +1271,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = intervalNs;
         };
-        icrc3_config(caller, "min_claim_interval_ns", #Nat(intervalNs), ?#Nat(old));
+        icrc3_config<system>(caller, "min_claim_interval_ns", #Nat(intervalNs), ?#Nat(old));
         #ok(());
     };
     
@@ -1322,7 +1323,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         
         promoCodes := Array.append(promoCodes, [promoCode]);
         // logged by id: never the code itself, nor the admin notes
-        icrc3_promo("premium_promo_create", caller, code, Array.append<(Text, T3.Value)>(
+        icrc3_promo<system>("premium_promo_create", caller, code, Array.append<(Text, T3.Value)>(
             [("duration_ns", #Nat(request.durationNs)), ("max_claims", #Nat(request.maxClaims))],
             switch (request.expiration) { case (?e) [("code_expiration", tv(e))]; case null [] },
         ));
@@ -1369,7 +1370,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                     active = false;
                 };
                 updatePromoCode(updated);
-                icrc3_promo("premium_promo_deactivate", caller, pc.code, []);
+                icrc3_promo<system>("premium_promo_deactivate", caller, pc.code, []);
                 #ok(());
             };
         };
@@ -1395,7 +1396,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                     active = true;
                 };
                 updatePromoCode(updated);
-                icrc3_promo("premium_promo_reactivate", caller, pc.code, []);
+                icrc3_promo<system>("premium_promo_reactivate", caller, pc.code, []);
                 #ok(());
             };
         };
@@ -1414,7 +1415,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             promoCodes,
             func(pc : T.PromoCode) : Bool { pc.code != code }
         );
-        icrc3_promo("premium_promo_delete", caller, code, [("claim_count", #Nat(deleted.claimCount))]);
+        icrc3_promo<system>("premium_promo_delete", caller, code, [("claim_count", #Nat(deleted.claimCount))]);
         // the id is not reused; the code's text is dropped from the map with the code
         promoCodeIds := Array.filter<(Text, Nat)>(promoCodeIds, func((c, _) : (Text, Nat)) : Bool { c != code });
         #ok(());
@@ -1431,7 +1432,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         switch (validatePrices(prices)) { case (?e) { return #err(e) }; case null {} };
         let old = specialAdminPrices;
         specialAdminPrices := prices;
-        icrc3_config(caller, "admin_prices", SP.overridesValue(pricesFields(prices)), ?SP.overridesValue(pricesFields(old)));
+        icrc3_config<system>(caller, "admin_prices", SP.overridesValue(pricesFields(prices)), ?SP.overridesValue(pricesFields(old)));
         #ok;
     };
 
@@ -1444,7 +1445,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         let old = Map.get(specialPartners, phash, partner);
         Map.set(specialPartners, phash, partner, entry);
         let base : [(Text, T3.Value)] = [("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", SP.partnerValue(entry.label_, pricesFields(entry.prices), entry.expires_at))];
-        icrc3_add("premium_config_update", switch (old) {
+        icrc3_add<system>("premium_config_update", switch (old) {
             case (?o) Array.append(base, [("old_value", SP.partnerValue(o.label_, pricesFields(o.prices), o.expires_at))]);
             case null base;
         });
@@ -1457,7 +1458,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         switch (Map.remove(specialPartners, phash, partner)) {
             case null { #err("no partner prices for this principal") };
             case (?o) {
-                icrc3_add("premium_config_update", [
+                icrc3_add<system>("premium_config_update", [
                     ("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", #Text("removed")),
                     ("old_value", SP.partnerValue(o.label_, pricesFields(o.prices), o.expires_at)),
                 ]);
@@ -1746,7 +1747,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             case (#Err(e)) { #Err(e) };
             case (#Ok(changes)) {
                 for ((key, old_value, new_value) in changes.vals()) {
-                    icrc3_config(caller, key, #Nat(new_value), ?#Nat(old_value));
+                    icrc3_config<system>(caller, key, #Nat(new_value), ?#Nat(old_value));
                 };
                 #Ok(icrc3.settings);
             };
@@ -1784,7 +1785,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             case (#Err(e)) { #Err(e) };
             case (#Ok) {
                 let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
-                icrc3_config(caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+                icrc3_config<system>(caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
                 #Ok;
             };
         };
@@ -1799,7 +1800,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     /// Forget an archive's proposal (after a rejection) so a new one is submitted.
     public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
         if (not isAdmin(caller)) { return #Err("Only admins can reset a registration") };
-        #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+        let found = Icrc3Sns.reset(icrc3_sns, canister_id);
+        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // a reset registration wants a new proposal
+        #Ok(found);
     };
 
     // ---- background work ----
@@ -1810,7 +1813,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     };
 
     func ensure_icrc3_timer<system>() {
-        Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+        Icrc3Log.ensureSpillWith<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job, func() : Bool { Icrc3Sns.pending(icrc3_sns, icrc3.archives) });
     };
 
     // Republish the certified tip after an upgrade (certified data does not survive one).

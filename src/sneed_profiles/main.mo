@@ -121,8 +121,9 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     };
   };
 
-  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+  func block<system>(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, "sneedprofiles_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", pv(caller))], tx));
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
   func dappView(d : Dapp) : DappView = {
@@ -178,7 +179,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     let t = now64();
     Map.set<DappId, Dapp>(dapps, Map.nhash, id, { id; var name = d.name; var url = d.url; var logo = d.logo; var canisters = d.canisters; var verified = false; var hidden = false; registered_by = caller; created_at = t; var updated_at = t });
     NameIndex.add<DappId>(dapp_index, 0, d.name, id);
-    block("dapp_register", caller, [("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))]);
+    block<system>("dapp_register", caller, [("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))]);
     #ok(id);
   };
 
@@ -220,18 +221,18 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     existing.logo := d.logo;
     existing.canisters := d.canisters;
     existing.updated_at := now64();
-    block("dapp_update", caller, Array.append<(Text, T3.Value)>([("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))], if (cleared) [("verification_cleared", #Nat(1))] else []));
+    block<system>("dapp_update", caller, Array.append<(Text, T3.Value)>([("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))], if (cleared) [("verification_cleared", #Nat(1))] else []));
     #ok("Updated");
   };
 
   func samePrincipals(a : [Principal], b : [Principal]) : Bool = Array.equal<Principal>(a, b, Principal.equal);
 
-  func applyVerify(id : DappId, value : Bool, caller : Principal) : Result {
+  func applyVerify<system>(id : DappId, value : Bool, caller : Principal) : Result {
     switch (Map.get(dapps, Map.nhash, id)) {
       case (?d) {
         d.verified := value;
         d.updated_at := now64();
-        block("dapp_verify", caller, [("dapp", #Nat(id)), ("name", #Text(d.name)), ("verified", #Nat(if value 1 else 0))]);
+        block<system>("dapp_verify", caller, [("dapp", #Nat(id)), ("name", #Text(d.name)), ("verified", #Nat(if value 1 else 0))]);
         #ok(if value "Verified" else "Unverified");
       };
       case null #err("No such dapp");
@@ -240,13 +241,13 @@ shared (deployer) persistent actor class SneedProfiles() = this {
 
   public shared ({ caller }) func verify_dapp(id : DappId, value : Bool) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    applyVerify(id, value, caller);
+    applyVerify<system>(id, value, caller);
   };
 
   /// Generic nervous system function target: Sneed DAO verifies (or unverifies) a dapp.
   public shared ({ caller }) func verify_dapp_by_dao(id : DappId, value : Bool) : async () {
     if (caller != config.dao_governance) Debug.trap("Only Sneed DAO governance");
-    switch (applyVerify(id, value, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
+    switch (applyVerify<system>(id, value, caller)) { case (#ok _) {}; case (#err(e)) Debug.trap(e) };
   };
 
   public query func validate_verify_dapp_by_dao(id : DappId, value : Bool) : async T.ValidationResult {
@@ -262,7 +263,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
       case (?d) {
         d.hidden := hidden;
         d.updated_at := now64();
-        block("dapp_update", caller, [("dapp", #Nat(id)), ("hidden", #Nat(if hidden 1 else 0))]);
+        block<system>("dapp_update", caller, [("dapp", #Nat(id)), ("hidden", #Nat(if hidden 1 else 0))]);
         #ok(if hidden "Hidden" else "Shown");
       };
       case null #err("No such dapp");
@@ -318,7 +319,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     if (c.max_dapp_canisters < 1 or c.max_dapp_canisters > 100) return #err("max_dapp_canisters must be 1-100");
     if (c.archive_controllers.size() > 10) return #err("At most 10 archive controllers");
     config := c;
-    block("config_update", caller, [("config", #Text(debug_show (c)))]);
+    block<system>("config_update", caller, [("config", #Text(debug_show (c)))]);
     #ok("Config updated");
   };
 
@@ -342,14 +343,14 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return #ok("Already an admin");
     admins := Array.append(admins, [p]);
-    block("config_update", caller, [("admin_added", pv(p))]);
+    block<system>("config_update", caller, [("admin_added", pv(p))]);
     #ok("Added");
   };
 
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     admins := Array.filter<Principal>(admins, func(a) = a != p);
-    block("config_update", caller, [("admin_removed", pv(p))]);
+    block<system>("config_update", caller, [("admin_removed", pv(p))]);
     #ok("Removed");
   };
 
@@ -369,7 +370,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     switch (Icrc3Log.applySettings(icrc3, u)) {
       case (#Err(e)) #Err(e);
       case (#Ok(changes)) {
-        for ((key, old, new) in changes.vals()) block("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
+        for ((key, old, new) in changes.vals()) block<system>("config_update", caller, [("key", #Text(key)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
         #Ok(icrc3.settings);
       };
     };
@@ -387,7 +388,7 @@ shared (deployer) persistent actor class SneedProfiles() = this {
   };
 
   func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 
   system func postupgrade() {
     Icrc3Log.certify(icrc3);

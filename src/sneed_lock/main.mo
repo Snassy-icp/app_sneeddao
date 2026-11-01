@@ -850,7 +850,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         log_info(caller, correlation_id, "Removed stale claims on position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id) # " of " # debug_show(stale));
       };
       add_position_ownership_for_principal(caller, swap_canister_id, position_id);
-      icrc3_add("sneedlock_position_claim", Array.append<(Text, T3.Value)>([
+      icrc3_add<system>("sneedlock_position_claim", Array.append<(Text, T3.Value)>([
         ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
         ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)),
       ], if (stale.size() > 0) { [("removed_claims", #Array(Array.map<Principal, T3.Value>(stale, Icrc3Log.principal)))] } else { [] }));
@@ -891,7 +891,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     try {
     // make sure to clean out any expired locks
-    clear_expired_locks_for_principal(caller, correlation_id);
+    clear_expired_locks_for_principal<system>(caller, correlation_id);
 
     let sum_locked = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
 
@@ -925,7 +925,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     switch (result) {
       case (#Ok(tx_index)) {
         log_info(caller, correlation_id, "Transfer complete. Args: " # debug_show(transfer_args) # ". Result: " # debug_show(result));
-        icrc3_add("sneedlock_token_withdraw", [
+        icrc3_add<system>("sneedlock_token_withdraw", [
           ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
           ("amount", #Nat(amount)), ("to", Icrc3Log.account(to_principal, to_subaccount)), ("ledger_tx", #Nat(tx_index)),
         ]);
@@ -995,10 +995,10 @@ shared (deployer) persistent actor class SneedLock() = this {
             clear_position_claim(caller, swap_canister_id, position_id);
             // The position has left: its NFT is burned.
             switch (Map.get(nft_by_position, thash, pkey)) {
-              case (?t) { nft_burn(t, { owner = caller; subaccount = Map.get(nft_labels, nhash, t) }) };
+              case (?t) { nft_burn<system>(t, { owner = caller; subaccount = Map.get(nft_labels, nhash, t) }) };
               case null {};
             };
-            icrc3_add("sneedlock_position_withdraw", [
+            icrc3_add<system>("sneedlock_position_withdraw", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)), ("to", Icrc3Log.principal(to)),
               ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)),
             ]);
@@ -1074,7 +1074,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Moves a position's claim and its lock record from one principal to another, and logs it.
   /// The caller has checked that `from` is the position's only claimant. No awaits.
-  private func move_position(caller : Principal, correlation_id : Nat, from : Principal, to_principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : ?T.PositionLock {
+  private func move_position<system>(caller : Principal, correlation_id : Nat, from : Principal, to_principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : ?T.PositionLock {
     // Transfer the position ownership
     clear_position_claim(from, swap_canister_id, position_id);
     add_position_ownership_for_principal(to_principal, swap_canister_id, position_id);
@@ -1096,7 +1096,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(from)), ("to", Icrc3Log.principal(to_principal)),
       ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)),
     ];
-    icrc3_add("sneedlock_position_transfer", switch (removed_lock) {
+    icrc3_add<system>("sneedlock_position_transfer", switch (removed_lock) {
       case (?lock) { Array.append(position_transfer_tx, [("lock_id", #Nat(lock.lock_id)), ("expiry", Icrc3Log.nat64(lock.expiry))]) };
       case null { position_transfer_tx };
     });
@@ -1122,10 +1122,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let tid = Map.get(nft_by_position, thash, position_key(swap_canister_id, position_id));
     let from_label = switch (tid) { case (?t) Map.get(nft_labels, nhash, t); case null null };
-    ignore move_position(caller, correlation_id, caller, to_principal, swap_canister_id, position_id);
+    ignore move_position<system>(caller, correlation_id, caller, to_principal, swap_canister_id, position_id);
     // The NFT goes along, to the recipient's default account (this call names no subaccount).
     switch (tid) {
-      case (?t) { ignore nft_after_move(t, { owner = caller; subaccount = from_label }, { owner = to_principal; subaccount = null }, null, null, null) };
+      case (?t) { ignore nft_after_move<system>(t, { owner = caller; subaccount = from_label }, { owner = to_principal; subaccount = null }, null, null, null) };
       case null {};
     };
     log_info(caller, correlation_id, "Successfully transferred position ownership from " # debug_show(caller) # " to " # debug_show(to_principal) # " for position " # debug_show(position_id));
@@ -1185,7 +1185,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#ok(_)) {
         // The NFT goes along, to the recipient's default account (this call names no subaccount).
         if (token_nfts_activated and not (caller == to_principal and from_label == null)) {
-          ignore nft_after_move(lock_id, { owner = caller; subaccount = from_label }, { owner = to_principal; subaccount = null }, null, null, null);
+          ignore nft_after_move<system>(lock_id, { owner = caller; subaccount = from_label }, { owner = to_principal; subaccount = null }, null, null, null);
         };
         #Ok;
       };
@@ -1254,7 +1254,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         };
 
         // Clean up any expired locks first
-        clear_expired_locks_for_principal(owner, correlation_id);
+        clear_expired_locks_for_principal<system>(owner, correlation_id);
 
         // Verify the caller's subaccount has the locked balance BEFORE making any mutations
         let icrc1_ledger_canister = actor (Principal.toText(token_type)) : actor {
@@ -1372,7 +1372,7 @@ shared (deployer) persistent actor class SneedLock() = this {
               memo = switch (transfer_args.memo) { case (?m) m; case null "" };
               from_label = labels.0; to_label = labels.1; correlation_id; recorded_at = NowAsNat64(); error = Error.message(e);
             } : UncertainMove);
-            icrc3_add("sneedlock_token_lock_transfer", [
+            icrc3_add<system>("sneedlock_token_lock_transfer", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(owner)), ("to", Icrc3Log.principal(to_principal)),
               ("ledger", Icrc3Log.principal(token_type)), ("lock_id", #Nat(lock_id)), ("amount", #Nat(found_lock.amount)),
               ("expiry", Icrc3Log.nat64(found_lock.expiry)), ("outcome", #Text("uncertain")),
@@ -1410,7 +1410,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             // The lock was already recorded on the recipient above.
             log_info(caller, correlation_id, "Transferred " # Nat.toText(found_lock.amount) # " tokens from " # debug_show(caller) # " to " # debug_show(to_principal) # " with tx_index: " # debug_show(tx_index));
 
-            icrc3_add("sneedlock_token_lock_transfer", [
+            icrc3_add<system>("sneedlock_token_lock_transfer", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(owner)), ("to", Icrc3Log.principal(to_principal)),
               ("ledger", Icrc3Log.principal(token_type)), ("lock_id", #Nat(lock_id)), ("amount", #Nat(found_lock.amount)),
               ("expiry", Icrc3Log.nat64(found_lock.expiry)), ("ledger_tx", #Nat(tx_index)), ("outcome", #Text("ok")),
@@ -1550,12 +1550,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       switch (mv) {
         case (?m) {
           if (token_nfts_activated and kept == m.to) {
-            ignore nft_after_move(lock_id, { owner = m.from; subaccount = m.from_label }, { owner = m.to; subaccount = m.to_label }, null, null, null);
+            ignore nft_after_move<system>(lock_id, { owner = m.from; subaccount = m.from_label }, { owner = m.to; subaccount = m.to_label }, null, null, null);
           };
         };
         case null {};
       };
-      icrc3_add("sneedlock_token_lock_reconcile", Array.flatten<(Text, T3.Value)>([
+      icrc3_add<system>("sneedlock_token_lock_reconcile", Array.flatten<(Text, T3.Value)>([
         [("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
          ("amount", #Nat(lock.amount)), ("owner", Icrc3Log.principal(kept)), ("released", Icrc3Log.principal(released)), ("evidence", #Text(evidence)),
          ("balances", #Array([#Nat(bal1), #Nat(sum1), #Nat(bal2), #Nat(sum2)]))],
@@ -1704,7 +1704,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
 
     // make sure to clean out any expired locks
-      clear_expired_locks_for_principal(caller, correlation_id);
+      clear_expired_locks_for_principal<system>(caller, correlation_id);
 
       let summed_locks_for_caller = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
       // internal check
@@ -1747,7 +1747,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Re-check after the awaits: the caller's token operations are excluded meanwhile, but
       // locks can have arrived (a lock transfer to the caller) or expired.
-      clear_expired_locks_for_principal(caller, correlation_id);
+      clear_expired_locks_for_principal<system>(caller, correlation_id);
       let locked_now = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
       if (token_balance < locked_now + amount) {
           let error = #Err({
@@ -1767,13 +1767,13 @@ shared (deployer) persistent actor class SneedLock() = this {
         Map.set(dissolve_infos, nhash, lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
       };
       log_info(caller, correlation_id, "Created lock:" # debug_show(lock));
-      icrc3_add("sneedlock_token_lock_create", Array.append<(Text, T3.Value)>([
+      icrc3_add<system>("sneedlock_token_lock_create", Array.append<(Text, T3.Value)>([
         ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
         ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)), ("lock_id", #Nat(lock.lock_id)),
         ("amount", #Nat(amount)), ("expiry", Icrc3Log.nat64(expires_at)),
       ], if (delay > 0) { [("dissolve_delay", Icrc3Log.nat64(delay))] } else { [] }));
       // its NFT, logged after the lock it stands for
-      if (token_nfts_activated) { token_nft_mint(lock.lock_id, caller, icrc1_ledger_canister_id, "lock") };
+      if (token_nfts_activated) { token_nft_mint<system>(lock.lock_id, caller, icrc1_ledger_canister_id, "lock") };
       schedule_symbol_fill<system>([icrc1_ledger_canister_id]);
 
       // Step 3: Charge the ICP fee (only after lock is successfully created)
@@ -2016,14 +2016,14 @@ shared (deployer) persistent actor class SneedLock() = this {
             if (delay > 0) {
               Map.set(dissolve_infos, nhash, new_position_lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
             };
-            icrc3_add("sneedlock_position_lock_create", Array.append<(Text, T3.Value)>([
+            icrc3_add<system>("sneedlock_position_lock_create", Array.append<(Text, T3.Value)>([
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
               ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)), ("lock_id", #Nat(new_position_lock.lock_id)),
               ("expiry", Icrc3Log.nat64(expires_at)), ("token0", Icrc3Log.principal(token0_value)), ("token1", Icrc3Log.principal(token1_value)), ("dex", #Nat(dex_value)),
             ], if (delay > 0) { [("dissolve_delay", Icrc3Log.nat64(delay))] } else { [] }));
             // Its NFT, unless the position has one from an earlier lock (re-locked after expiry).
             if (not Map.has(nft_by_position, thash, position_key(swap_canister_id, position_id))) {
-              nft_mint(new_position_lock.lock_id, swap_canister_id, position_id, caller, "lock");
+              nft_mint<system>(new_position_lock.lock_id, swap_canister_id, position_id, caller, "lock");
             };
             schedule_symbol_fill<system>([token0_value, token1_value]);
 
@@ -2049,7 +2049,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             // carries the effective expiry, not the end of its lock period).
             switch (Map.get(dissolve_infos, nhash, locked_position.lock_id)) {
               case (?_) {
-                return switch (change_lock(caller, locked_position.lock_id, #Extend(expires_at), correlation_id)) {
+                return switch (change_lock<system>(caller, locked_position.lock_id, #Extend(expires_at), correlation_id)) {
                   case (#Ok(st)) #Ok(st.lock_id);
                   case (#Err(e)) #Err({ message = lock_op_error_text(e); transfer_error = null });
                 };
@@ -2065,7 +2065,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             
             update_position_lock_expiry(caller, correlation_id, swap_canister_id, locked_position, expires_at);
             let lock_id = locked_position.lock_id;
-            icrc3_add("sneedlock_position_lock_extend", [
+            icrc3_add<system>("sneedlock_position_lock_extend", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
               ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)), ("lock_id", #Nat(lock_id)),
               ("old_expiry", Icrc3Log.nat64(locked_position.expiry)), ("expiry", Icrc3Log.nat64(expires_at)),
@@ -2205,11 +2205,11 @@ shared (deployer) persistent actor class SneedLock() = this {
   public shared ({ caller }) func clear_expired_locks(): async () {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Clearing expired token locks for " # debug_show(caller));
-    clear_expired_locks_for_principal(caller, correlation_id);
+    clear_expired_locks_for_principal<system>(caller, correlation_id);
   };
 
   // loop through all the locks for the principal and archive any that have expired
-  private func clear_expired_locks_for_principal(principal: Principal, correlation_id : Nat): () {
+  private func clear_expired_locks_for_principal<system>(principal: Principal, correlation_id : Nat): () {
 
     let allLocks = switch (state.principal_token_locks.get(principal)) {
       case (?_tokenLocks) _tokenLocks;
@@ -2267,7 +2267,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           let label_ = nft_label(id);
           Map.delete(nft_labels, nhash, id);
           Map.delete(nft_token_approvals, nhash, id);
-          ignore icrc3_add_i("7burn", [("tid", #Nat(id)), ("from", acct({ owner = principal; subaccount = label_ }))]);
+          ignore icrc3_add_i<system>("7burn", [("tid", #Nat(id)), ("from", acct({ owner = principal; subaccount = label_ }))]);
         };
       };
     };
@@ -2470,7 +2470,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// One change to one lock (Dissolve.applyOp), owner only. Synchronous: no await between
   /// the checks and the write, so nothing can interleave.
-  private func change_lock(caller : Principal, lock_id : T.LockId, op : D.Op, correlation_id : Nat) : T.LockOpResult {
+  private func change_lock<system>(caller : Principal, lock_id : T.LockId, op : D.Op, correlation_id : Nat) : T.LockOpResult {
     if (Map.has(lock_ids_in_flight, nhash, lock_id)) { return #Err(#InProgress) };
     let tokens = token_lock_records(lock_id);
     let positions = position_lock_records(lock_id);
@@ -2508,7 +2508,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#Extend(_)) { if (kind == "token") "sneedlock_token_lock_extend" else "sneedlock_position_lock_extend" };
     };
     let lock_end = switch (after) { case (?i) i.lock_end; case null expiry };
-    icrc3_add(btype, Array.append<(Text, T3.Value)>([
+    icrc3_add<system>(btype, Array.append<(Text, T3.Value)>([
       ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(owner)),
       ("lock_id", #Nat(lock_id)), ("kind", #Text(kind)), block,
       ("old_expiry", Icrc3Log.nat64(stored)), ("expiry", Icrc3Log.nat64(expiry)), ("lock_end", Icrc3Log.nat64(lock_end)),
@@ -2525,23 +2525,23 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Start dissolving: allowed once the lock period has ended, for a lock with a delay.
   public shared ({ caller }) func start_dissolving(lock_id : T.LockId) : async T.LockOpResult {
-    change_lock(caller, lock_id, #Start, get_next_correlation_id());
+    change_lock<system>(caller, lock_id, #Start, get_next_correlation_id());
   };
 
   /// Stop dissolving: the time left becomes the delay again.
   public shared ({ caller }) func stop_dissolving(lock_id : T.LockId) : async T.LockOpResult {
-    change_lock(caller, lock_id, #Stop, get_next_correlation_id());
+    change_lock<system>(caller, lock_id, #Stop, get_next_correlation_id());
   };
 
   /// Add to the dissolve delay (a lock without one gets one). While dissolving, the end moves
   /// out by the same amount. Lock period + delay stay within the max lock length.
   public shared ({ caller }) func increase_dissolve_delay(lock_id : T.LockId, additional_ns : Nat64) : async T.LockOpResult {
-    change_lock(caller, lock_id, #Increase(additional_ns), get_next_correlation_id());
+    change_lock<system>(caller, lock_id, #Increase(additional_ns), get_next_correlation_id());
   };
 
   /// Move the end of the lock period out, for token and position locks. Not while dissolving.
   public shared ({ caller }) func extend_lock(lock_id : T.LockId, new_lock_end : Expiry) : async T.LockOpResult {
-    change_lock(caller, lock_id, #Extend(new_lock_end), get_next_correlation_id());
+    change_lock<system>(caller, lock_id, #Extend(new_lock_end), get_next_correlation_id());
   };
 
   public query func get_lock_limits() : async T.LockLimits {
@@ -2640,16 +2640,16 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   private func acct(a : N.Account) : T3.Value { Icrc3Log.account(a.owner, N.normSub(a.subaccount)) };
 
-  private func nft_mint(tid : Nat, swap : Principal, position_id : Nat, owner : Principal, why : Text) {
+  private func nft_mint<system>(tid : Nat, swap : Principal, position_id : Nat, owner : Principal, why : Text) {
     Map.set(nft_tokens, nhash, tid, { swap; position_id; minted_at = NowAsNat64() } : N.Position);
     Map.set(nft_by_position, thash, position_key(swap, position_id), tid);
-    ignore icrc3_add_i("7mint", [
+    ignore icrc3_add_i<system>("7mint", [
       ("tid", #Nat(tid)), ("to", Icrc3Log.account(owner, null)),
       ("meta", #Map([("sneedlock:kind", #Text("position")), ("sneedlock:swap", Icrc3Log.principal(swap)), ("sneedlock:position_id", #Nat(position_id)), ("sneedlock:minted_by", #Text(why))])),
     ]);
   };
 
-  private func nft_burn(tid : Nat, from : N.Account) {
+  private func nft_burn<system>(tid : Nat, from : N.Account) {
     switch (Map.get(nft_tokens, nhash, tid)) {
       case (?p) { Map.delete(nft_by_position, thash, position_key(p.swap, p.position_id)) };
       case null {};
@@ -2657,12 +2657,12 @@ shared (deployer) persistent actor class SneedLock() = this {
     Map.delete(nft_tokens, nhash, tid);
     Map.delete(nft_labels, nhash, tid);
     Map.delete(nft_token_approvals, nhash, tid);
-    ignore icrc3_add_i("7burn", [("tid", #Nat(tid)), ("from", acct(from))]);
+    ignore icrc3_add_i<system>("7burn", [("tid", #Nat(tid)), ("from", acct(from))]);
   };
 
   /// After the claim and lock record have moved (or only the label changes): the label, the
   /// token's approvals (cleared, as ICRC-37 requires), the block. Answers the block index.
-  private func nft_after_move(tid : Nat, from : N.Account, to : N.Account, spender : ?N.Account, memo : ?Blob, ts : ?Nat64) : Nat {
+  private func nft_after_move<system>(tid : Nat, from : N.Account, to : N.Account, spender : ?N.Account, memo : ?Blob, ts : ?Nat64) : Nat {
     set_nft_label(tid, to.subaccount);
     Map.delete(nft_token_approvals, nhash, tid);
     let base : [(Text, T3.Value)] = [("tid", #Nat(tid)), ("from", acct(from)), ("to", acct(to))];
@@ -2670,8 +2670,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       switch (memo) { case (?m) [("memo", #Blob(m))]; case null [] },
       switch (ts) { case (?t) [("ts", Icrc3Log.nat64(t))]; case null [] });
     switch (spender) {
-      case (?sp) icrc3_add_i("37xfer", Array.append(Array.append(base, [("spender", acct(sp))]), extra));
-      case null icrc3_add_i("7xfer", Array.append(base, extra));
+      case (?sp) icrc3_add_i<system>("37xfer", Array.append(Array.append(base, [("spender", acct(sp))]), extra));
+      case null icrc3_add_i<system>("7xfer", Array.append(base, extra));
     };
   };
 
@@ -2699,7 +2699,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           switch (Map.get(first, thash, k)) {
             case (?tid) {
               if (not Map.has(nft_by_position, thash, k) and not Map.has(minted, nhash, tid) and position_claimants(swap, position_id).size() == 1) {
-                nft_mint(tid, swap, position_id, owner, "activation");
+                nft_mint<system>(tid, swap, position_id, owner, "activation");
                 Map.set(minted, nhash, tid, ());
               };
             };
@@ -2857,18 +2857,18 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Moves an NFT whose checks have passed: claim and lock record to the new principal (when
   /// it changes), then label, approvals and block. Synchronous.
-  private func nft_transfer_now(caller : Principal, tid : Nat, from : N.Account, to : N.Account, spender : ?N.Account, memo : ?Blob, ts : ?Nat64) : Nat {
+  private func nft_transfer_now<system>(caller : Principal, tid : Nat, from : N.Account, to : N.Account, spender : ?N.Account, memo : ?Blob, ts : ?Nat64) : Nat {
     let p = switch (Map.get(nft_tokens, nhash, tid)) { case (?p) p; case null { Debug.trap("nft_transfer_now: no token") } };
     if (from.owner != to.owner) {
-      ignore move_position(caller, get_next_correlation_id(), from.owner, to.owner, p.swap, p.position_id);
+      ignore move_position<system>(caller, get_next_correlation_id(), from.owner, to.owner, p.swap, p.position_id);
     };
-    nft_after_move(tid, from, to, spender, memo, ts);
+    nft_after_move<system>(tid, from, to, spender, memo, ts);
   };
 
   // ---- token locks as NFTs (spec section 4) ----
 
-  private func token_nft_mint(lock_id : Nat, owner : Principal, ledger : Principal, why : Text) {
-    ignore icrc3_add_i("7mint", [
+  private func token_nft_mint<system>(lock_id : Nat, owner : Principal, ledger : Principal, why : Text) {
+    ignore icrc3_add_i<system>("7mint", [
       ("tid", #Nat(lock_id)), ("to", Icrc3Log.account(owner, null)),
       ("meta", #Map([("sneedlock:kind", #Text("token")), ("sneedlock:ledger", Icrc3Log.principal(ledger)), ("sneedlock:minted_by", #Text(why))])),
     ]);
@@ -2883,7 +2883,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let all = Array.sort<T.FullyQualifiedLock>(get_fully_qualified_locks(), func(a, b) { Nat.compare(a.2.lock_id, b.2.lock_id) });
     for ((owner, ledger, lock) in all.vals()) {
       if (not Map.has(seen, nhash, lock.lock_id) and token_lock_records(lock.lock_id).size() == 1) {
-        token_nft_mint(lock.lock_id, owner, ledger, "activation");
+        token_nft_mint<system>(lock.lock_id, owner, ledger, "activation");
         Map.set(seen, nhash, lock.lock_id, ());
       };
       Map.set(ledgers, phash, ledger, ());
@@ -2994,7 +2994,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       if (balance <= fee) { return #Err("The gas tank holds " # Nat.toText(balance) # ", not more than one ledger fee (" # Nat.toText(fee) # ")") };
       switch (await l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
         case (#Ok(i)) {
-          icrc3_add("sneedlock_gas_withdraw", [
+          icrc3_add<system>("sneedlock_gas_withdraw", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
             ("amount", #Nat(balance - fee)), ("to", Icrc3Log.account(to.owner, to.subaccount)), ("ledger_tx", #Nat(i)),
           ]);
@@ -3015,7 +3015,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     switch (Map.get(nft_tokens, nhash, tid)) {
       case (?_) {
         switch (nft_busy(tid)) { case (?why) { return #Err(#GenericError({ error_code = 3; message = why })) }; case null {} };
-        #Ok(nft_transfer_now(caller, tid, owner, to, spender, memo, ts));
+        #Ok(nft_transfer_now<system>(caller, tid, owner, to, spender, memo, ts));
       };
       case null {
         let r = token_lock_records(tid);
@@ -3026,9 +3026,9 @@ shared (deployer) persistent actor class SneedLock() = this {
           return #Err(#GenericError({ error_code = 3; message = "A token operation of the owner is in progress; try again shortly" }));
         };
         // Between two accounts of one principal only the label changes: no ledger call, no gas.
-        if (owner.owner == to.owner) { return #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
+        if (owner.owner == to.owner) { return #Ok(nft_after_move<system>(tid, owner, to, spender, memo, ts)) };
         switch (await* token_lock_move(caller, owner.owner, to.owner, ledger, tid, get_next_correlation_id(), true, (owner.subaccount, to.subaccount))) {
-          case (#ok(_)) { #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
+          case (#ok(_)) { #Ok(nft_after_move<system>(tid, owner, to, spender, memo, ts)) };
           case (#err(e)) { #Err(#GenericError({ error_code = e.code; message = e.message })) };
         };
       };
@@ -3159,7 +3159,8 @@ shared (deployer) persistent actor class SneedLock() = this {
   public shared ({ caller }) func icrc37_approve_tokens(args : [N.ApproveTokenArg]) : async [?N.ApproveTokenResult] {
     if (args.size() > N.MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_UPDATE_BATCH) # " approvals per call" }))] };
     let now = NowAsNat64();
-    Array.map<N.ApproveTokenArg, ?N.ApproveTokenResult>(args, func(a) {
+    // a named <system> function and a loop, not Array.map: appending log blocks needs the system capability
+    func approveOne<system>(a : N.ApproveTokenArg) : ?N.ApproveTokenResult {
       let i = a.approval_info;
       switch (N.checkTime(?i.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
       switch (i.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { return ?#Err(#GenericError({ error_code = 2; message = "Memo too long" })) } }; case null {} };
@@ -3172,16 +3173,20 @@ shared (deployer) persistent actor class SneedLock() = this {
       let others = Array.filter<N.ApprovalInfo>(Option.get(Map.get(nft_token_approvals, nhash, a.token_id), []), func(x) { N.notExpired(x, now) and not N.sameAccount(x.spender, i.spender) });
       if (others.size() >= N.MAX_APPROVALS) { return ?#Err(#GenericError({ error_code = 5; message = "Too many approvals on this token" })) };
       Map.set(nft_token_approvals, nhash, a.token_id, Array.append(others, [i]));
-      ?#Ok(icrc3_add_i("37approve", Array.append<(Text, T3.Value)>([
+      ?#Ok(icrc3_add_i<system>("37approve", Array.append<(Text, T3.Value)>([
         ("tid", #Nat(a.token_id)), ("from", acct(owner)), ("spender", acct(i.spender)), ("ts", Icrc3Log.nat64(i.created_at_time)),
       ], switch (i.expires_at) { case (?e) [("exp", Icrc3Log.nat64(e))]; case null [] })));
-    });
+    };
+    let results = Buffer.Buffer<?N.ApproveTokenResult>(args.size());
+    for (a in args.vals()) { results.add(approveOne<system>(a)) };
+    Buffer.toArray(results);
   };
 
   public shared ({ caller }) func icrc37_approve_collection(args : [N.ApproveCollectionArg]) : async [?N.ApproveCollectionResult] {
     if (args.size() > N.MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_UPDATE_BATCH) # " approvals per call" }))] };
     let now = NowAsNat64();
-    Array.map<N.ApproveCollectionArg, ?N.ApproveCollectionResult>(args, func(a) {
+    // a named <system> function and a loop, not Array.map: appending log blocks needs the system capability
+    func approveOne<system>(a : N.ApproveCollectionArg) : ?N.ApproveCollectionResult {
       let i = a.approval_info;
       switch (N.checkTime(?i.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
       switch (i.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { return ?#Err(#GenericError({ error_code = 2; message = "Memo too long" })) } }; case null {} };
@@ -3194,16 +3199,20 @@ shared (deployer) persistent actor class SneedLock() = this {
       let others = Array.filter<N.ApprovalInfo>(Option.get(Map.get(nft_collection_approvals, thash, k), []), func(x) { N.notExpired(x, now) and not N.sameAccount(x.spender, i.spender) });
       if (others.size() >= N.MAX_APPROVALS) { return ?#Err(#GenericError({ error_code = 5; message = "Too many collection approvals for this account" })) };
       Map.set(nft_collection_approvals, thash, k, Array.append(others, [i]));
-      ?#Ok(icrc3_add_i("37approve_coll", Array.append<(Text, T3.Value)>([
+      ?#Ok(icrc3_add_i<system>("37approve_coll", Array.append<(Text, T3.Value)>([
         ("from", acct(owner)), ("spender", acct(i.spender)), ("ts", Icrc3Log.nat64(i.created_at_time)),
       ], switch (i.expires_at) { case (?e) [("exp", Icrc3Log.nat64(e))]; case null [] })));
-    });
+    };
+    let results = Buffer.Buffer<?N.ApproveCollectionResult>(args.size());
+    for (a in args.vals()) { results.add(approveOne<system>(a)) };
+    Buffer.toArray(results);
   };
 
   public shared ({ caller }) func icrc37_revoke_token_approvals(args : [N.RevokeTokenApprovalArg]) : async [?N.RevokeTokenApprovalResult] {
     if (args.size() > N.MAX_REVOKE) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_REVOKE) # " revocations per call" }))] };
     let now = NowAsNat64();
-    Array.map<N.RevokeTokenApprovalArg, ?N.RevokeTokenApprovalResult>(args, func(a) {
+    // a named <system> function and a loop, not Array.map: appending log blocks needs the system capability
+    func revokeOne<system>(a : N.RevokeTokenApprovalArg) : ?N.RevokeTokenApprovalResult {
       switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
       let owner = switch (nft_owner(a.token_id)) { case (?o) o; case null { return ?#Err(#NonExistingTokenId) } };
       if (not N.sameAccount(owner, { owner = caller; subaccount = a.from_subaccount })) { return ?#Err(#Unauthorized) };
@@ -3211,15 +3220,19 @@ shared (deployer) persistent actor class SneedLock() = this {
       let kept = Array.filter<N.ApprovalInfo>(live, func(x) { switch (a.spender) { case (?sp) not N.sameAccount(x.spender, sp); case null false } });
       if (kept.size() == live.size()) { return ?#Err(#ApprovalDoesNotExist) };
       if (kept.size() == 0) Map.delete(nft_token_approvals, nhash, a.token_id) else Map.set(nft_token_approvals, nhash, a.token_id, kept);
-      ?#Ok(icrc3_add_i("37revoke", Array.append<(Text, T3.Value)>([("tid", #Nat(a.token_id)), ("from", acct(owner))],
+      ?#Ok(icrc3_add_i<system>("37revoke", Array.append<(Text, T3.Value)>([("tid", #Nat(a.token_id)), ("from", acct(owner))],
         switch (a.spender) { case (?sp) [("spender", acct(sp))]; case null [] })));
-    });
+    };
+    let results = Buffer.Buffer<?N.RevokeTokenApprovalResult>(args.size());
+    for (a in args.vals()) { results.add(revokeOne<system>(a)) };
+    Buffer.toArray(results);
   };
 
   public shared ({ caller }) func icrc37_revoke_collection_approvals(args : [N.RevokeCollectionApprovalArg]) : async [?N.RevokeCollectionApprovalResult] {
     if (args.size() > N.MAX_REVOKE) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_REVOKE) # " revocations per call" }))] };
     let now = NowAsNat64();
-    Array.map<N.RevokeCollectionApprovalArg, ?N.RevokeCollectionApprovalResult>(args, func(a) {
+    // a named <system> function and a loop, not Array.map: appending log blocks needs the system capability
+    func revokeOne<system>(a : N.RevokeCollectionApprovalArg) : ?N.RevokeCollectionApprovalResult {
       switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
       let owner : N.Account = { owner = caller; subaccount = N.normSub(a.from_subaccount) };
       let k = N.accountKey(owner);
@@ -3227,9 +3240,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       let kept = Array.filter<N.ApprovalInfo>(live, func(x) { switch (a.spender) { case (?sp) not N.sameAccount(x.spender, sp); case null false } });
       if (kept.size() == live.size()) { return ?#Err(#ApprovalDoesNotExist) };
       if (kept.size() == 0) Map.delete(nft_collection_approvals, thash, k) else Map.set(nft_collection_approvals, thash, k, kept);
-      ?#Ok(icrc3_add_i("37revoke_coll", Array.append<(Text, T3.Value)>([("from", acct(owner))],
+      ?#Ok(icrc3_add_i<system>("37revoke_coll", Array.append<(Text, T3.Value)>([("from", acct(owner))],
         switch (a.spender) { case (?sp) [("spender", acct(sp))]; case null [] })));
-    });
+    };
+    let results = Buffer.Buffer<?N.RevokeCollectionApprovalResult>(args.size());
+    for (a in args.vals()) { results.add(revokeOne<system>(a)) };
+    Buffer.toArray(results);
   };
 
   public query func icrc37_is_approved(args : [N.IsApprovedArg]) : async [Bool] {
@@ -3374,18 +3390,21 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Append one block for an action that has just been committed to local state.
-  private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+  private func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) {
     ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
   };
 
   /// Appends a block and answers its index (ICRC-7 and ICRC-37 answer it as the transaction id).
-  private func icrc3_add_i(btype : Text, tx : [(Text, T3.Value)]) : Nat {
-    Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+  private func icrc3_add_i<system>(btype : Text, tx : [(Text, T3.Value)]) : Nat {
+    let index = Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
+    index;
   };
 
-  private func icrc3_config(caller : Principal, correlation_id : Nat, key : Text, value : T3.Value, old_value : ?T3.Value) {
+  private func icrc3_config<system>(caller : Principal, correlation_id : Nat, key : Text, value : T3.Value, old_value : ?T3.Value) {
     let base : [(Text, T3.Value)] = [("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key)), ("value", value)];
-    icrc3_add("sneedlock_config_update", switch (old_value) {
+    icrc3_add<system>("sneedlock_config_update", switch (old_value) {
       case (?old) { Array.append(base, [("old_value", old)]) };
       case null { base };
     });
@@ -3435,7 +3454,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#Ok(changes)) {
         let correlation_id = get_next_correlation_id();
         for ((key, old_value, new_value) in changes.vals()) {
-          icrc3_config(caller, correlation_id, key, #Nat(new_value), ?#Nat(old_value));
+          icrc3_config<system>(caller, correlation_id, key, #Nat(new_value), ?#Nat(old_value));
         };
         log_info(caller, correlation_id, "ICRC-3 settings updated: " # debug_show(icrc3.settings));
         #Ok(icrc3.settings);
@@ -3469,7 +3488,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#Err(e)) { #Err(e) };
       case (#Ok) {
         let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
-        icrc3_config(caller, get_next_correlation_id(), "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+        icrc3_config<system>(caller, get_next_correlation_id(), "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
         #Ok;
       };
     };
@@ -3484,14 +3503,18 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Forget an archive's proposal (after a rejection) so a new one is submitted.
   public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can reset a registration") };
-    #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+    let found = Icrc3Sns.reset(icrc3_sns, canister_id);
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // a reset registration wants a new proposal
+    #Ok(found);
   };
 
   /// Write the log start and import blocks if that has not happened yet.
   /// Returns the number of blocks written (0 when already imported).
   public shared ({ caller }) func admin_icrc3_import_history() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can import the history") };
-    #Ok(icrc3_import_history());
+    let written = icrc3_import_history();
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // the import may fill the live store
+    #Ok(written);
   };
 
   /// Re-apply the intended controllers (this canister and SNS root) to every archive.
@@ -3503,7 +3526,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   // ---- background work ----
 
   private func ensure_icrc3_timer<system>() {
-    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+    Icrc3Log.ensureSpillWith<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job, func() : Bool { Icrc3Sns.pending(icrc3_sns, icrc3.archives) });
   };
 
   private func icrc3_timer_job() : async () {
@@ -3513,7 +3536,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   private func schedule_icrc3_import<system>() {
     if (icrc3.history_imported) { return };
-    ignore Timer.setTimer<system>(#seconds 0, func() : async () { ignore icrc3_import_history(); activate_nfts<system>(); activate_token_nfts<system>() });
+    ignore Timer.setTimer<system>(#seconds 0, func() : async () { ignore icrc3_import_history(); Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); activate_nfts<system>(); activate_token_nfts<system>() });
   };
 
   // ---- one-time import of the state that existed before the log ----
@@ -3709,7 +3732,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Added new admin: " # debug_show(new_admin));
-    icrc3_config(caller, correlation_id, "admin_added", #Text(Principal.toText(new_admin)), null);
+    icrc3_config<system>(caller, correlation_id, "admin_added", #Text(Principal.toText(new_admin)), null);
     
     #Ok("Admin added successfully");
   };
@@ -3740,7 +3763,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Removed admin: " # debug_show(admin_to_remove));
-    icrc3_config(caller, correlation_id, "admin_removed", #Text(Principal.toText(admin_to_remove)), null);
+    icrc3_config<system>(caller, correlation_id, "admin_removed", #Text(Principal.toText(admin_to_remove)), null);
     
     #Ok("Admin removed successfully");
   };
@@ -3777,7 +3800,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     switch (result) {
       case (#Ok(tx_index)) {
-        icrc3_add("sneedlock_admin_token_return", [
+        icrc3_add<system>("sneedlock_admin_token_return", [
           ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
           ("from", Icrc3Log.account(this_canister_id(), ?Blob.fromArray(subaccount))), ("to", Icrc3Log.account(user_account_to.owner, null)),
           ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
@@ -3813,7 +3836,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     switch (result) {
       case (#Ok(tx_index)) {
-        icrc3_add("sneedlock_admin_token_return", [
+        icrc3_add<system>("sneedlock_admin_token_return", [
           ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
           ("from", Icrc3Log.account(this_canister_id(), null)), ("to", Icrc3Log.account(user_account_to.owner, null)),
           ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
@@ -3832,7 +3855,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let old_max_lock_length_ns = max_lock_length_ns;
     max_lock_length_ns := new_max_lock_length_days * day_ns;
-    icrc3_config(caller, get_next_correlation_id(), "max_lock_length_ns", #Nat(Nat64.toNat(max_lock_length_ns)), ?#Nat(Nat64.toNat(old_max_lock_length_ns)));
+    icrc3_config<system>(caller, get_next_correlation_id(), "max_lock_length_ns", #Nat(Nat64.toNat(max_lock_length_ns)), ?#Nat(Nat64.toNat(old_max_lock_length_ns)));
   };
 
   ////////////////
@@ -3868,7 +3891,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       return #Err("Only admins can set the premium canister ID");
     };
     sneed_premium_canister_id := canister_id;
-    icrc3_config(caller, get_next_correlation_id(), "sneed_premium_canister_id",
+    icrc3_config<system>(caller, get_next_correlation_id(), "sneed_premium_canister_id",
       #Text(switch (canister_id) { case (?id) Principal.toText(id); case null "none" }), null);
     switch (canister_id) {
       case (?id) { #Ok("Sneed Premium canister ID set to: " # Principal.toText(id)) };
@@ -3889,19 +3912,19 @@ shared (deployer) persistent actor class SneedLock() = this {
     let correlation_id = get_next_correlation_id();
     
     switch (token_lock_fee) {
-      case (?fee) { icrc3_config(caller, correlation_id, "token_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(token_lock_fee_icp_e8s))); token_lock_fee_icp_e8s := fee };
+      case (?fee) { icrc3_config<system>(caller, correlation_id, "token_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(token_lock_fee_icp_e8s))); token_lock_fee_icp_e8s := fee };
       case null {};
     };
     switch (position_lock_fee) {
-      case (?fee) { icrc3_config(caller, correlation_id, "position_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(position_lock_fee_icp_e8s))); position_lock_fee_icp_e8s := fee };
+      case (?fee) { icrc3_config<system>(caller, correlation_id, "position_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(position_lock_fee_icp_e8s))); position_lock_fee_icp_e8s := fee };
       case null {};
     };
     switch (premium_token_lock_fee) {
-      case (?fee) { icrc3_config(caller, correlation_id, "premium_token_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(premium_token_lock_fee_icp_e8s))); premium_token_lock_fee_icp_e8s := fee };
+      case (?fee) { icrc3_config<system>(caller, correlation_id, "premium_token_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(premium_token_lock_fee_icp_e8s))); premium_token_lock_fee_icp_e8s := fee };
       case null {};
     };
     switch (premium_position_lock_fee) {
-      case (?fee) { icrc3_config(caller, correlation_id, "premium_position_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(premium_position_lock_fee_icp_e8s))); premium_position_lock_fee_icp_e8s := fee };
+      case (?fee) { icrc3_config<system>(caller, correlation_id, "premium_position_lock_fee_icp_e8s", #Nat(Nat64.toNat(fee)), ?#Nat(Nat64.toNat(premium_position_lock_fee_icp_e8s))); premium_position_lock_fee_icp_e8s := fee };
       case null {};
     };
     
@@ -3929,7 +3952,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case null { "main account" };
     };
     
-    icrc3_config(caller, get_next_correlation_id(), "icp_fee_recipient", #Text(principal_text # " / " # subaccount_text), null);
+    icrc3_config<system>(caller, get_next_correlation_id(), "icp_fee_recipient", #Text(principal_text # " / " # subaccount_text), null);
     #Ok("Fee recipient set to: " # principal_text # " / " # subaccount_text);
   };
 
@@ -4058,7 +4081,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         log_error(caller, correlation_id, msg);
         return #Err(msg);
       };
-      let locked = if (is_wallet) { clear_expired_locks_for_principal(caller, correlation_id); get_summed_locks_from_principal_and_token(caller, icp) } else { 0 };
+      let locked = if (is_wallet) { clear_expired_locks_for_principal<system>(caller, correlation_id); get_summed_locks_from_principal_and_token(caller, icp) } else { 0 };
       let fee = Nat64.toNat(ICP_FEE);
       let free = if (balance > locked) { balance - locked } else { 0 };
       if (free <= fee) {
@@ -4076,7 +4099,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
       switch (result) {
         case (#Ok(tx)) {
-          icrc3_add("sneedlock_payment_withdraw", [
+          icrc3_add<system>("sneedlock_payment_withdraw", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
             ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("to", Icrc3Log.account(caller, null)), ("icp_tx", #Nat(tx)),
           ]);
@@ -4167,7 +4190,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     switch (validSpecialPrices(prices)) { case (?e) { return #err(e) }; case null {} };
     let old = special_admin_prices;
     special_admin_prices := prices;
-    icrc3_config(caller, get_next_correlation_id(), "admin_prices", SP.overridesValue(specialPricesFields(prices)), ?SP.overridesValue(specialPricesFields(old)));
+    icrc3_config<system>(caller, get_next_correlation_id(), "admin_prices", SP.overridesValue(specialPricesFields(prices)), ?SP.overridesValue(specialPricesFields(old)));
     #ok;
   };
 
@@ -4178,7 +4201,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     switch (validSpecialPrices(entry.prices)) { case (?e) { return #err(e) }; case null {} };
     let old = Map.get(special_partner_prices, phash, partner);
     Map.set(special_partner_prices, phash, partner, entry);
-    icrc3_partner_config(caller, partner, SP.partnerValue(entry.label_, specialPricesFields(entry.prices), entry.expires_at),
+    icrc3_partner_config<system>(caller, partner, SP.partnerValue(entry.label_, specialPricesFields(entry.prices), entry.expires_at),
       switch (old) { case (?o) { ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at) }; case null { null } });
     #ok;
   };
@@ -4188,16 +4211,16 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) { return #err("Only admins can remove partner prices") };
     switch (Map.remove(special_partner_prices, phash, partner)) {
       case (?o) {
-        icrc3_partner_config(caller, partner, #Text("removed"), ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at));
+        icrc3_partner_config<system>(caller, partner, #Text("removed"), ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at));
         #ok;
       };
       case null { #err("No partner prices for " # Principal.toText(partner)) };
     };
   };
 
-  private func icrc3_partner_config(caller : Principal, partner : Principal, value : T3.Value, old_value : ?T3.Value) {
+  private func icrc3_partner_config<system>(caller : Principal, partner : Principal, value : T3.Value, old_value : ?T3.Value) {
     let base : [(Text, T3.Value)] = [("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("partner_prices")), ("partner", Icrc3Log.principal(partner)), ("value", value)];
-    icrc3_add("sneedlock_config_update", switch (old_value) { case (?o) { Array.append(base, [("old_value", o)]) }; case null { base } });
+    icrc3_add<system>("sneedlock_config_update", switch (old_value) { case (?o) { Array.append(base, [("old_value", o)]) }; case null { base } });
   };
 
   /// Public: the admin prices and every partner entry (expired ones too, with their expiry).
@@ -4314,7 +4337,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           Map.set(payment_price_tiers, nhash, payment_entry.id, tier);
           next_payment_log_id += 1;
           
-          icrc3_add("sneedlock_fee_pay", [
+          icrc3_add<system>("sneedlock_fee_pay", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("payer", Icrc3Log.principal(caller)),
             ("lock_type", #Text(switch (lock_type) { case (#TokenLock) "token"; case (#PositionLock) "position" })),
             ("fee_e8s", #Nat(fee_nat)), ("amount_e8s", #Nat(transfer_amount)),
@@ -4493,7 +4516,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           if (amounts.amount1 > 0 and amounts.amount1 <= token1_fee) { amounts.amount1 } else { 0 }
         );
         archive_completed_request(completed);
-        icrc3_add("sneedlock_fees_claim", [
+        icrc3_add<system>("sneedlock_fees_claim", [
           ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
           ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)),
           ("token0", Icrc3Log.principal(token0)), ("token1", Icrc3Log.principal(token1)),
@@ -4551,7 +4574,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Stranded tokens (spec/support_audit.md P1-14): every path of an addition that leaves a
   // user's tokens inside the pool records them, with an ICRC-3 block, so an admin pays exactly
   // that to exactly that user (admin_withdraw_stranded_to_owner), once.
-  private func record_stranded(owner : Principal, correlation_id : Nat, pool_id : Principal, ledger : Principal, amount : Nat,
+  private func record_stranded<system>(owner : Principal, correlation_id : Nat, pool_id : Principal, ledger : Principal, amount : Nat,
     held_in : T.StrandedHeldIn, uncertain : Bool, reason : Text) : Nat {
     let id = next_stranded_id;
     next_stranded_id += 1;
@@ -4561,7 +4584,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       reason; correlation_id; recorded_at = NowAsNat64();
     };
     Map.set(stranded, nhash, id, rec);
-    icrc3_add("sneedlock_stranded", [
+    icrc3_add<system>("sneedlock_stranded", [
       ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(owner)), ("owner", Icrc3Log.principal(owner)),
       ("pool", Icrc3Log.principal(pool_id)), ("ledger", Icrc3Log.principal(ledger)), ("amount", #Nat(amount)),
       ("held_in", #Text(stranded_held_in_text(held_in))), ("outcome", #Text(if (uncertain) "uncertain" else "known")),
@@ -4607,7 +4630,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let transfer = try {
       await ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
     } catch (e) {
-      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true,
+      let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true,
         "transfer to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # "; if the wallet still holds it, nothing is stranded");
       return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # " (stranded record " # Nat.toText(sid) # ")");
     };
@@ -4619,12 +4642,12 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; re-run admin_pool_deposit then admin_withdraw_pool_balance_to_user";
     let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
-      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
+      let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
       return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
     switch (deposited) {
       case (#err(e)) {
-        let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, false, "pool deposit failed: " # debug_show(e));
+        let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, false, "pool deposit failed: " # debug_show(e));
         #Err("Pool deposit failed: " # debug_show(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
       };
       case (#ok(credited)) {
@@ -4651,12 +4674,12 @@ shared (deployer) persistent actor class SneedLock() = this {
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; use admin_withdraw_pool_balance_to_user";
     let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
-      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
+      let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
       return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
     switch (result) {
       case (#err(e)) {
-        let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #pool_account, false, "returning unused tokens failed: " # debug_show(e));
+        let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, false, "returning unused tokens failed: " # debug_show(e));
         #Err("Returning unused tokens failed: " # debug_show(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
       };
       case (#ok(_)) {
@@ -4709,7 +4732,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       return err("Busy: a fee delivery from this pool is still in transit; please retry in a few seconds");
     };
 
-    clear_expired_locks_for_principal(caller, correlation_id);
+    clear_expired_locks_for_principal<system>(caller, correlation_id);
 
     // Move both tokens in. If the second fails after the first was credited,
     // return the first before giving up.
@@ -4744,11 +4767,11 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     // The leftover is unknown when the balance cannot be read: each credited amount is recorded
     // as an upper bound (uncertain), for an admin to pay what the pool shows.
-    func strand_unmeasured(why : Text) : Text {
+    func strand_unmeasured<system>(why : Text) : Text {
       var ids = "";
       for ((tok, credited) in [(token0, credited0), (token1, credited1)].vals()) {
         if (credited > 0) {
-          let sid = record_stranded(caller, correlation_id, pool_id, tok, credited, #pool_account, true,
+          let sid = record_stranded<system>(caller, correlation_id, pool_id, tok, credited, #pool_account, true,
             "liquidity step done but the leftover could not be measured (" # why # "); amount is an upper bound: pay what the pool shows unused for this addition");
           ids := ids # (if (ids == "") "" else ", ") # Nat.toText(sid);
         };
@@ -4758,9 +4781,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     let after = try {
       switch (await pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
-        case (#err(e)) { return err(strand_unmeasured(debug_show(e))) };
+        case (#err(e)) { return err(strand_unmeasured<system>(debug_show(e))) };
       };
-    } catch (e) { return err(strand_unmeasured(Error.message(e))) };
+    } catch (e) { return err(strand_unmeasured<system>(Error.message(e))) };
 
     func leftover(live_after : Nat, base : Nat, credited : Nat) : Nat {
       let delta = if (live_after > base) { live_after - base } else { 0 };
@@ -4795,7 +4818,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       ("amount0", #Nat(amount0)), ("amount1", #Nat(amount1)), ("credited0", #Nat(credited0)), ("credited1", #Nat(credited1)),
       ("used0", #Nat(used0)), ("used1", #Nat(used1)), ("returned0", #Nat(returned0)), ("returned1", #Nat(returned1)),
     ];
-    icrc3_add("sneedlock_liquidity_add", switch (increase_error) {
+    icrc3_add<system>("sneedlock_liquidity_add", switch (increase_error) {
       case (?m) { Array.append(liquidity_tx, [("increase_error", #Text(m))]) };
       case null { liquidity_tx };
     });
@@ -4909,7 +4932,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Cleared completed claim requests, removed " # debug_show(before_count) # " entries");
-    icrc3_config(caller, correlation_id, "claim_history_cleared", #Nat(before_count), null);
+    icrc3_config<system>(caller, correlation_id, "claim_history_cleared", #Nat(before_count), null);
     
     before_count;
   };
@@ -4925,7 +4948,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Cleared failed claim requests, removed " # debug_show(before_count) # " entries");
-    icrc3_config(caller, correlation_id, "failed_claim_history_cleared", #Nat(before_count), null);
+    icrc3_config<system>(caller, correlation_id, "failed_claim_history_cleared", #Nat(before_count), null);
     
     before_count;
   };
@@ -4982,7 +5005,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let transfer_result = await ledger.icrc1_transfer(transfer_args);
     switch (transfer_result) {
       case (#Ok(tx_index)) {
-        icrc3_add("sneedlock_admin_token_rescue", [
+        icrc3_add<system>("sneedlock_admin_token_rescue", [
           ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(token_ledger)),
           ("to", Icrc3Log.account(recipient, null)), ("amount", #Nat(transfer_amount)), ("ledger_tx", #Nat(tx_index)),
         ]);
@@ -5035,7 +5058,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       switch (await pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
         case (#ok(credited)) {
           log_info(caller, correlation_id, "Pool credited " # debug_show(credited));
-          icrc3_add("sneedlock_admin_pool_deposit", [
+          icrc3_add<system>("sneedlock_admin_pool_deposit", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(swap_canister_id)), ("ledger", Icrc3Log.principal(token_ledger)),
             ("amount", #Nat(amount)), ("credited", #Nat(credited)),
           ]);
@@ -5075,7 +5098,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       switch (await swap_canister.withdrawToSubaccount(args)) {
         case (#ok(accepted)) {
           log_info(caller, correlation_id, "Pool withdrawal accepted: " # debug_show(accepted));
-          icrc3_add("sneedlock_admin_pool_withdraw", [
+          icrc3_add<system>("sneedlock_admin_pool_withdraw", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(swap_canister_id)), ("ledger", Icrc3Log.principal(token_ledger)),
             ("amount", #Nat(amount)), ("user", Icrc3Log.principal(user)), ("accepted", #Nat(accepted)),
           ]);
@@ -5160,7 +5183,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             // now credited in the pool: the record says so before anything else can fail
             Map.set(stranded, nhash, stranded_id, { rec with held_in = #pool_account; amount = credited; status = #Open;
               reason = rec.reason # "; deposited " # Nat.toText(pay) # " (credited " # Nat.toText(credited) # ") by " # Principal.toText(caller) });
-            icrc3_add("sneedlock_admin_pool_deposit", [
+            icrc3_add<system>("sneedlock_admin_pool_deposit", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(rec.pool)), ("ledger", Icrc3Log.principal(rec.ledger)),
               ("amount", #Nat(pay)), ("credited", #Nat(credited)), ("stranded_id", #Nat(stranded_id)),
             ]);
@@ -5179,7 +5202,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           let cur = switch (Map.get(stranded, nhash, stranded_id)) { case (?r) r; case null rec };
           let paid : T.Stranded = { cur with status = #Paid({ at = NowAsNat64(); by = caller; amount = to_withdraw; accepted; correlation_id }) };
           Map.set(stranded, nhash, stranded_id, paid);
-          icrc3_add("sneedlock_stranded_settle", [
+          icrc3_add<system>("sneedlock_stranded_settle", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(rec.owner)),
             ("pool", Icrc3Log.principal(rec.pool)), ("ledger", Icrc3Log.principal(rec.ledger)), ("stranded_id", #Nat(stranded_id)),
             ("amount", #Nat(to_withdraw)), ("accepted", #Nat(accepted)), ("to", Icrc3Log.account(this_canister_id(), ?Blob.fromArray(PrincipalToSubaccount(rec.owner)))),
@@ -5405,7 +5428,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (?r) Map.set(rate_limit_rules, thash, action, r);
       case null Map.delete(rate_limit_rules, thash, action);
     };
-    icrc3_config(caller, get_next_correlation_id(), "rate_limit." # action, ruleV(rate_rule(action)), ?ruleV(old));
+    icrc3_config<system>(caller, get_next_correlation_id(), "rate_limit." # action, ruleV(rate_rule(action)), ?ruleV(old));
     #Ok;
   };
 

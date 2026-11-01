@@ -11,8 +11,14 @@
 ///   3. one-line public wrappers for the standard queries and the admin
 ///      operations (public functions cannot live in a library),
 ///   4. `Log.append(...)` at every point where an action has been committed,
-///   5. `Log.ensureTimer` from the actor body and `postupgrade`, plus
+///      followed by `Log.armIfNeeded<system>(...)` (in practice: both in the
+///      canister's one append helper, which therefore takes `<system>`),
+///   5. `Log.ensureSpill` from the actor body and `postupgrade`, plus
 ///      `Log.certify` in `postupgrade`.
+///
+/// No timer runs while the live store has room: the write that fills it arms
+/// a one-shot spill, and a spill that cannot finish (no cycles for an archive,
+/// archive unreachable) retries with back-off. An idle log costs nothing.
 ///
 /// Everything else (hashing, chaining, the live store, certification, the
 /// read endpoints, spilling to archives, creating, controlling and topping up
@@ -69,8 +75,16 @@ module {
   /// Transient state. Declare as `transient let log_rt = Log.runtime();`.
   public type Runtime = {
     var spilling : Bool;
-    var timer_started : Bool;
+    var timer_started : Bool; // the legacy recurring timer (ensureTimer) is running
+    var job : ?(() -> async ()); // the canister's spill job, registered by ensureSpill
+    var more : () -> Bool; // other work the job does that still wants a run (SNS registrations)
+    var retry_seconds : Nat; // first back-off delay after a run that made no progress
+    var backoff_seconds : Nat; // current back-off delay; 0 = not backing off
+    var armed : Bool; // a one-shot run is scheduled or running
   };
+
+  /// Longest back-off between retries of a spill that keeps failing.
+  public let MAX_BACKOFF_SECONDS : Nat = 86_400; // a day
 
   public let MAX_RESPONSE_BLOCKS : Nat = 1000;
   public let MAX_RESPONSE_BYTES : Nat = 1_500_000;
@@ -98,7 +112,15 @@ module {
   };
 
   public func runtime() : Runtime {
-    { var spilling = false; var timer_started = false };
+    {
+      var spilling = false;
+      var timer_started = false;
+      var job = null;
+      var more = func() : Bool { false };
+      var retry_seconds = 15 * 60;
+      var backoff_seconds = 0;
+      var armed = false;
+    };
   };
 
   // -------------------------------------------------------------------------
@@ -355,9 +377,69 @@ module {
     } -> async ();
   };
 
-  /// Start the periodic spill check once per canister lifetime. Call from the
-  /// actor body and from `postupgrade` (the runtime guard makes the second
-  /// call a no-op in classic persistence, where both run on upgrade).
+  /// Whether the live store has reached the spill threshold.
+  public func spillDue(state : State) : Bool {
+    state.live.count > 0 and state.live.count >= state.settings.max_live_blocks;
+  };
+
+  /// Register the canister's spill job and arm a run if one is due now (a
+  /// store that was already full at upgrade time, or pending work reported by
+  /// `more`). Call from the actor body and from `postupgrade`; calling it twice
+  /// is harmless. Nothing is scheduled while the store has room: writes arm
+  /// the run through `armIfNeeded`. `retry_seconds` is the first back-off delay
+  /// after a run that moved nothing (it doubles up to MAX_BACKOFF_SECONDS).
+  public func ensureSpill<system>(state : State, rt : Runtime, retry_seconds : Nat, job : () -> async ()) {
+    ensureSpillWith<system>(state, rt, retry_seconds, job, func() : Bool { false });
+  };
+
+  /// `ensureSpill` for a job that does more than spill (for instance SNS
+  /// registration of new archives): `more` says whether that other work still
+  /// wants a run, so a failed attempt is retried with the same back-off.
+  public func ensureSpillWith<system>(state : State, rt : Runtime, retry_seconds : Nat, job : () -> async (), more : () -> Bool) {
+    rt.job := ?job;
+    rt.more := more;
+    rt.retry_seconds := Nat.max(1, retry_seconds);
+    armIfNeeded<system>(state, rt);
+  };
+
+  /// Arm a one-shot run of the spill job if the store is full (or `more`
+  /// reports work) and none is scheduled or running. Cheap; call it after
+  /// every append (the canister's append helper) and after changes that may
+  /// make a run due (a lower `max_live_blocks`, a new SNS neuron).
+  public func armIfNeeded<system>(state : State, rt : Runtime) {
+    if (rt.armed or rt.spilling) { return };
+    if (not (spillDue(state) or rt.more())) { return };
+    armAfter<system>(state, rt, 0);
+  };
+
+  func armAfter<system>(state : State, rt : Runtime, delay_seconds : Nat) {
+    let job = switch (rt.job) { case (?j) { j }; case null { return } };
+    rt.armed := true;
+    ignore Timer.setTimer<system>(#seconds delay_seconds, func() : async () {
+      let before = state.live.first_index;
+      try { await job() } catch (_) {};
+      rt.armed := false;
+      if (spillDue(state) or rt.more()) {
+        if (state.live.first_index > before) {
+          // progress (a spill stops after 50 batches): carry on right away
+          rt.backoff_seconds := 0;
+          armAfter<system>(state, rt, 0);
+        } else {
+          rt.backoff_seconds := if (rt.backoff_seconds == 0) { rt.retry_seconds } else {
+            Nat.min(rt.backoff_seconds * 2, MAX_BACKOFF_SECONDS);
+          };
+          armAfter<system>(state, rt, rt.backoff_seconds);
+        };
+      } else {
+        rt.backoff_seconds := 0;
+      };
+    });
+  };
+
+  /// Legacy: a recurring spill check every `period_seconds`, whether or not
+  /// anything is due (about 35 M cycles per firing even when idle). Kept so
+  /// that canisters not yet moved to `ensureSpill` + `armIfNeeded` still
+  /// compile and spill; do not use in new code.
   public func ensureTimer<system>(rt : Runtime, period_seconds : Nat, job : () -> async ()) {
     if (rt.timer_started) { return };
     rt.timer_started := true;

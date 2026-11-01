@@ -49,11 +49,16 @@ private func icrc3_env() : Log.Environment {
   };
 };
 
-// 4. append where an action has been committed to local state (update context)
-private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+// 4. append where an action has been committed to local state (update context). The helper
+//    arms a one-shot spill when this block fills the live store, which needs the system
+//    capability: it takes <system>, and so does every non-async function that calls it
+//    (shared and async functions have the capability; anonymous closures do not, so use a
+//    named <system> function and a loop instead of Array.map around it)
+private func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) {
   ignore Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+  Log.armIfNeeded<system>(icrc3, icrc3_rt);
 };
-// e.g. icrc3_add("<prefix>_something_happened", [("cid", #Nat(cid)), ("caller", Log.principal(caller)), ("amount", #Nat(n))]);
+// e.g. icrc3_add<system>("<prefix>_something_happened", [("cid", #Nat(cid)), ("caller", Log.principal(caller)), ("amount", #Nat(n))]);
 
 // 5. standard queries
 public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Log.getBlocks(icrc3, args) };
@@ -80,9 +85,12 @@ public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async
   await* Log.repairArchiveControllers(icrc3, icrc3_env());
 };
 
-// 7. background spill check, started on install and after every upgrade
+// 7. the spill job. No timer runs while the live store has room: the append that fills it arms
+//    a one-shot run; a run that cannot finish retries after 15 minutes, then 30, ... (at most a
+//    day apart); a store already full at install/upgrade time is spilled right after it.
+//    (Log.ensureTimer, the old recurring 15-minute check, is kept only for canisters not yet moved.)
 private func icrc3_timer_job() : async () { ignore await* Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
-private func ensure_icrc3_timer<system>() { Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+private func ensure_icrc3_timer<system>() { Log.ensureSpill<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job) };
 ensure_icrc3_timer<system>();                 // at the end of the actor body
 system func postupgrade() { Log.certify(icrc3); ensure_icrc3_timer<system>(); };
 ```
@@ -105,6 +113,9 @@ private func icrc3_sns_env() : Sns.Environment {
 };
 // after every spill (timer job and admin_icrc3_spill_now):
 ignore await* Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+// and tell the log about this other work, so a failed submission is retried with the back-off:
+Log.ensureSpillWith<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job, func() : Bool { Sns.pending(icrc3_sns, icrc3.archives) });
+// (after Sns.reset, call Log.armIfNeeded<system>(icrc3, icrc3_rt) so the new proposal goes out)
 // admin: Sns.setNeuron (log a config-update block), Sns.registerMissing on demand, Sns.reset;
 // query: Sns.status
 ```

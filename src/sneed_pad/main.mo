@@ -173,8 +173,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       log_error = func(cid : Nat, m : Text) { logText(cid, "error", m) };
     };
   };
-  private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) { ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx) };
-  private func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  private func icrc3_add<system>(btype : Text, tx : [(Text, T3.Value)]) { ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx); Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt) };
+  private func ensure_icrc3_timer<system>() { Icrc3Log.ensureSpillWith<system>(icrc3, icrc3_rt, 15 * 60, icrc3_timer_job, func() : Bool { Icrc3Sns.pending(icrc3_sns, icrc3.archives) }) };
   private func icrc3_timer_job() : async () {
     ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
     ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
@@ -464,7 +464,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let archiveController : Principal = finalControllers[0];
     let ledgerId = try {
       (await (with cycles = quote.ledger_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
-    } catch (e) { return fail(cid, launch, "could not create the ledger canister: " # Error.message(e)) };
+    } catch (e) { return fail<system>(cid, launch, "could not create the ledger canister: " # Error.message(e)) };
     launch := step({ launch with ledger = ?ledgerId }, "ledger_created");
     putLaunch(launch);
     // The index canister is created now (installed after the ledger) so the ledger can announce it through ICRC-106.
@@ -472,7 +472,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case (?_) {
         let id = try {
           (await (with cycles = quote.index_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
-        } catch (e) { return fail(cid, launch, "could not create the index canister: " # Error.message(e)) };
+        } catch (e) { return fail<system>(cid, launch, "could not create the index canister: " # Error.message(e)) };
         launch := step({ launch with index = ?id }, "index_created");
         putLaunch(launch);
         ?id;
@@ -498,11 +498,11 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let arg : T.LedgerArgument = #Init(init);
     try {
       await ic.install_code({ mode = #install; canister_id = ledgerId; wasm_module = wasm; arg = to_candid(arg); sender_canister_version = null });
-    } catch (e) { return fail(cid, launch, "could not install the ledger: " # Error.message(e)) };
+    } catch (e) { return fail<system>(cid, launch, "could not install the ledger: " # Error.message(e)) };
     launch := step(launch, "ledger_installed");
     putLaunch(launch);
     var supply = 0; for (a in c.allocations.vals()) { supply += a.amount };
-    icrc3_add("sneedpad_token_create", [
+    icrc3_add<system>("sneedpad_token_create", [
       ("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("creator", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(ledgerId)),
       ("symbol", #Text(c.symbol)), ("name", #Text(c.name)), ("decimals", #Nat(Nat8.toNat(c.decimals))), ("supply", #Nat(supply)), ("transfer_fee", #Nat(c.transfer_fee)),
       ("minting_account", Icrc3Log.principal(mintingAccount.owner)), ("paid_e8s", #Nat(quote.total_e8s)), ("ledger_cycles", #Nat(quote.ledger_cycles)),
@@ -516,10 +516,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         let iarg : T.IndexArg = #Init({ ledger_id = ledgerId; retrieve_blocks_from_ledger_interval_seconds = null });
         try {
           await ic.install_code({ mode = #install; canister_id = indexId; wasm_module = iw; arg = to_candid(iarg); sender_canister_version = null });
-        } catch (e) { return fail(cid, launch, "ledger launched, but the index could not be installed: " # Error.message(e)) };
+        } catch (e) { return fail<system>(cid, launch, "ledger launched, but the index could not be installed: " # Error.message(e)) };
         launch := step(launch, "index_installed");
         putLaunch(launch);
-        icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles))]);
+        icrc3_add<system>("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles))]);
       };
       case _ {};
     };
@@ -533,11 +533,11 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         for (id in ids.vals()) {
           try {
             await ic.update_settings({ canister_id = id; settings = { controllers = ?[self, g.canister]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
-          } catch (e) { return fail(cid, launch, "launched, but adding the custody canister as a controller of " # Principal.toText(id) # " failed: " # Error.message(e)) };
+          } catch (e) { return fail<system>(cid, launch, "launched, but adding the custody canister as a controller of " # Principal.toText(id) # " failed: " # Error.message(e)) };
           let kind : T.GuardianKind = if (id == ledgerId) { #ledger } else { #index };
           let title = c.name # " (" # c.symbol # ") " # (if (id == ledgerId) { "ledger" } else { "index" });
-          let r = try { await guardian.register(id, kind, g.policy, if (id == ledgerId) { null } else { ?ledgerId }, title) } catch (e) { return fail(cid, launch, "launched, but the custody canister could not be reached to register " # Principal.toText(id) # ": " # Error.message(e)) };
-          switch (r) { case (#Err(e)) { return fail(cid, launch, "launched, but the custody canister refused " # Principal.toText(id) # ": " # e) }; case (#Ok(_)) {} };
+          let r = try { await guardian.register(id, kind, g.policy, if (id == ledgerId) { null } else { ?ledgerId }, title) } catch (e) { return fail<system>(cid, launch, "launched, but the custody canister could not be reached to register " # Principal.toText(id) # ": " # Error.message(e)) };
+          switch (r) { case (#Err(e)) { return fail<system>(cid, launch, "launched, but the custody canister refused " # Principal.toText(id) # ": " # e) }; case (#Ok(_)) {} };
         };
         launch := step(launch, "guardian_registered");
       };
@@ -546,7 +546,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     for (id in ids.vals()) {
       try {
         await ic.update_settings({ canister_id = id; settings = { controllers = ?finalControllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
-      } catch (e) { return fail(cid, launch, "launched, but setting the controllers of " # Principal.toText(id) # " failed: " # Error.message(e)) };
+      } catch (e) { return fail<system>(cid, launch, "launched, but setting the controllers of " # Principal.toText(id) # " failed: " # Error.message(e)) };
     };
     launch := step({ launch with controllers = finalControllers }, "controllers_set");
     // 7. the creator's wallet: list the new canisters in SneedApp, as a SneedApp mint would (best effort)
@@ -563,7 +563,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       };
       case null {};
     };
-    icrc3_add("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal)))]);
+    icrc3_add<system>("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal)))]);
     // Handing over to an SNS: the creator files the RegisterDappCanisters proposal with their own
     // neuron from the studio; the pad holds no neuron of any DAO for that.
     putLaunch(launch);
@@ -571,11 +571,11 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #Ok(launch);
   };
 
-  private func fail(cid : Nat, l : T.Launch, why : Text) : { #Ok : T.Launch; #Err : Text } {
+  private func fail<system>(cid : Nat, l : T.Launch, why : Text) : { #Ok : T.Launch; #Err : Text } {
     let failed : T.Launch = { l with status = #failed(why) };
     putLaunch(failed);
     logText(cid, "error", "launch " # Nat.toText(l.id) # " failed: " # why);
-    icrc3_add("sneedpad_launch_failed", [("cid", #Nat(cid)), ("launch", #Nat(l.id)), ("creator", Icrc3Log.principal(l.creator)), ("reason", #Text(why))]);
+    icrc3_add<system>("sneedpad_launch_failed", [("cid", #Nat(cid)), ("launch", #Nat(l.id)), ("creator", Icrc3Log.principal(l.creator)), ("reason", #Text(why))]);
     #Err(why);
   };
 
@@ -593,10 +593,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     else { index_launches := Array.map<T.IndexLaunch, T.IndexLaunch>(index_launches, func(x) { if (x.id == l.id) { l } else { x } }) };
   };
   private func istep(l : T.IndexLaunch, name : Text) : T.IndexLaunch { { l with steps = Array.append(l.steps, [(name, Time.now())]) } };
-  private func ifail(cid : Nat, l : T.IndexLaunch, why : Text) : { #Ok : T.IndexLaunch; #Err : Text } {
+  private func ifail<system>(cid : Nat, l : T.IndexLaunch, why : Text) : { #Ok : T.IndexLaunch; #Err : Text } {
     putIndexLaunch({ l with status = #failed(why) });
     logText(cid, "error", "index launch " # Nat.toText(l.id) # " failed: " # why);
-    icrc3_add("sneedpad_launch_failed", [("cid", #Nat(cid)), ("launch", #Nat(l.id)), ("creator", Icrc3Log.principal(l.creator)), ("reason", #Text(why)), ("kind", #Text("index"))]);
+    icrc3_add<system>("sneedpad_launch_failed", [("cid", #Nat(cid)), ("launch", #Nat(l.id)), ("creator", Icrc3Log.principal(l.creator)), ("reason", #Text(why)), ("kind", #Text("index"))]);
     #Err(why);
   };
   /// What an index for an existing ledger costs the caller today.
@@ -668,35 +668,35 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     };
     let indexId = try {
       (await (with cycles = quote.index_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
-    } catch (e) { return ifail(cid, launch, "could not create the index canister: " # Error.message(e)) };
+    } catch (e) { return ifail<system>(cid, launch, "could not create the index canister: " # Error.message(e)) };
     launch := istep({ launch with index = ?indexId }, "index_created");
     putIndexLaunch(launch);
     let iarg : T.IndexArg = #Init({ ledger_id = c.ledger; retrieve_blocks_from_ledger_interval_seconds = null });
     try {
       await ic.install_code({ mode = #install; canister_id = indexId; wasm_module = iw; arg = to_candid(iarg); sender_canister_version = null });
-    } catch (e) { return ifail(cid, launch, "the index could not be installed: " # Error.message(e)) };
+    } catch (e) { return ifail<system>(cid, launch, "the index could not be installed: " # Error.message(e)) };
     launch := istep(launch, "index_installed");
     putIndexLaunch(launch);
-    icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles)), ("standalone", #Text("true")), ("creator", Icrc3Log.principal(caller)), ("paid_e8s", #Nat(quote.total_e8s)), ("price_tier", #Text(SP.tierText(tiers.creation_fee))), ("control_price_tier", #Text(SP.tierText(tiers.control_fee)))]);
+    icrc3_add<system>("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles)), ("standalone", #Text("true")), ("creator", Icrc3Log.principal(caller)), ("paid_e8s", #Nat(quote.total_e8s)), ("price_tier", #Text(SP.tierText(tiers.creation_fee))), ("control_price_tier", #Text(SP.tierText(tiers.control_fee)))]);
     // 5. control
     switch (c.control) {
       case (#guardian(g)) {
         let guardian : T.GuardianActor = actor (Principal.toText(g.canister));
         try { await ic.update_settings({ canister_id = indexId; settings = { controllers = ?[self, g.canister]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null }) }
-        catch (e) { return ifail(cid, launch, "installed, but adding the custody canister as a controller failed: " # Error.message(e)) };
+        catch (e) { return ifail<system>(cid, launch, "installed, but adding the custody canister as a controller failed: " # Error.message(e)) };
         // the index joins its ledger's suite when the custody canister holds that ledger (it refuses a
         // suite that is not one of its registered ledgers, so otherwise the index stands alone)
         let suite : ?Principal = try {
           switch (await guardian.get_child(c.ledger)) { case (?ch) { if (ch.kind == #ledger) { ?c.ledger } else { null } }; case null { null } };
         } catch (_) { null };
-        let r = try { await guardian.register(indexId, #index, g.policy, suite, symbol # " index") } catch (e) { return ifail(cid, launch, "installed, but the custody canister could not be reached: " # Error.message(e)) };
-        switch (r) { case (#Err(e)) { return ifail(cid, launch, "installed, but the custody canister refused it: " # e) }; case (#Ok(_)) {} };
+        let r = try { await guardian.register(indexId, #index, g.policy, suite, symbol # " index") } catch (e) { return ifail<system>(cid, launch, "installed, but the custody canister could not be reached: " # Error.message(e)) };
+        switch (r) { case (#Err(e)) { return ifail<system>(cid, launch, "installed, but the custody canister refused it: " # e) }; case (#Ok(_)) {} };
         launch := istep(launch, "guardian_registered");
       };
       case _ {};
     };
     try { await ic.update_settings({ canister_id = indexId; settings = { controllers = ?finalControllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null }) }
-    catch (e) { return ifail(cid, launch, "installed, but setting the controllers failed: " # Error.message(e)) };
+    catch (e) { return ifail<system>(cid, launch, "installed, but setting the controllers failed: " # Error.message(e)) };
     launch := istep({ launch with controllers = finalControllers }, "controllers_set");
     // 6. the creator's wallet
     switch (sneedapp_id) {
@@ -707,7 +707,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       };
       case null {};
     };
-    icrc3_add("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal))), ("kind", #Text("index"))]);
+    icrc3_add<system>("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal))), ("kind", #Text("index"))]);
     putIndexLaunch(launch);
     logText(cid, "info", "index launch " # Nat.toText(launch.id) # " done: index " # Principal.toText(indexId) # " for " # Principal.toText(c.ledger));
     #Ok(launch);
@@ -812,7 +812,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case (#ok(r)) {
         rate_rules := r;
         let v : T3.Value = switch (rule) { case (?x) { #Map([("capacity", #Nat(x.capacity)), ("per_minute", #Nat(x.per_minute))]) }; case null { #Text("default") } };
-        icrc3_add("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
+        icrc3_add<system>("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("rate_limit")), ("action", #Text(action)), ("value", v)]);
         #Ok;
       };
     };
@@ -835,8 +835,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   private func pricesFields(x : T.Prices) : [(Text, ?Nat)] {
     [("creation_fee_e8s", x.creation_fee_e8s), ("index_creation_fee_e8s", x.index_creation_fee_e8s), ("sneed_dao_control_fee_e8s", x.sneed_dao_control_fee_e8s)];
   };
-  private func priceNote(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
-    icrc3_add("sneedpad_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
+  private func priceNote<system>(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
+    icrc3_add<system>("sneedpad_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
   };
   private func partnerV(e : ?SP.Partner<T.Prices>) : T3.Value {
     switch (e) { case (?x) { SP.partnerValue(x.label_, pricesFields(x.prices), x.expires_at) }; case null { #Text("none") } };
@@ -846,7 +846,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (not isAdmin(caller)) { return #err("admin only") };
     let old = admin_prices;
     admin_prices := p;
-    priceNote(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
+    priceNote<system>(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
     #ok;
   };
   /// Add or replace a partner's prices (admin). The label is public; `expires_at` (ns) is optional.
@@ -855,14 +855,14 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (SP.validatePartner(partner_prices, partner, e, Time.now())) { case (?why) { return #err(why) }; case null {} };
     let old = Map.get(partner_prices, phash, partner);
     Map.set(partner_prices, phash, partner, e);
-    priceNote(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(old), partnerV(?e));
+    priceNote<system>(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(old), partnerV(?e));
     #ok;
   };
   /// Remove a partner's prices (admin).
   public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) { return #err("admin only") };
     switch (Map.remove(partner_prices, phash, partner)) {
-      case (?old) { priceNote(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(?old), #Text("removed")); #ok };
+      case (?old) { priceNote<system>(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(?old), #Text("removed")); #ok };
       case null { #err("no partner prices for that principal") };
     };
   };
@@ -936,7 +936,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         if (?h != ledger_wasm_hash or ledger_wasm == null) {
           switch (await* fetchWasm(h)) {
             case (#Ok(w)) {
-              if (?h != ledger_wasm_hash) { icrc3_add("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("ledger")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
+              if (?h != ledger_wasm_hash) { icrc3_add<system>("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("ledger")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
               ledger_wasm_hash := ?h; ledger_wasm := ?w; changed := true;
             };
             case (#Err(e)) { return #Err("ledger: " # e) };
@@ -950,7 +950,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         if (?h != index_wasm_hash or index_wasm == null) {
           switch (await* fetchWasm(h)) {
             case (#Ok(w)) {
-              if (?h != index_wasm_hash) { icrc3_add("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("index")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
+              if (?h != index_wasm_hash) { icrc3_add<system>("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("index")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
               index_wasm_hash := ?h; index_wasm := ?w; changed := true;
             };
             case (#Err(e)) { return #Err("index: " # e) };
@@ -981,10 +981,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (not isAdmin(caller)) { return #Err("admin only") };
     switch (ledger) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
     switch (index) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
-    if (follow_nns) { icrc3_add("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("follow_nns")), ("old_value", #Text("true")), ("value", #Text("false"))]); follow_nns := false };
+    if (follow_nns) { icrc3_add<system>("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("follow_nns")), ("old_value", #Text("true")), ("value", #Text("false"))]); follow_nns := false };
     let cid = newCid();
-    if (ledger != null and ledger != ledger_wasm_hash) { ledger_wasm_hash := ledger; ledger_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("ledger")), ("hash", switch (ledger) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
-    if (index != null and index != index_wasm_hash) { index_wasm_hash := index; index_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("index")), ("hash", switch (index) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
+    if (ledger != null and ledger != ledger_wasm_hash) { ledger_wasm_hash := ledger; ledger_wasm := null; icrc3_add<system>("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("ledger")), ("hash", switch (ledger) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
+    if (index != null and index != index_wasm_hash) { index_wasm_hash := index; index_wasm := null; icrc3_add<system>("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("index")), ("hash", switch (index) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
     #Ok;
   };
   /// Fetch the bytes for pinned hashes (admin; `refresh_wasms` does the same for everyone).
@@ -997,19 +997,19 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public shared ({ caller }) func admin_set_config(u : T.ConfigUpdate) : async { #Ok : T.Config; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admin only") };
     let cid = newCid();
-    let note = func(key : Text, old : Text, new_ : Text) { icrc3_add("sneedpad_config_update", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
-    switch (u.creation_fee_e8s) { case (?v) { note("creation_fee_e8s", Nat.toText(creation_fee_e8s), Nat.toText(v)); creation_fee_e8s := v }; case null {} };
-    switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
-    switch (u.sneed_dao_control_fee_e8s) { case (?v) { note("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
-    switch (u.index_creation_fee_e8s) { case (?v) { note("index_creation_fee_e8s", Nat.toText(index_creation_fee_e8s), Nat.toText(v)); index_creation_fee_e8s := v }; case null {} };
-    switch (u.premium_index_creation_fee_e8s) { case (?v) { note("premium_index_creation_fee_e8s", Nat.toText(premium_index_creation_fee_e8s), Nat.toText(v)); premium_index_creation_fee_e8s := v }; case null {} };
-    switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
-    switch (u.guardians) { case (?v) { note("guardians", debug_show(guardians), debug_show(v)); guardians := v }; case null {} };
-    switch (u.ledger_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("ledger_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the ledger)") }; note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
-    switch (u.index_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("index_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the index)") }; note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
-    switch (u.fee_destination) { case (?v) { note("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
-    switch (u.cycle_reserve) { case (?v) { note("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
-    switch (u.paused) { case (?v) { note("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
+    func note<system>(key : Text, old : Text, new_ : Text) { icrc3_add<system>("sneedpad_config_update", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
+    switch (u.creation_fee_e8s) { case (?v) { note<system>("creation_fee_e8s", Nat.toText(creation_fee_e8s), Nat.toText(v)); creation_fee_e8s := v }; case null {} };
+    switch (u.premium_creation_fee_e8s) { case (?v) { note<system>("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
+    switch (u.sneed_dao_control_fee_e8s) { case (?v) { note<system>("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
+    switch (u.index_creation_fee_e8s) { case (?v) { note<system>("index_creation_fee_e8s", Nat.toText(index_creation_fee_e8s), Nat.toText(v)); index_creation_fee_e8s := v }; case null {} };
+    switch (u.premium_index_creation_fee_e8s) { case (?v) { note<system>("premium_index_creation_fee_e8s", Nat.toText(premium_index_creation_fee_e8s), Nat.toText(v)); premium_index_creation_fee_e8s := v }; case null {} };
+    switch (u.follow_nns) { case (?v) { note<system>("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
+    switch (u.guardians) { case (?v) { note<system>("guardians", debug_show(guardians), debug_show(v)); guardians := v }; case null {} };
+    switch (u.ledger_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("ledger_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the ledger)") }; note<system>("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
+    switch (u.index_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("index_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the index)") }; note<system>("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
+    switch (u.fee_destination) { case (?v) { note<system>("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
+    switch (u.cycle_reserve) { case (?v) { note<system>("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
+    switch (u.paused) { case (?v) { note<system>("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
     #Ok(await get_config());
   };
   public shared ({ caller }) func admin_add_admin(p : Principal) : async { #Ok; #Err : Text } { if (not isAdmin(caller)) { return #Err("admin only") }; if (Array.find<Principal>(admins, func(a) { a == p }) == null) { admins := Array.append(admins, [p]) }; #Ok };
@@ -1030,6 +1030,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public shared ({ caller }) func admin_set_registration_neuron(neuron : ?Blob) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admin only") };
     switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) { case (#Err(e)) { return #Err(e) }; case (#Ok) {} };
+    Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // archives created before may now be registered
     Icrc3Sns.setNeuron(ledger_registrations, neuron);
   };
   /// Hand a canister the pad still controls (left behind by a failed launch) to someone who can
@@ -1041,7 +1042,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     try {
       await ic.update_settings({ canister_id; settings = { controllers = ?controllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
     } catch (e) { return #Err("update_settings failed (is the pad a controller of " # Principal.toText(canister_id) # "?): " # Error.message(e)) };
-    icrc3_add("sneedpad_rescue", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("canister", Icrc3Log.principal(canister_id)), ("controllers", #Array(Array.map<Principal, T3.Value>(controllers, Icrc3Log.principal)))]);
+    icrc3_add<system>("sneedpad_rescue", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("canister", Icrc3Log.principal(canister_id)), ("controllers", #Array(Array.map<Principal, T3.Value>(controllers, Icrc3Log.principal)))]);
     logText(cid, "info", "rescue: controllers of " # Principal.toText(canister_id) # " set by " # Principal.toText(caller));
     #Ok;
   };
