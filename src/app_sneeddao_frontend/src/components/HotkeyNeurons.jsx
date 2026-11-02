@@ -12,6 +12,7 @@ import { isProposalAcceptingVotes } from '../utils/ProposalUtils';
 import { normalizeId } from '../hooks/useNeuronsCache';
 import { FaKey, FaCheckCircle, FaTimesCircle, FaVoteYea, FaChevronDown, FaChevronUp, FaInfoCircle, FaCopy, FaSync } from 'react-icons/fa';
 import InfoModal from './InfoModal';
+import { confirmVote } from '../utils/voteConfirm';
 
 // Accent colors - matching Proposal page
 const accentPrimary = '#6366f1';
@@ -134,6 +135,8 @@ const HotkeyNeurons = ({
         return { count, totalVP };
     };
 
+    const getProposalTitle = () => proposalData?.proposal?.[0]?.title || '';
+
     const isProposalOpenForVoting = () => {
         return isProposalAcceptingVotes(proposalData);
     };
@@ -167,10 +170,19 @@ const HotkeyNeurons = ({
     };
 
     const voteWithNeuron = async (neuronId, vote, opts = {}) => {
-        const { showErrorModal = true, skipRefreshAndCallback = false } = typeof opts === 'boolean' ? { showErrorModal: opts } : opts;
+        const { showErrorModal = true, skipRefreshAndCallback = false, confirmed = false } = typeof opts === 'boolean' ? { showErrorModal: opts } : opts;
         if (!identity || !effectiveSnsRoot || !currentProposalId) return 'error';
         
         const neuronIdHex = uint8ArrayToHex(neuronId);
+        if (!confirmed) {
+            const neuron = getAllNeurons().find(n => uint8ArrayToHex(n.id[0]?.id) === neuronIdHex);
+            const vp = neuron && nervousSystemParameters ? calculateVotingPower(neuron, nervousSystemParameters) : 0;
+            const ok = await confirmVote({
+                vote, proposalId: currentProposalId, title: getProposalTitle(), neurons: neuronIdHex,
+                votingPower: vp ? `${formatVotingPower(vp)} VP` : undefined,
+            });
+            if (!ok) return 'cancelled';
+        }
         setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'voting' }));
         
         try {
@@ -221,6 +233,16 @@ const HotkeyNeurons = ({
         if (!allNeurons || !proposalData || !currentProposalId) {
             showInfoModal('Error', 'Missing required data for voting', 'error');
             return;
+        }
+
+        // one confirmation for the whole batch (the per-neuron votes below pass confirmed: true)
+        const { count: eligibleCount, totalVP: eligibleVP } = getEligibleNeuronsInfo();
+        if (eligibleCount > 0) {
+            const ok = await confirmVote({
+                vote, proposalId: currentProposalId, title: getProposalTitle(), neurons: eligibleCount,
+                votingPower: eligibleVP ? `${formatVotingPower(eligibleVP)} VP` : undefined,
+            });
+            if (!ok) return;
         }
 
         setVoteAllState('voting');
@@ -276,7 +298,7 @@ const HotkeyNeurons = ({
             let failedVotes = 0;
             
             for (const neuron of eligibleNeurons) {
-                const result = await voteWithNeuron(neuron.id[0].id, vote, { showErrorModal: false, skipRefreshAndCallback: true });
+                const result = await voteWithNeuron(neuron.id[0].id, vote, { showErrorModal: false, skipRefreshAndCallback: true, confirmed: true });
                 if (result === 'success') successfulVotes++;
                 else failedVotes++;
             }

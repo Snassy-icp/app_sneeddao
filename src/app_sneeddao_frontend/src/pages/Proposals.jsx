@@ -15,7 +15,8 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from '../utils/ProposalUtils';
-import { calculateVotingPower } from '../utils/VotingPowerUtils';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { confirmVote } from '../utils/voteConfirm';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea, FaCrown, FaKey, FaUserShield, FaCoins, FaQuestion } from 'react-icons/fa';
@@ -398,6 +399,40 @@ function Proposals() {
         const hotkeyNeurons = getHotkeyNeurons();
         if (!hotkeyNeurons || hotkeyNeurons.length === 0) return;
 
+        // Filter eligible neurons
+        const eligibleNeurons = hotkeyNeurons.filter(neuron => {
+            // Check voting power
+            const votingPower = nervousSystemParameters ? 
+                calculateVotingPower(neuron, nervousSystemParameters) : 0;
+            if (votingPower === 0) return false;
+
+            // Check if already voted
+            const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+            const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+            
+            if (ballot && ballot[1]) {
+                const ballotData = ballot[1];
+                const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                if (hasVoted) return false;
+            }
+
+            return true;
+        });
+
+        if (eligibleNeurons.length === 0) {
+            setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
+            return;
+        }
+
+        // one confirmation for all eligible neurons; cancel leaves everything as it was
+        const eligibleVP = eligibleNeurons.reduce((sum, n) =>
+            sum + (nervousSystemParameters ? calculateVotingPower(n, nervousSystemParameters) : 0), 0);
+        const ok = await confirmVote({
+            vote, proposalId, title: proposal.proposal?.[0]?.title || '', neurons: eligibleNeurons.length,
+            votingPower: eligibleVP ? `${formatVotingPower(eligibleVP)} VP` : undefined,
+        });
+        if (!ok) return;
+
         setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'voting' }));
 
         try {
@@ -407,31 +442,6 @@ function Proposals() {
             const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
                 agentOptions: { identity }
             });
-
-            // Filter eligible neurons
-            const eligibleNeurons = hotkeyNeurons.filter(neuron => {
-                // Check voting power
-                const votingPower = nervousSystemParameters ? 
-                    calculateVotingPower(neuron, nervousSystemParameters) : 0;
-                if (votingPower === 0) return false;
-
-                // Check if already voted
-                const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
-                const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
-                
-                if (ballot && ballot[1]) {
-                    const ballotData = ballot[1];
-                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                    if (hasVoted) return false;
-                }
-
-                return true;
-            });
-
-            if (eligibleNeurons.length === 0) {
-                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
-                return;
-            }
 
             // Vote with all eligible neurons
             let successCount = 0;

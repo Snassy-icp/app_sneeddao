@@ -15,6 +15,7 @@ import ProposerPrincipals from '../components/ProposerPrincipals';
 import ProposerAvatar from '../components/ProposerAvatar';
 import { LogoAvatar } from '../components/BigAvatar';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
+import { confirmVote } from '../utils/voteConfirm';
 import { reportIfAuthExpired } from '../utils/authExpiry';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import {
@@ -328,29 +329,66 @@ function ActiveProposals() {
         if (!proposalId || !identity) return;
         if (!ensureSession()) return;
 
+        const userPrincipal = identity.getPrincipal().toString();
+        const eligibleNeurons = isNns
+            ? neurons.filter(neuron => {
+                if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
+                const vp = getNnsNeuronVotingPower(neuron);
+                if (vp === 0n) return false;
+                const neuronId = getNnsNeuronId(neuron);
+                if (!neuronId) return false;
+                const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
+                if (ballot && Number(ballot.vote) !== 0) return false;
+                return true;
+            })
+            : neurons.filter(neuron => {
+                const hasVotePerm = neuron.permissions?.some(p => {
+                    const permPrincipal = safePrincipalString(p.principal);
+                    if (!permPrincipal || permPrincipal !== userPrincipal) return false;
+                    const permTypes = p.permission_type || [];
+                    return permTypes.includes(4);
+                });
+                if (!hasVotePerm) return false;
+
+                const votingPower = nervousSystemParams ?
+                    calculateVotingPower(neuron, nervousSystemParams) : 0;
+                if (votingPower === 0) return false;
+
+                const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+
+                if (ballot && ballot[1]) {
+                    const ballotData = ballot[1];
+                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                    if (hasVoted) return false;
+                }
+
+                return true;
+            });
+
+        if (eligibleNeurons.length === 0) {
+            setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+            return;
+        }
+
+        // one confirmation for all eligible neurons; cancel leaves everything as it was
+        const eligibleVP = eligibleNeurons.reduce((sum, n) => sum + (isNns
+            ? Number(getNnsNeuronVotingPower(n))
+            : (nervousSystemParams ? calculateVotingPower(n, nervousSystemParams) : 0)), 0);
+        const ok = await confirmVote({
+            vote, proposalId,
+            title: isNns ? (proposal.proposal?.[0]?.title?.[0] || '') : (proposal.proposal?.[0]?.title || ''),
+            neurons: eligibleNeurons.length,
+            votingPower: eligibleVP ? `${formatCompactVP(eligibleVP)} VP` : undefined,
+            daoName: snsInfo.name,
+        });
+        if (!ok) return;
+
         setQuickVotingStates(prev => ({ ...prev, [key]: 'voting' }));
 
         try {
-            const userPrincipal = identity.getPrincipal().toString();
-
             if (isNns) {
                 // NNS voting path
-                const eligibleNeurons = neurons.filter(neuron => {
-                    if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
-                    const vp = getNnsNeuronVotingPower(neuron);
-                    if (vp === 0n) return false;
-                    const neuronId = getNnsNeuronId(neuron);
-                    if (!neuronId) return false;
-                    const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
-                    if (ballot && Number(ballot.vote) !== 0) return false;
-                    return true;
-                });
-
-                if (eligibleNeurons.length === 0) {
-                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
-                    return;
-                }
-
                 let successCount = 0;
                 for (const neuron of eligibleNeurons) {
                     const neuronId = getNnsNeuronId(neuron);
@@ -375,36 +413,6 @@ function ActiveProposals() {
                 const snsGovActor = createSnsGovernanceActor(snsInfo.canisters.governance, {
                     agentOptions: { identity }
                 });
-
-                const eligibleNeurons = neurons.filter(neuron => {
-                    const hasVotePerm = neuron.permissions?.some(p => {
-                        const permPrincipal = safePrincipalString(p.principal);
-                        if (!permPrincipal || permPrincipal !== userPrincipal) return false;
-                        const permTypes = p.permission_type || [];
-                        return permTypes.includes(4);
-                    });
-                    if (!hasVotePerm) return false;
-
-                    const votingPower = nervousSystemParams ?
-                        calculateVotingPower(neuron, nervousSystemParams) : 0;
-                    if (votingPower === 0) return false;
-
-                    const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
-                    const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
-
-                    if (ballot && ballot[1]) {
-                        const ballotData = ballot[1];
-                        const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                        if (hasVoted) return false;
-                    }
-
-                    return true;
-                });
-
-                if (eligibleNeurons.length === 0) {
-                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
-                    return;
-                }
 
                 let successCount = 0;
                 for (const neuron of eligibleNeurons) {
@@ -502,6 +510,12 @@ function ActiveProposals() {
         votableProposals.sort((a, b) => (pid(a) < pid(b) ? -1 : pid(a) > pid(b) ? 1 : 0));
 
         if (votableProposals.length === 0) return;
+
+        // one confirmation for the whole bulk vote
+        const ok = await confirmVote({
+            vote, proposalIds: votableProposals.map(pid).map(String), daoName: snsInfo.name,
+        });
+        if (!ok) return;
 
         const rootId = snsInfo.rootCanisterId;
         setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: 'voting', progress: `0/${votableProposals.length}`, vote } }));
@@ -1019,8 +1033,7 @@ function ActiveProposals() {
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    if (confirm(`Adopt all ${votableCount} votable proposal${votableCount !== 1 ? 's' : ''} for ${snsInfo.name}?`))
-                                                                        bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 1, isNns);
+                                                                    bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 1, isNns); // asks for confirmation itself
                                                                 }}
                                                                 style={{
                                                                     display: 'flex', alignItems: 'center', gap: '4px',
@@ -1034,8 +1047,7 @@ function ActiveProposals() {
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    if (confirm(`Reject all ${votableCount} votable proposal${votableCount !== 1 ? 's' : ''} for ${snsInfo.name}?`))
-                                                                        bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 2, isNns);
+                                                                    bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 2, isNns); // asks for confirmation itself
                                                                 }}
                                                                 style={{
                                                                     display: 'flex', alignItems: 'center', gap: '4px',

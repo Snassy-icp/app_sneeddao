@@ -16,6 +16,7 @@ import {
     voteOnNnsProposal, formatIcpE8s, NNS_GOVERNANCE_CANISTER_ID,
     fetchKnownNeurons, fetchUserNnsNeurons
 } from '../utils/NnsUtils';
+import { confirmVote } from '../utils/voteConfirm';
 import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -371,31 +372,39 @@ function IcpProposals() {
 
         if (!nnsNeurons || nnsNeurons.length === 0) return;
 
+        const eligibleNeurons = nnsNeurons.filter(neuron => {
+            if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
+            const vp = getNnsNeuronVotingPower(neuron);
+            if (vp === 0n) return false;
+
+            const neuronId = getNnsNeuronId(neuron);
+            const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
+            if (ballot) {
+                const voteVal = Number(ballot.vote);
+                if (voteVal === 1 || voteVal === 2) return false;
+            }
+            return true;
+        });
+
+        if (eligibleNeurons.length === 0) {
+            setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
+            setTimeout(() => {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'idle' }));
+            }, 3000);
+            return;
+        }
+
+        // one confirmation for all eligible neurons; cancel leaves everything as it was
+        const eligibleVP = eligibleNeurons.reduce((sum, n) => sum + getNnsNeuronVotingPower(n), 0n);
+        const ok = await confirmVote({
+            vote, proposalId, title: proposal.proposal?.[0]?.title?.[0] || '', neurons: eligibleNeurons.length,
+            votingPower: eligibleVP ? `${formatCompactVP(eligibleVP)} VP` : undefined,
+        });
+        if (!ok) return;
+
         setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'voting' }));
 
         try {
-            const eligibleNeurons = nnsNeurons.filter(neuron => {
-                if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
-                const vp = getNnsNeuronVotingPower(neuron);
-                if (vp === 0n) return false;
-
-                const neuronId = getNnsNeuronId(neuron);
-                const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
-                if (ballot) {
-                    const voteVal = Number(ballot.vote);
-                    if (voteVal === 1 || voteVal === 2) return false;
-                }
-                return true;
-            });
-
-            if (eligibleNeurons.length === 0) {
-                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
-                setTimeout(() => {
-                    setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'idle' }));
-                }, 3000);
-                return;
-            }
-
             let successCount = 0;
             let totalVotedVP = 0n;
 
