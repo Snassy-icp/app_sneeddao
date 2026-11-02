@@ -272,3 +272,57 @@ describe('M1: a canister that never answers cannot keep Sneed Lock from stopping
     } finally { await settle(); }
   }, 120_000);
 });
+
+describe('M2: the lock fee never comes from locked ICP', () => {
+  // a principal whose Sneed wallet subaccount already has 0x50 at byte 23: its payment subaccount is its wallet
+  let who;
+  const F = 100_000_000n; // 1 ICP per lock
+  beforeAll(async () => {
+    for (let i = 0; ; i++) { const p = user(`m2-${i}`); if (principalToSubaccount(p)[23] === 0x50) { who = p; break; } }
+    expect(Buffer.from(paymentSubaccount(who)).equals(Buffer.from(principalToSubaccount(who)))).toBe(true);
+    unwrap(await env.lockAs(admin).admin_set_lock_fees_icp([F], [F], [F], [F]));
+  });
+  afterAll(async () => { unwrap(await env.lockAs(admin).admin_set_lock_fees_icp([0n], [0n], [0n], [0n])); });
+
+  const covered = async () => {
+    const bal = await env.icp.icrc1_balance_of(env.wallet(who));
+    const locked = await env.lockedOf(who, env.icpId);
+    return { bal, locked, ok: bal >= locked };
+  };
+
+  it('an ICP lock is paid from the free part; a token lock, a position lock and an ICP lock that would need locked ICP are refused', async () => {
+    await env.icp.mint(env.wallet(who), 350_000_000n);
+    unwrap(await env.lockAs(who).create_lock(200_000_000n, env.icpId, (await env.nowNs()) + DAY_NS, []));
+    expect(await covered()).toEqual({ bal: 250_000_000n, locked: 200_000_000n, ok: true });
+
+    await env.tokenA.mint(env.wallet(who), 10_000n);
+    const tokenLock = await env.lockAs(who).create_lock(5_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, []);
+    const after1 = await covered();
+    console.log('token lock with 0.5 ICP free and 2 ICP locked in the same account:', JSON.stringify(tokenLock, (_, v) => (typeof v === 'bigint' ? v.toString() : v)), JSON.stringify(after1, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
+    expect(after1.ok).toBe(true);
+    expect(errOf(tokenLock).message).toMatch(/Insufficient ICP payment.*of which 200000000 e8s are locked/);
+
+    const pos = await env.depositPosition(who);
+    const posLock = await env.lockAs(who).create_position_lock(env.poolId, 1n, pos, (await env.nowNs()) + DAY_NS, env.tokenAId, env.tokenBId, []);
+    expect((await covered()).ok).toBe(true);
+    expect(errOf(posLock).message).toMatch(/Insufficient ICP payment/);
+
+    // locking 0.4 more ICP would leave 0.1 free, less than the fee
+    const icpLock = await env.lockAs(who).create_lock(40_000_000n, env.icpId, (await env.nowNs()) + DAY_NS, []);
+    expect((await covered()).ok).toBe(true);
+    expect(errOf(icpLock).message).toMatch(/Insufficient ICP payment/);
+  }, 120_000);
+
+  it('while its position lock is being created, the same caller\'s token operations wait', async () => {
+    const { pic } = env;
+    await env.icp.mint(env.wallet(who), 2n * F);
+    const pos = await env.depositPosition(who);
+    const create = await env.submit('create_position_lock', who, [env.poolId, 1n, pos, (await env.nowNs()) + DAY_NS, env.tokenAId, env.tokenBId, []]);
+    await pic.tick(1);
+    const withdraw = await env.lockAs(who).transfer_tokens(who, [], env.icpId, 50_000_000n);
+    console.log('transfer_tokens during the same caller\'s position lock creation:', JSON.stringify(withdraw, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
+    expect(errOf(withdraw).GenericError.message).toMatch(/already in progress/);
+    unwrap(await env.decode('create_position_lock', create));
+    expect((await covered()).ok).toBe(true);
+  }, 120_000);
+});

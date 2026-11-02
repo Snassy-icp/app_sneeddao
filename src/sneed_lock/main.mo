@@ -1798,7 +1798,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
 
       // Step 1: Verify ICP funds are available (balance check only)
-      let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false);
+      let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false, if (icrc1_ledger_canister_id == Principal.fromText(ICP_LEDGER_ID)) { amount } else { 0 });
       let fee_and_tier = switch (icp_verify_result) {
           case (#Err(e)) {
             let create_lock_error : CreateLockError = {
@@ -1939,16 +1939,21 @@ shared (deployer) persistent actor class SneedLock() = this {
       // One lock creation (or payment-balance withdrawal) per caller at a time: the lock fee is
       // verified before awaits and charged after them, so concurrent creates could each pass
       // the checks and make two locks with two fees.
-      if (Map.has(payment_ops_in_flight, phash, caller)) {
-        let error = #Err({ message = "A lock creation or payment withdrawal is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
+      // When the payment subaccount is the caller's wallet (M2), the fee comes from the account
+      // their token operations use: those are excluded meanwhile, as in create_lock.
+      let is_wallet = payment_is_wallet(caller);
+      if (Map.has(payment_ops_in_flight, phash, caller) or (is_wallet and is_token_op_locked(caller))) {
+        let error = #Err({ message = "A lock creation, token operation or payment withdrawal is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
         log_error(caller, correlation_id, debug_show(error));
         return error;
       };
       Map.set(payment_ops_in_flight, phash, caller, ());
+      if (is_wallet) { lock_token_op(caller) };
       let result = try {
         await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1, dissolve_delay);
       } finally {
         Map.delete(payment_ops_in_flight, phash, caller);
+        if (is_wallet) { unlock_token_op(caller) };
       };
       switch (result) {
         case (#Ok(_)) {
@@ -2094,7 +2099,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             };
 
             // Step 1: Verify ICP funds are available (balance check only)
-            let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true);
+            let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true, 0);
             let fee_and_tier = switch (icp_verify_result) {
                 case (#Err(e)) {
                   return #Err({
@@ -4362,7 +4367,23 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Collect ICP lock fee from user's payment subaccount
   // Verify that user has sufficient ICP in payment subaccount (balance check only)
   // Returns the fee amount if sufficient, or error if insufficient
-  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : (Nat, SP.Tier); #Err : Text } {
+  // For ~1/256 of principals the payment subaccount IS their Sneed wallet subaccount (byte 23 of
+  // the wallet subaccount is already 0x50): the ICP they locked sits in the same account, so the fee
+  // may only come from what is not locked there (audit 2026-11-02, M2; as withdraw_payment_balance).
+  private func payment_is_wallet(p : Principal) : Bool {
+    userPaymentSubaccount(p) == Blob.fromArray(PrincipalToSubaccount(p));
+  };
+
+  /// ICP locked in `p`'s payment subaccount: their ICP token locks when it is their wallet, else 0.
+  private func locked_in_payment_subaccount<system>(p : Principal, correlation_id : Nat) : Nat {
+    if (not payment_is_wallet(p)) { return 0 };
+    clear_expired_locks_for_principal<system>(p, correlation_id);
+    get_summed_locks_from_principal_and_token(p, Principal.fromText(ICP_LEDGER_ID));
+  };
+
+  /// `pending_icp_lock`: ICP about to be locked by the call verifying the fee (a token lock of ICP),
+  /// which must stay in the account too.
+  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool, pending_icp_lock : Nat) : async* { #Ok : (Nat, SP.Tier); #Err : Text } {
     // Check premium status and get effective fee (the lowest applicable price, spec/special_prices.md)
     let is_premium = await* checkUserPremium(caller);
     let (fee_nat, tier) = effectiveLockFee(caller, is_premium, is_position_lock);
@@ -4384,9 +4405,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       subaccount = ?subaccount;
     });
     
-    if (balance < fee_nat) {
-      log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(balance));
-      return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(balance) # " e8s");
+    let locked = if (payment_is_wallet(caller)) { locked_in_payment_subaccount<system>(caller, correlation_id) + pending_icp_lock } else { 0 };
+    let available = if (balance > locked) { balance - locked } else { 0 };
+    if (available < fee_nat) {
+      let lockedText = if (locked > 0) { " (balance " # Nat.toText(balance) # " e8s, of which " # Nat.toText(locked) # " e8s are locked)" } else { "" };
+      log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(available) # lockedText);
+      return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(available) # " e8s" # lockedText);
     };
     
     log_info(caller, correlation_id, "ICP payment verified: " # Nat.toText(fee_nat) # " e8s available (" # SP.tierText(tier) # " price)");
@@ -4421,6 +4445,20 @@ shared (deployer) persistent actor class SneedLock() = this {
       case null { this_canister_id() };
     };
     let transfer_amount = if (fee_nat > icp_fee_nat) { fee_nat - icp_fee_nat } else { 0 };
+    if (transfer_amount > 0 and payment_is_wallet(caller)) {
+      // The account also holds locked ICP: the fee only from what is not locked, read again now
+      // (the lock just created may itself be an ICP lock).
+      let reader = actor (ICP_LEDGER_ID) : actor { icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat };
+      let balance = try { await reader.icrc1_balance_of({ owner = this_canister_id(); subaccount = ?subaccount }) } catch (e) {
+        log_error(caller, correlation_id, "Lock fee not charged: reading the payment balance failed: " # Error.message(e));
+        return #Err("Reading the payment balance failed: " # Error.message(e));
+      };
+      let locked = locked_in_payment_subaccount<system>(caller, correlation_id);
+      if (balance < locked + fee_nat) {
+        log_error(caller, correlation_id, "Lock fee not charged: it would take locked ICP (balance " # Nat.toText(balance) # ", locked " # Nat.toText(locked) # ", fee " # Nat.toText(fee_nat) # ")");
+        return #Err("The fee would take locked ICP");
+      };
+    };
     if (transfer_amount > 0) {
       let transfer_result = await icpLedger.icrc1_transfer({
         to = { owner = recipient_owner; subaccount = icp_fee_recipient_subaccount };
