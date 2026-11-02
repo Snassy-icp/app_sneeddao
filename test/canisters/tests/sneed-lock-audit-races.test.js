@@ -5,6 +5,11 @@
 //     before the balance is read, so the check saw the new tokens but not their lock: the
 //     recipient could withdraw locked tokens at once. Fix: the locked sum is read after the
 //     balance.
+//  2. transfer_position checked for a lock before its first await (the pool's ownership answer)
+//     and marked the position in flight only after it, so a create_position_lock of the same
+//     position finishing in that window made a lock and the withdrawal then took the position out
+//     anyway: an "active" lock on a position Sneed Lock no longer holds. Fix: the position is
+//     marked in flight before the first await (create_position_lock already re-checks that).
 // Each race is tried with the second call submitted 0..N rounds after the first, so some offset
 // hits the window. SNEED_LOCK_WASM=sneed_lock_prefix runs it against the code before the fixes
 // (main at 52bea976): each test fails there.
@@ -81,6 +86,29 @@ describe('Sneed Lock audit: no withdrawal of tokens that are locked, no lock on 
       if (bal < locked) broken.push({ k, moved: Object.keys(moved)[0], sent: Object.keys(sent)[0], bal, locked });
     }
     console.log('transfer_tokens race: offsets where a lock was left unbacked:', JSON.stringify(broken, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+    expect(broken).toEqual([]);
+  });
+
+  it('transfer_position racing create_position_lock of the same position never leaves an active lock on a position that left', async () => {
+    const broken = [];
+    let pos = 200n;
+    for (const k of OFFSETS) {
+      const who = user(`race3-${k}`);
+      pos += 1n;
+      await env.pool.mint_position(who, pos, 1_000_000n);
+      expect(await env.lockAs(who).claim_position(env.poolId, pos)).toBe(true);
+      unwrap(await env.poolAs(who).transferPosition(who, env.lockId, pos));
+      const [created, withdrawn] = await env.raceAt(k,
+        ['create_position_lock', who, [env.poolId, 1n, pos, (await env.nowNs()) + DAY_NS, env.tokenAId, env.tokenBId, []]],
+        ['transfer_position', who, [who, env.poolId, pos]],
+      );
+      const holder = (await env.pool.position_owner(pos))[0];
+      const active = await env.lockAs(who).get_lock_states_page({ owner: [who], ledger: [], swap_canister_id: [env.poolId], token: [], kind: [{ PositionLock: null }], status: [{ Active: null }], include_archived: false, prev: [], take: [] });
+      if (active.length > 0 && holder.toText() !== env.lockId.toText()) {
+        broken.push({ k, created: Object.keys(created)[0], withdrawn: Object.keys(withdrawn)[0], holder: holder.toText(), lock: active[0].lock_id });
+      }
+    }
+    console.log('transfer_position race: offsets with an active lock on a position Sneed Lock no longer holds:', JSON.stringify(broken, (_, v) => typeof v === 'bigint' ? v.toString() : v));
     expect(broken).toEqual([]);
   });
 });

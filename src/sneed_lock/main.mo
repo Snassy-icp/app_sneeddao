@@ -972,6 +972,24 @@ shared (deployer) persistent actor class SneedLock() = this {
       return error;
     };
 
+    // Only the position's claimant may withdraw it (checked again after the await below).
+    if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
+      let error = #err(#InternalError("Failed to validate claim when transferring position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " to " # debug_show(to)));
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
+
+    // The position is marked in flight in the same message as the lock checks above, before
+    // the first await: create_position_lock re-checks this mark after its own awaits, so no
+    // lock can be created while the withdrawal runs. (Marked only after the ownership await, a
+    // lock created in that window stayed "active" on a position that then left.)
+    let pkey = position_key(swap_canister_id, position_id);
+    if (Map.has(positions_in_flight, thash, pkey)) {
+      return #err(#InternalError("A withdrawal of this position is already in progress"));
+    };
+    Map.set(positions_in_flight, thash, pkey, ());
+    try {
+
     // Ensure the position is currently controlled by this canister
     if (await verify_position_ownership(this_canister_id(), swap_canister_id, position_id)) {
 
@@ -982,15 +1000,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
         };
 
-        let pkey = position_key(swap_canister_id, position_id);
-        if (Map.has(positions_in_flight, thash, pkey)) {
-          return #err(#InternalError("A withdrawal of this position is already in progress"));
-        };
-        Map.set(positions_in_flight, thash, pkey, ());
-        let result = try { await swap_canister.transferPosition(this_canister_id(), to, position_id) } catch (e) {
-          Map.delete(positions_in_flight, thash, pkey);
-          throw e;
-        };
+        let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
         Map.delete(positions_in_flight, thash, pkey);
 
         // if result is #ok, we can clear the position claim. this code uses the switch keyword.
@@ -1024,6 +1034,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     let error = #err(#InternalError("Failed to verify ownership when transferring position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " to " # debug_show(to)));
     log_error(caller, correlation_id, debug_show(error));
     return error;
+    } finally {
+      Map.delete(positions_in_flight, thash, pkey);
+    };
   };
 
   private func clear_position_claim(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : () {
