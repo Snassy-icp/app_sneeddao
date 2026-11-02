@@ -13,6 +13,7 @@ import './Wallet.css';
 import Header from './components/Header';
 import { FaCoins, FaShieldAlt, FaSpinner } from 'react-icons/fa';
 import { getLedgerTokenLocks } from './utils/sneedLockLists';
+import { isLockActive, sumActiveAmounts } from './utils/sneedLockActive';
 
 // Custom CSS for animations
 const customStyles = `
@@ -131,6 +132,7 @@ function TokenLock() {
                 lock_id: lock[2].lock_id,
                 amount: lock[2].amount,
                 expiry: new Date(Number(BigInt(lock[2].expiry || 0) / BigInt(1000000))),
+                active: isLockActive(lock[2]),
                 owner: lock[0].toString() // Extract the lock owner from lock[0]
             }));
 
@@ -142,7 +144,8 @@ function TokenLock() {
                 symbol,
                 decimals,
                 logo: logo || "icp_symbol.svg",
-                locked: formattedLocks.reduce((sum, lock) => sum + BigInt(lock.amount || 0), BigInt(0)),
+                // only locks that still lock (the list includes expired and archived ones)
+                locked: sumActiveAmounts(formattedLocks),
                 conversion_rate
             });
 

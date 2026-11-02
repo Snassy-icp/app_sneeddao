@@ -13,6 +13,7 @@ import PositionCard from './PositionCard';
 import './Wallet.css';
 import Header from './components/Header';
 import { getLedgerTokenLocks, getSwapPositionLocks, getTokenPositionLocks } from './utils/sneedLockLists';
+import { isLockActive, activeLockTuples, sumActiveAmounts } from './utils/sneedLockActive';
 
 function TokenLocksOverview() {
     const [token, setToken] = useState(null);
@@ -102,11 +103,14 @@ function TokenLocksOverview() {
                     const formattedTokenLocks = tokenLocks.map(lock => ({
                         lock_id: lock[2].lock_id,
                         amount: BigInt((lock[2].amount || 0).toString()),
-                        expiry: new Date(Number(BigInt(lock[2].expiry || 0) / BigInt(1000000)))
+                        expiry: new Date(Number(BigInt(lock[2].expiry || 0) / BigInt(1000000))),
+                        active: isLockActive(lock[2])
                     }));
 
-                    // Calculate total locked amount for the token
-                    const totalLocked = formattedTokenLocks.reduce((sum, lock) => sum + lock.amount, BigInt(0));
+                    // Calculate total locked amount for the token: active locks only (the list
+                    // also holds expired and archived locks)
+                    const activeTokenLocks = formattedTokenLocks.filter((l) => l.active);
+                    const totalLocked = sumActiveAmounts(activeTokenLocks);
                     
                     // Update token state with locked amount
                     const updatedTokenState = {
@@ -116,7 +120,7 @@ function TokenLocksOverview() {
                     setToken(updatedTokenState);
 
                     // Calculate token locks TVL using tokenState we already have
-                    const tokenLocksValue = formattedTokenLocks.reduce((sum, lock) => {
+                    const tokenLocksValue = activeTokenLocks.reduce((sum, lock) => {
                         const amountStr = lock.amount.toString();
                         const amount = parseFloat(amountStr);
                         const scaleFactor = Math.pow(10, decimals);
@@ -137,7 +141,8 @@ function TokenLocksOverview() {
 
                     // Fetch position locks
                     try {
-                        const rawPositionLocks = await getTokenPositionLocks(sneedLockActor, ledgerPrincipal);
+                        // active position locks only (expired ones stay in the list until archived)
+                        const rawPositionLocks = activeLockTuples(await getTokenPositionLocks(sneedLockActor, ledgerPrincipal));
                         const positionLocksWithDetails = await Promise.all(
                             rawPositionLocks.map(async ([principal, swapCanisterId, positionLock]) => {
                                 try {

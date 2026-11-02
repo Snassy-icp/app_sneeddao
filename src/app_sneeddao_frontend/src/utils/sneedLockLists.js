@@ -62,9 +62,14 @@ export async function fetchAllLockStates(actor, filter = {}) {
     return out;
 }
 
-const tokenTuple = (s) => [s.owner, s.ledger[0], { lock_id: s.lock_id, amount: s.amount[0], expiry: s.expiry }];
+// `active`: the canister's own answer (still locked and not archived). Lists that include
+// archived or expired locks (getLedgerTokenLocks, getSwapPositionLocks, …) must be filtered with
+// utils/sneedLockActive before anything is counted as locked (audit 2026-11-02, H3). The legacy
+// queries have no such field; isLockActive then falls back to the expiry.
+const isActiveState = (s) => !!s.locked && !s.archived;
+const tokenTuple = (s) => [s.owner, s.ledger[0], { lock_id: s.lock_id, amount: s.amount[0], expiry: s.expiry, active: isActiveState(s) }];
 const positionTuple = (s) => [s.owner, s.swap_canister_id[0], {
-    dex: s.dex?.[0] ?? 1n, lock_id: s.lock_id, position_id: s.position_id[0], expiry: s.expiry, token0: s.token0[0], token1: s.token1[0],
+    dex: s.dex?.[0] ?? 1n, lock_id: s.lock_id, position_id: s.position_id[0], expiry: s.expiry, token0: s.token0[0], token1: s.token1[0], active: isActiveState(s),
 }];
 
 async function list(actor, filter, toTuple, legacyCall) {

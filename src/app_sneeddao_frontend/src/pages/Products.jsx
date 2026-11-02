@@ -18,6 +18,7 @@ import { createSneedexActor } from '../utils/SneedexUtils';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { getAllPositionLocks, getAllTokenLocks } from '../utils/sneedLockLists';
+import { activeLockTuples } from '../utils/sneedLockActive';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -440,10 +441,11 @@ function Products() {
             
             // Fetch all locks (whitelisted tokens from shared cache)
             console.time('Fetch locks and tokens');
-            const [tokenLocks, positionLocks] = await Promise.all([
+            // active locks only: expired locks stay listed until archived and lock nothing (H3)
+            const [tokenLocks, positionLocks] = (await Promise.all([
                 getAllTokenLocks(sneedLockActor),
                 getAllPositionLocks(sneedLockActor)
-            ]);
+            ])).map((l) => activeLockTuples(l));
             console.timeEnd('Fetch locks and tokens');
             console.log('Token locks count:', tokenLocks.length);
             console.log('Position locks count:', positionLocks.length);
