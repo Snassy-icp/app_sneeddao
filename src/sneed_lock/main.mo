@@ -3989,8 +3989,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     total_count : Nat;
     has_more : Bool;
   } {
-    assert(isAdmin(caller));
-    
+    // public (owner decision 2026-11-02): payer, amount and time are already public in the
+    // sneedlock_fee_pay ICRC-3 blocks, and after the admin list is emptied nobody could read it
+    ignore caller;
     let total = payment_log.size();
     
     // Return empty if offset is beyond the log
@@ -4024,17 +4025,17 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   // Admin query: Get payment log count
   public shared query ({ caller }) func admin_get_payment_log_count() : async Nat {
-    assert(isAdmin(caller));
+    ignore caller; // public, like admin_get_payment_log
     payment_log.size();
   };
 
   /// The fee payments of one payer, newest first (`offset` 0 = the newest), at most 1000 a page.
-  /// For that payer or an admin.
+  /// Public, like admin_get_payment_log (payments are public in the ICRC-3 log).
   public query ({ caller }) func get_payment_log_for(p : Principal, offset : Nat, limit : Nat) : async {
     #Ok : { payments : [T.PaymentLogEntry]; total_count : Nat; has_more : Bool };
     #Err : Text;
   } {
-    if (caller != p and not isAdmin(caller)) { return #Err("Only " # Principal.toText(p) # " or an admin can read these payments") };
+    ignore caller;
     let mine = Array.filter<T.PaymentLogEntry>(payment_log, func(e) { e.payer == p });
     let total = mine.size();
     let lim = Nat.min(limit, 1000);
@@ -4243,7 +4244,8 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Admin: the price tier of payment log entries, by payment id (null for payments made before special prices).
   public shared query ({ caller }) func admin_get_payment_price_tiers(ids : [Nat]) : async [(Nat, ?Text)] {
-    assert (isAdmin(caller));
+    ignore caller; // public, like admin_get_payment_log (the price tier of each payment)
+    if (ids.size() > 1000) { Debug.trap("At most 1000 payment ids per call") };
     Array.map<Nat, (Nat, ?Text)>(ids, func(id) { (id, switch (Map.get(payment_price_tiers, nhash, id)) { case (?t) { ?SP.tierText(t) }; case null { null } }) });
   };
 

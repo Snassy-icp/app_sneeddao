@@ -1,6 +1,6 @@
 // Sneed Lock support fixes (spec/support_audit.md, P1-9, P1-12 and P1-14 for sneed_lock):
 //  - P1-9: the text logs are queries (get_info/error_entries and the id ranges), a principal's log
-//    entries and fee payments (get_log_entries_for, get_payment_log_for: that principal or an
+//    entries (get_log_entries_for: that principal or an admin) and fee payments (get_payment_log_for: public since 2026-11-02; was that principal or an
 //    admin) and a principal's fee-claim history (get_claim_requests_page_for);
 //  - P1-12: withdraw_payment_balance returns the caller's unused lock-fee deposit to the caller's
 //    own account, refused while a lock creation of the caller runs (ICRC-3 sneedlock_payment_withdraw);
@@ -155,7 +155,7 @@ describe('P1-9: support reads', () => {
     expect(errOf(await env.lockAs(bob).get_log_entries_for(alice, { errors: true, before: [], take: [] }))).toMatch(/or an admin/);
   });
 
-  it('get_payment_log_for: one payer\'s fee payments, newest first; for that payer or an admin', async () => {
+  it('get_payment_log_for: one payer\'s fee payments, newest first; public (owner decision 2026-11-02)', async () => {
     unwrap(await env.lock.admin_set_lock_fees_icp([E8], [], [], []));
     for (const [who, n] of [[alice, 2], [bob, 1]]) {
       await env.icp.mint(env.payment(who), BigInt(n) * E8);
@@ -170,7 +170,12 @@ describe('P1-9: support reads', () => {
     const page = unwrap(await env.lockAs(alice).get_payment_log_for(alice, 1n, 1n));
     expect(page.payments.map((p) => p.id)).toEqual([a.payments[1].id]);
     expect(unwrap(await env.lock.get_payment_log_for(bob, 0n, 10n)).total_count).toBe(1n);
-    expect(errOf(await env.lockAs(carol).get_payment_log_for(alice, 0n, 10n))).toMatch(/or an admin/);
+    // public: anyone (here carol, not an admin) reads any payer's payments, the whole log, its count and price tiers
+    expect(unwrap(await env.lockAs(carol).get_payment_log_for(alice, 0n, 10n)).total_count).toBe(2n);
+    const all = await env.lockAs(carol).admin_get_payment_log(0n, 10n);
+    expect(all.total_count).toBe(3n);
+    expect(await env.lockAs(carol).admin_get_payment_log_count()).toBe(3n);
+    expect((await env.lockAs(carol).admin_get_payment_price_tiers(all.payments.map((p) => p.id))).length).toBe(3);
     unwrap(await env.lock.admin_set_lock_fees_icp([0n], [], [], []));
   });
 
