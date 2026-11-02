@@ -43,6 +43,7 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   // (a reject the caller cannot tell from a lost reply; the pool state is rolled back)
   transient var deposit_mode : { #normal; #err; #trap } = #normal;
   transient var withdraw_mode : { #normal; #err; #trap } = #normal;
+  transient var hang_transfer_position : Bool = false;
 
   func self() : Principal = Principal.fromActor(this);
 
@@ -113,6 +114,9 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
       case (?p) {
         if (caller != from or p.owner != from) { return #err(#InternalError("caller does not own the position")) };
         p.owner := to;
+        // Sneed Lock audit M1: the move is booked, the reply can be held back (a lost reply)
+        var n = 0;
+        while (hang_transfer_position and n < 1_000_000) { await async {}; n += 1 };
         #ok(true);
       };
     };
@@ -209,6 +213,7 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   public shared func set_fail_increase(f : Bool) : async () { fail_increase := f };
   public shared func set_deposit_mode(m : { #normal; #err; #trap }) : async () { deposit_mode := m };
   public shared func set_withdraw_mode(m : { #normal; #err; #trap }) : async () { withdraw_mode := m };
+  public shared func set_hang_transfer_position(h : Bool) : async () { hang_transfer_position := h };
   public query func position_owner(positionId : Nat) : async ?Principal {
     switch (positions.get(positionId)) { case (?p) ?p.owner; case null null };
   };

@@ -898,9 +898,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     lock_token_op(caller);
 
     try {
-    let token_fee = await icrc1_ledger_canister.icrc1_fee();
+    let token_fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_fee();
     let caller_subaccount_on_this : T.Account =  { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount); };
-    let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+    let token_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
 
     // The locked sum is read AFTER the balance, never before: a token lock moved to the caller
     // meanwhile (its owner's transfer_token_lock_ownership, which this caller's guard does not
@@ -931,7 +931,20 @@ shared (deployer) persistent actor class SneedLock() = this {
         created_at_time = null;
     };
 
-    let result = await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    // Bounded wait (M1). An unknown outcome is safe here: nothing is recorded for the transfer,
+    // and the next token operation of the caller reads the balance again. That read is a later call
+    // to the same ledger, which the IC delivers after this one (calls from one canister to another
+    // arrive in order), so it sees this transfer if it was executed: the locked tokens stay covered.
+    let result = try {
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    } catch (e) {
+      let error = #Err(#GenericError{
+        message = "The ledger call failed (" # Error.message(e) # "); the transfer may or may not have happened: check the wallet balance before retrying";
+        error_code = 3;
+      });
+      log_error(caller, correlation_id, "Transfer outcome unknown. Args: " # debug_show(transfer_args) # ". " # debug_show(error));
+      return error;
+    };
 
     switch (result) {
       case (#Ok(tx_index)) {
@@ -1007,7 +1020,20 @@ shared (deployer) persistent actor class SneedLock() = this {
             transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
         };
 
-        let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
+        // Bounded wait (M1). When the outcome is unknown the pool is asked again where the position
+        // is (a later call to the same pool, delivered after this one): gone from this canister means
+        // the transfer happened; still here means it did not; no answer keeps the claim (the safe side:
+        // a claim on a position that left cannot lock or move anything it does not hold).
+        let result : T.TransferPositionResult = try {
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.transferPosition(this_canister_id(), to, position_id);
+        } catch (e) {
+          log_error(caller, correlation_id, "transferPosition of " # pkey # " failed with an unknown outcome: " # Error.message(e) # "; asking the pool where the position is");
+          switch (await* position_held_by(this_canister_id(), swap_canister_id, position_id)) {
+            case (?false) { #ok(true) };
+            case (?true) { #err(#InternalError("The pool did not answer the transfer (" # Error.message(e) # "); the position is still held by Sneed Lock")) };
+            case null { #err(#InternalError("The pool did not answer the transfer (" # Error.message(e) # ") nor where the position is now; your claim stays: try again later")) };
+          };
+        };
         Map.delete(positions_in_flight, thash, pkey);
 
         // if result is #ok, we can clear the position claim. this code uses the switch keyword.
@@ -1289,10 +1315,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
         let caller_subaccount = PrincipalToSubaccount(owner);
         let caller_account : T.Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(caller_subaccount); };
-        var caller_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_account);
+        var caller_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_account);
 
         // Get the transfer fee
-        let token_fee = await icrc1_ledger_canister.icrc1_fee();
+        let token_fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_fee();
         Map.set(ledger_fees, phash, token_type, token_fee);
 
         // Calculate total locked balance for this token (this includes the lock being transferred)
@@ -1317,7 +1343,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         if (caller_balance < sum_locked + token_fee) {
           let free_balance = if (caller_balance >= sum_locked) { caller_balance - sum_locked } else { 0 };
           let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
-          let tank_balance = await icrc1_ledger_canister.icrc1_balance_of(tank);
+          let tank_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(tank);
           if (not use_tank or tank_balance < 2 * token_fee) {
             let error = #err({
               code = 7;
@@ -1328,7 +1354,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             return error;
           };
           let hop = try {
-            await icrc1_ledger_canister.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to = caller_account; amount = token_fee; fee = null; memo = null; created_at_time = null });
+            await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to = caller_account; amount = token_fee; fee = null; memo = null; created_at_time = null });
           } catch (e) {
             let error = #err({ code = 9; message = "The gas tank's fee transfer failed: " # Error.message(e); transfer_error = null });
             log_error(caller, correlation_id, debug_show(error));
@@ -1378,7 +1404,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         // temporarily over-locking the other until expiry. Never leave either
         // side's tokens unlocked.
         let transfer_result = try {
-          await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer(transfer_args);
         } catch e {
           let not_executed = switch (Error.code(e)) {
             case (#system_fatal or #system_transient or #destination_invalid or #canister_error) { true };
@@ -1524,9 +1550,9 @@ shared (deployer) persistent actor class SneedLock() = this {
       let l = actor (Principal.toText(ledger)) : Icrc1Ledger;
       let wallet = func(p : Principal) : T.Account { { owner = this_canister_id(); subaccount = ?Blob.fromArray(PrincipalToSubaccount(p)) } };
       let (bal1, bal2, fee) = try {
-        let b1 = await l.icrc1_balance_of(wallet(p1));
-        let b2 = await l.icrc1_balance_of(wallet(p2));
-        let f = await l.icrc1_fee();
+        let b1 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(wallet(p1));
+        let b2 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(wallet(p2));
+        let f = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_fee();
         (b1, b2, f);
       } catch (e) {
         return #Err("The ledger did not answer (" # Error.message(e) # "); nothing changed, please retry");
@@ -1554,7 +1580,7 @@ shared (deployer) persistent actor class SneedLock() = this {
               (m.from, "both wallets cover the lock; the sender cannot pay a resubmission: kept by the original owner")
             } else {
               let r = try {
-                await l.icrc1_transfer({ from_subaccount = wallet(m.from).subaccount; to = wallet(m.to); amount = m.amount; fee = null; memo = ?m.memo; created_at_time = ?m.created_at_time });
+                await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_transfer({ from_subaccount = wallet(m.from).subaccount; to = wallet(m.to); amount = m.amount; fee = null; memo = ?m.memo; created_at_time = ?m.created_at_time });
               } catch (e) {
                 return #Err("Resubmitting the transfer failed (" # Error.message(e) # "); nothing changed here, please retry (the ledger deduplicates it)");
               };
@@ -1622,6 +1648,20 @@ shared (deployer) persistent actor class SneedLock() = this {
     Buffer.toArray(out);
   };
 
+  /// Whether the pool lists the position under `owner`: ?true / ?false, or null when the pool does
+  /// not answer (or answers an error).
+  private func position_held_by(owner : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async* ?Bool {
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+      getUserPositionIdsByPrincipal(principal : Principal) : async GetUserPositionIdsByPrincipalResult;
+    };
+    try {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPositionIdsByPrincipal(owner)) {
+        case (#ok(ids)) { ?(Array.find<Nat>(ids, func(i) { i == position_id }) != null) };
+        case (#err(_)) { null };
+      };
+    } catch (_) { null };
+  };
+
   private func verify_position_ownership(caller : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async Bool {
 
       try 
@@ -1631,7 +1671,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             getUserPositionIdsByPrincipal(principal : Principal) : async GetUserPositionIdsByPrincipalResult;
         };
 
-        switch (await swap_canister.getUserPositionIdsByPrincipal(caller)) {
+        switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPositionIdsByPrincipal(caller)) {
           case (#ok(userPositionIds)) {
             for (userPositionId in userPositionIds.vals()) {
               if (position_id == userPositionId) { 
@@ -1718,7 +1758,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           icrc1_balance_of(account : Account) : async Nat;
       };
 
-      let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+      let token_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
       if (token_balance < amount) {
           let error = #Err({
             message = "Insufficient balance to lock for caller: " # debug_show(caller) 
@@ -2799,10 +2839,10 @@ shared (deployer) persistent actor class SneedLock() = this {
               icrc1_decimals : shared query () -> async Nat8;
               icrc1_fee : shared query () -> async Nat;
             };
-            let sym = await ledger.icrc1_symbol();
+            let sym = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_symbol();
             if (sym.size() > 0 and sym.size() <= 32) { Map.set(ledger_symbols, phash, l, sym) };
-            Map.set(ledger_decimals, phash, l, await ledger.icrc1_decimals());
-            Map.set(ledger_fees, phash, l, await ledger.icrc1_fee());
+            Map.set(ledger_decimals, phash, l, await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_decimals());
+            Map.set(ledger_fees, phash, l, await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee());
           } catch (_) {};
         };
       };
@@ -3063,11 +3103,11 @@ shared (deployer) persistent actor class SneedLock() = this {
         icrc1_transfer : shared (TransferArgs) -> async T.TransferResult;
       };
       let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
-      let balance = await l.icrc1_balance_of(tank);
-      let fee = await l.icrc1_fee();
+      let balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(tank);
+      let fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_fee();
       Map.set(ledger_fees, phash, ledger, fee);
       if (balance <= fee) { return #Err("The gas tank holds " # Nat.toText(balance) # ", not more than one ledger fee (" # Nat.toText(fee) # ")") };
-      switch (await l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
         case (#Ok(i)) {
           icrc3_add<system>("sneedlock_gas_withdraw", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
@@ -4544,9 +4584,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     // The pool charges the ledger fee on delivery and drops any amount at or
     // below the fee, so only claim when at least one side is worth delivering.
     let (token0_fee, token1_fee, tokens_owed0, tokens_owed1) = try {
-      let fee0 = await token0_ledger.icrc1_fee();
-      let fee1 = await token1_ledger.icrc1_fee();
-      switch (await swap_canister.getUserPosition(position_id)) {
+      let fee0 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) token0_ledger.icrc1_fee();
+      let fee1 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) token1_ledger.icrc1_fee();
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPosition(position_id)) {
         case (#ok(info)) { (fee0, fee1, info.tokensOwed0, info.tokensOwed1) };
         case (#err(err)) { return fail("Failed to get position info: " # debug_show(err)) };
       };
@@ -4560,7 +4600,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let subaccount = Blob.fromArray(PrincipalToSubaccount(caller));
     let claim_result = try {
-      await swap_canister.claimToSubaccount({ positionId = position_id; subaccount });
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.claimToSubaccount({ positionId = position_id; subaccount });
     } catch (e) {
       // The pool either rolled the claim back or will still deliver to the
       // owner's subaccount from its own queue; sneed_lock never holds the funds.
@@ -4694,7 +4734,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let from_subaccount = PrincipalToSubaccount(caller);
     let caller_account : Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount) };
-    let balance = try { await ledger.icrc1_balance_of(caller_account) } catch (e) {
+    let balance = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_balance_of(caller_account) } catch (e) {
       return #Err("Failed to read backend wallet balance for " # debug_show(token) # ": " # Error.message(e));
     };
     // after the balance, as in transfer_tokens: a lock moved to the caller during the await is counted
@@ -4705,7 +4745,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let to : Account = { owner = pool_id; subaccount = ?Blob.fromArray(PrincipalToSubaccount(this_canister_id())) };
     let transfer = try {
-      await ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
     } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true,
         "transfer to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # "; if the wallet still holds it, nothing is stranded");
@@ -4718,7 +4758,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     log_info(caller, correlation_id, "Transferred " # debug_show(amount) # " " # debug_show(token) # " to the deposit subaccount of pool " # debug_show(pool_id));
 
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
-    let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
+    let deposited = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
       return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
@@ -4750,7 +4790,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (amount <= fee) { return #Ok((0, amount)) };
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
-    let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+    let result = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.withdrawToSubaccount(args) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
       return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
@@ -4785,7 +4825,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let ledger0 : Icrc1Ledger = actor (Principal.toText(token0));
     let ledger1 : Icrc1Ledger = actor (Principal.toText(token1));
 
-    let (fee0, fee1) = try { (await ledger0.icrc1_fee(), await ledger1.icrc1_fee()) } catch (e) {
+    let (fee0, fee1) = try { (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger0.icrc1_fee(), await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger1.icrc1_fee()) } catch (e) {
       return err("Failed to query ledger fees: " # Error.message(e));
     };
     // Moving a token in costs one fee for the transfer and one inside the pool's
@@ -4795,7 +4835,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     // Quiescence: the live balance must equal the expected resting level.
     let live = try {
-      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
         case (#err(e)) { return err("Failed to read pool balance: " # debug_show(e)) };
       };
@@ -4832,7 +4872,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     // Add liquidity. Whatever the outcome, the leftover is measured from the
     // live balance afterwards, which is exact while the pool lock is held.
     let increase_error : ?Text = try {
-      switch (await pool.increaseLiquidity({ positionId = position_id; amount0Desired = Nat.toText(credited0); amount1Desired = Nat.toText(credited1) })) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.increaseLiquidity({ positionId = position_id; amount0Desired = Nat.toText(credited0); amount1Desired = Nat.toText(credited1) })) {
         case (#ok(_)) { null };
         case (#err(e)) { ?("Pool refused to add liquidity: " # debug_show(e)) };
       };
@@ -4856,7 +4896,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       "Liquidity step done but reading the pool balance failed: " # why # ". ADMIN ACTION: check this canister's balance in pool " # debug_show(pool_id) # " for " # debug_show(caller) # " (stranded records " # ids # ")";
     };
     let after = try {
-      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
         case (#err(e)) { return err(strand_unmeasured<system>(debug_show(e))) };
       };
@@ -5058,7 +5098,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       getUserUnusedBalance : (principal : Principal) -> async { #ok : { balance0 : Nat; balance1 : Nat }; #err : T.SwapCanisterError };
     };
     try {
-      switch (await swap_canister.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserUnusedBalance(this_canister_id())) {
         case (#ok(balances)) { #Ok(balances) };
         case (#err(err)) { #Err(debug_show(err)) };
       };
@@ -5084,8 +5124,8 @@ shared (deployer) persistent actor class SneedLock() = this {
     let pool : IcpSwapPool = actor (Principal.toText(swap_canister_id));
     let ledger : Icrc1Ledger = actor (Principal.toText(token_ledger));
     try {
-      let fee = await ledger.icrc1_fee();
-      switch (await pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
+      let fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee();
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
         case (#ok(credited)) {
           log_info(caller, correlation_id, "Pool credited " # debug_show(credited));
           icrc3_add<system>("sneedlock_admin_pool_deposit", [
@@ -5169,10 +5209,10 @@ shared (deployer) persistent actor class SneedLock() = this {
       #Err(msg);
     };
     try {
-      let fee = try { await ledger.icrc1_fee() } catch (e) { return fail("reading the ledger fee failed: " # Error.message(e), false) };
+      let fee = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee() } catch (e) { return fail("reading the ledger fee failed: " # Error.message(e), false) };
       var to_withdraw = pay;
       if (rec.held_in == #deposit_subaccount) {
-        let deposited = try { await pool.deposit({ token = Principal.toText(rec.ledger); amount = pay; fee }) } catch (e) {
+        let deposited = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(rec.ledger); amount = pay; fee }) } catch (e) {
           return fail("pool deposit failed with unknown outcome: " # Error.message(e), true);
         };
         switch (deposited) {
@@ -5191,7 +5231,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
       if (to_withdraw <= fee) { return fail("the amount " # Nat.toText(to_withdraw) # " does not exceed the ledger fee " # Nat.toText(fee), false) };
       let args = { token = Principal.toText(rec.ledger); amount = to_withdraw; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(rec.owner)) };
-      let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+      let result = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.withdrawToSubaccount(args) } catch (e) {
         return fail("pool withdrawal failed with unknown outcome: " # Error.message(e), true);
       };
       switch (result) {

@@ -158,3 +158,117 @@ describe('H2: only pools the ICPSwap factory confirms', () => {
     expect(await env.tokenA.icrc1_balance_of(env.wallet(who, old))).toBe(1_000_000n);
   }, 120_000);
 });
+
+describe('M1: a canister that never answers cannot keep Sneed Lock from stopping', () => {
+  // Calls the canister under test may still have open at the end of a test run against the old code
+  const settle = async () => {
+    await env.hang.release();
+    await env.tokenAHang.set_hang_transfers(false);
+    await env.poolHang.set_hang_transfer_position(false);
+    await env.pic.tick(20);
+    if ((await env.status()) !== 'running') await env.pic.startCanister({ canisterId: env.lockId, sender: admin });
+  };
+
+  it('claim_position on a pool that never answers: the call ends after the timeout, the stop completes, the upgrade runs', async () => {
+    const { pic } = env;
+    const who = user('m1-claim');
+    await env.hang.hang();
+    try {
+      const claim = await env.submit('claim_position', who, [env.hangId, 1n]);
+      await pic.tick(5);
+      expect((await env.hang.stats()).calls).toBeGreaterThan(0n);
+      // the stop request comes 200 s into the claim (a stop request itself gives up after 5 minutes)
+      await pic.advanceTime(200_000);
+      await pic.tick(3);
+      expect(await env.done(claim)).toBe(false);
+      const stop = await pic.submitCall({ canisterId: MGMT, method: 'stop_canister', arg: IDL.encode([IDL.Record({ canister_id: IDL.Principal })], [{ canister_id: env.lockId }]), sender: admin, targetSubnetId: env.appSubnet });
+      await pic.tick(5);
+      expect(await env.status()).toBe('stopping');
+      await pic.advanceTime(TIMEOUT_MS - 200_000);
+      await pic.tick(10);
+      const st = await env.status();
+      console.log('Sneed Lock status 301 s after a stop request, with a claim on a pool that never answers:', st, '; the claim call done:', await env.done(claim));
+      expect(st).toBe('stopped');
+      expect(await env.done(claim)).toBe(true);
+      expect(await env.decode('claim_position', claim)).toBe(false);
+      await pic.awaitCall(stop);
+      await pic.upgradeCanister({ canisterId: env.lockId, wasm: wasm(SNEED_LOCK_WASM), sender: admin });
+      await pic.startCanister({ canisterId: env.lockId, sender: admin });
+      expect(await env.status()).toBe('running');
+      // state kept: the position locks of the H2 tests are all there
+      expect((await env.lockAs(admin).get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [env.poolId], token: [], kind: [], status: [{ Active: null }], include_archived: false, prev: [], take: [] })).length).toBeGreaterThanOrEqual(2);
+    } finally { await settle(); }
+  }, 120_000);
+
+  it('transfer_tokens on a ledger that never answers ends after the timeout and releases the caller', async () => {
+    const { pic } = env;
+    const who = user('m1-ledger');
+    await env.hang.hang();
+    try {
+      const t = await env.submit('transfer_tokens', who, [who, [], env.hangId, 5n]);
+      await pic.tick(5);
+      await pic.advanceTime(TIMEOUT_MS);
+      await pic.tick(10);
+      const done = await env.done(t);
+      console.log('transfer_tokens on a ledger that never answers, done 301 s later:', done);
+      expect(done).toBe(true);
+      await expect(env.decode('transfer_tokens', t)).rejects.toThrow(); // the fee read timed out: a reject, nothing moved
+      // the caller's token operations are not blocked afterwards
+      await env.tokenA.mint(env.wallet(who), 100_000n);
+      unwrap(await env.lockAs(who).create_lock(10_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, []));
+    } finally { await settle(); }
+  }, 120_000);
+
+  it('a token lock transfer whose ledger reply never comes: the lock is held by both until reconciled, the tokens stay covered', async () => {
+    const { pic } = env;
+    const from = user('m1-from');
+    const to = user('m1-to');
+    const L = 1_000_000n;
+    await env.tokenA.mint(env.wallet(from), L + FEE_A);
+    const lid = unwrap(await env.lockAs(from).create_lock(L, env.tokenAId, (await env.nowNs()) + DAY_NS, []));
+    await env.tokenAHang.set_hang_transfers(true); // the transfer is booked, its reply held back
+    try {
+      const mv = await env.submit('transfer_token_lock_ownership', from, [to, env.tokenAId, lid]);
+      await pic.tick(5);
+      await pic.advanceTime(TIMEOUT_MS);
+      await pic.tick(10);
+      const done = await env.done(mv);
+      console.log('token lock transfer with a lost ledger reply, done 301 s later:', done);
+      expect(done).toBe(true);
+      expect(errOf(await env.decode('transfer_token_lock_ownership', mv)).message).toMatch(/unknown outcome; lock kept on both/);
+      await env.tokenAHang.set_hang_transfers(false);
+      await pic.tick(5);
+      // the tokens landed with `to`, who holds the lock too: nothing of it can be withdrawn
+      expect(await env.tokenA.icrc1_balance_of(env.wallet(to))).toBe(L);
+      expect(await env.lockedOf(to, env.tokenAId)).toBe(L);
+      const w = await env.lockAs(to).transfer_tokens(to, [], env.tokenAId, L - FEE_A);
+      expect(w).toHaveProperty('Err');
+      const u = (await env.lockAs(to).get_uncertain_token_locks()).find((x) => x.lock_id === lid);
+      expect(u.holders.map((p) => p.toText()).sort()).toEqual([from.toText(), to.toText()].sort());
+      // reconciliation gives it to the side whose wallet holds the tokens
+      expect(unwrap(await env.lockAs(from).reconcile_token_lock(lid, [])).owner.toText()).toBe(to.toText());
+      expect(await env.lockedOf(from, env.tokenAId)).toBe(0n);
+      expect(await env.lockedOf(to, env.tokenAId)).toBe(L);
+    } finally { await settle(); }
+  }, 120_000);
+
+  it('a position withdrawal whose pool reply never comes: the pool is asked again, the position left, the claim is cleared', async () => {
+    const { pic } = env;
+    const who = user('m1-pos');
+    const pos = await env.depositPosition(who);
+    await env.poolHang.set_hang_transfer_position(true);
+    try {
+      const w = await env.submit('transfer_position', who, [who, env.poolId, pos]);
+      await pic.tick(5);
+      await pic.advanceTime(TIMEOUT_MS);
+      await pic.tick(10);
+      const done = await env.done(w);
+      console.log('position withdrawal with a lost pool reply, done 301 s later:', done);
+      expect(done).toBe(true);
+      expect(await env.decode('transfer_position', w)).toEqual({ ok: true });
+      expect((await env.poolAs(env.poolId, admin).position_owner(pos))[0].toText()).toBe(who.toText());
+      const claims = await env.lockAs(who).get_claimed_positions_for_principal(who);
+      expect(claims.filter((c) => c.position_id === pos)).toEqual([]);
+    } finally { await settle(); }
+  }, 120_000);
+});
