@@ -124,24 +124,11 @@ export interface SneedLock {
     { 'Ok' : string } |
       { 'Err' : string }
   >,
-  'admin_rescue_stuck_tokens' : ActorMethod<
-    [TokenType, Principal],
-    { 'Ok' : string } |
-      { 'Err' : string }
-  >,
   'admin_resume_claim_queue' : ActorMethod<[], undefined>,
   'admin_retry_claim_request' : ActorMethod<
     [ClaimRequestId],
     { 'Ok' : string } |
       { 'Err' : string }
-  >,
-  'admin_return_token' : ActorMethod<
-    [Principal, bigint, Principal],
-    TransferResult
-  >,
-  'admin_return_token_from_failed_request' : ActorMethod<
-    [Principal, bigint, Principal],
-    TransferResult
   >,
   'admin_set_enforce_zero_balance_before_claim' : ActorMethod<
     [boolean],

@@ -329,6 +329,15 @@ module {
   /// Validate and apply a partial settings update. Returns the changed keys
   /// with their old and new values so the caller can log them.
   public func applySettings(state : State, u : T.SettingsUpdate) : { #Ok : [(Text, Nat, Nat)]; #Err : Text } {
+    switch (planSettings(state, u)) {
+      case (#Err(e)) { #Err(e) };
+      case (#Ok((n, changes))) { state.settings := n; #Ok(changes) };
+    };
+  };
+
+  /// What applySettings would do, without doing it: the new settings and the changed keys with
+  /// their old and new values, or the reason the update is refused (for proposal validators).
+  public func planSettings(state : State, u : T.SettingsUpdate) : { #Ok : (T.Settings, [(Text, Nat, Nat)]); #Err : Text } {
     let s = state.settings;
     let n = {
       max_live_blocks = switch (u.max_live_blocks) { case (?v) v; case null s.max_live_blocks };
@@ -350,8 +359,7 @@ module {
     if (n.archive_initial_cycles != s.archive_initial_cycles) { changes.add(("icrc3_archive_initial_cycles", s.archive_initial_cycles, n.archive_initial_cycles)) };
     if (n.archive_top_up_threshold != s.archive_top_up_threshold) { changes.add(("icrc3_archive_top_up_threshold", s.archive_top_up_threshold, n.archive_top_up_threshold)) };
     if (n.archive_top_up_amount != s.archive_top_up_amount) { changes.add(("icrc3_archive_top_up_amount", s.archive_top_up_amount, n.archive_top_up_amount)) };
-    state.settings := n;
-    #Ok(Buffer.toArray(changes));
+    #Ok((n, Buffer.toArray(changes)));
   };
 
   // -------------------------------------------------------------------------

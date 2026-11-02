@@ -658,21 +658,6 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
         [],
       ),
-    'admin_rescue_stuck_tokens' : IDL.Func(
-        [TokenType, IDL.Principal],
-        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
-    'admin_return_token' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Principal],
-        [TransferResult],
-        [],
-      ),
-    'admin_return_token_from_failed_request' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Principal],
-        [TransferResult],
-        [],
-      ),
     'admin_set_icp_fee_recipient' : IDL.Func(
         [IDL.Opt(IDL.Principal), IDL.Opt(IDL.Vec(IDL.Nat8))],
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
@@ -701,11 +686,6 @@ export const idlFactory = ({ IDL }) => {
     'admin_set_sneed_premium_canister_id' : IDL.Func(
         [IDL.Opt(IDL.Principal)],
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
-    'admin_withdraw_pool_balance_to_user' : IDL.Func(
-        [SwapCanisterId, TokenType, IDL.Nat, IDL.Principal],
-        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
         [],
       ),
     'admin_withdraw_stranded_to_owner' : IDL.Func(

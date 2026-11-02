@@ -158,10 +158,10 @@ Admin and configuration (only callable by admins, governance or controllers):
 
 | btype | when | tx fields |
 |-------|------|-----------|
-| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded | `cid`, `caller`, `ledger`, `from` Account, `to` Account, `amount`, `ledger_tx` |
-| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded | `cid`, `caller`, `ledger`, `to` Account, `amount`, `ledger_tx` |
+| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded (removed 2026-11-02: old blocks only) | `cid`, `caller`, `ledger`, `from` Account, `to` Account, `amount`, `ledger_tx` |
+| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded (removed 2026-11-02: old blocks only) | `cid`, `caller`, `ledger`, `to` Account, `amount`, `ledger_tx` |
 | `sneedlock_admin_pool_deposit` | `admin_pool_deposit` succeeded | `cid`, `caller`, `pool`, `ledger`, `amount`, `credited` |
-| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
+| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded (removed 2026-11-02: old blocks only) | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
 | `sneedlock_config_update` | any setting changed | `cid`, `caller`, `key` Text, `value` (Text or Nat), plus `old_value` when known |
 
 `sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`,

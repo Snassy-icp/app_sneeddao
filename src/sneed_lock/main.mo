@@ -31,6 +31,7 @@ import IngressGuard "../IngressGuard";
 import RateLimit "../RateLimit";
 import SP "../SpecialPrices";
 import ApiDoc "ApiDoc";
+import DaoSettings "../DaoSettings";
 import Timer "mo:base/Timer";
 
 import Icrc3Log "../icrc3/Log";
@@ -1459,6 +1460,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Whichever side is kept is covered by its wallet, so no lock is ever left unbacked;
   /// nothing is paid out to anyone. Logged as sneedlock_token_lock_reconcile.
   public shared ({ caller }) func reconcile_token_lock(lock_id : T.LockId, keep : ?Principal) : async ReconcileResult {
+    await* reconcile_token_lock_impl<system>(caller, lock_id, keep);
+  };
+
+  private func reconcile_token_lock_impl<system>(caller : Principal, lock_id : T.LockId, keep : ?Principal) : async* ReconcileResult {
     let recs = token_lock_records(lock_id);
     if (recs.size() == 0) {
       Map.delete(uncertain_moves, nhash, lock_id);
@@ -3449,6 +3454,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   public shared ({ caller }) func admin_set_icrc3_settings(update : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can change the ICRC-3 settings") };
+    admin_set_icrc3_settings_impl<system>(caller, update);
+  };
+
+  private func admin_set_icrc3_settings_impl<system>(caller : Principal, update : T3.SettingsUpdate) : { #Ok : T3.Settings; #Err : Text } {
     switch (Icrc3Log.applySettings(icrc3, update)) {
       case (#Err(e)) { #Err(e) };
       case (#Ok(changes)) {
@@ -3466,6 +3475,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Returns the number of blocks moved.
   public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can trigger a spill") };
+    await* admin_icrc3_spill_now_impl<system>(caller);
+  };
+
+  private func admin_icrc3_spill_now_impl<system>(caller : Principal) : async* { #Ok : Nat; #Err : Text } {
     if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
     let moved = await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true);
     ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
@@ -3483,6 +3496,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// the registration proposals; null switches the step off.
   public shared ({ caller }) func admin_set_icrc3_proposal_neuron(neuron : ?Blob) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can set the proposal neuron") };
+    admin_set_icrc3_proposal_neuron_impl<system>(caller, neuron);
+  };
+
+  private func admin_set_icrc3_proposal_neuron_impl<system>(caller : Principal, neuron : ?Blob) : { #Ok; #Err : Text } {
     let old = icrc3_sns.neuron;
     switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) {
       case (#Err(e)) { #Err(e) };
@@ -3497,12 +3514,20 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Submit the pending registration proposals now instead of at the next spill check.
   public shared ({ caller }) func admin_icrc3_register_archives_now() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can submit registration proposals") };
+    await* admin_icrc3_register_archives_now_impl<system>(caller);
+  };
+
+  private func admin_icrc3_register_archives_now_impl<system>(caller : Principal) : async* { #Ok : Nat; #Err : Text } {
     #Ok(await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env()));
   };
 
   /// Forget an archive's proposal (after a rejection) so a new one is submitted.
   public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can reset a registration") };
+    admin_icrc3_reset_archive_registration_impl<system>(caller, canister_id);
+  };
+
+  private func admin_icrc3_reset_archive_registration_impl<system>(caller : Principal, canister_id : Principal) : { #Ok : Bool; #Err : Text } {
     let found = Icrc3Sns.reset(icrc3_sns, canister_id);
     Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // a reset registration wants a new proposal
     #Ok(found);
@@ -3512,6 +3537,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Returns the number of blocks written (0 when already imported).
   public shared ({ caller }) func admin_icrc3_import_history() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can import the history") };
+    admin_icrc3_import_history_impl<system>(caller);
+  };
+
+  private func admin_icrc3_import_history_impl<system>(caller : Principal) : { #Ok : Nat; #Err : Text } {
     let written = icrc3_import_history();
     Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt); // the import may fill the live store
     #Ok(written);
@@ -3520,6 +3549,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Re-apply the intended controllers (this canister and SNS root) to every archive.
   public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
     if (not isAdmin(caller)) { Debug.trap("Only admins can repair archive controllers") };
+    await* admin_icrc3_repair_archive_controllers_impl<system>(caller);
+  };
+
+  private func admin_icrc3_repair_archive_controllers_impl<system>(caller : Principal) : async* [(Principal, { #Ok; #Err : Text })] {
     await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
   };
 
@@ -3719,6 +3752,13 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       return #Err("Only admins can add new admins");
     };
+    admin_add_admin_impl<system>(caller, new_admin);
+  };
+
+  private func admin_add_admin_impl<system>(caller : Principal, new_admin : Principal) : {
+    #Ok : Text;
+    #Err : Text;
+  } {
     
     // Check if already in the list
     for (admin_principal in admin_list.vals()) {
@@ -3745,6 +3785,13 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       return #Err("Only admins can remove admins");
     };
+    admin_remove_admin_impl<system>(caller, admin_to_remove);
+  };
+
+  private func admin_remove_admin_impl<system>(caller : Principal, admin_to_remove : Principal) : {
+    #Ok : Text;
+    #Err : Text;
+  } {
     
     // Check if the admin exists in the list
     let found = Array.find<Principal>(admin_list, func (p) {
@@ -3772,86 +3819,15 @@ shared (deployer) persistent actor class SneedLock() = this {
   public query func get_admin_list() : async [Principal] {
     admin_list;
   };
-  
-  //
-  public shared ({ caller }) func admin_return_token(icrc1_ledger_canister_id: Principal, amount: Nat, user_principal : Principal) : async TransferResult {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only the SNEED governance or Admin can return tokens.");
-    };
 
-    let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
-      icrc1_transfer(args : TransferArgs) : async T.TransferResult;
-    };
-
-    let subaccount = PrincipalToSubaccount(user_principal);
-    let user_account_to : Account = { owner = user_principal; subaccount = null; };
-
-    let sneed_fee_transfer_args : TransferArgs = {
-      from_subaccount = ?Blob.fromArray(subaccount);
-      to = user_account_to;
-      amount = amount;
-      fee = null;
-      memo = null;
-      created_at_time = null;
-    };  
-
-    let result = await icrc1_ledger_canister.icrc1_transfer(sneed_fee_transfer_args);
-    //log_info(caller, correlation_id, "Transferred Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args) # ", Result: " # debug_show(result));
-
-    switch (result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_return", [
-          ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
-          ("from", Icrc3Log.account(this_canister_id(), ?Blob.fromArray(subaccount))), ("to", Icrc3Log.account(user_account_to.owner, null)),
-          ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-      };
-      case (#Err(_)) {};
-    };
-    return result;
-  };
-
-  public shared ({ caller }) func admin_return_token_from_failed_request(icrc1_ledger_canister_id: Principal, amount: Nat, recipient_principal : Principal) : async TransferResult {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only the SNEED governance or Admin can return tokens.");
-    };
-
-    let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
-      icrc1_transfer(args : TransferArgs) : async T.TransferResult;
-    };
-
-    let user_account_to : Account = { owner = recipient_principal; subaccount = null; };
-
-    let sneed_fee_transfer_args : TransferArgs = {
-      from_subaccount = null;
-      to = user_account_to;
-      amount = amount;
-      fee = null;
-      memo = null;
-      created_at_time = null;
-    };  
-
-    let result = await icrc1_ledger_canister.icrc1_transfer(sneed_fee_transfer_args);
-    //log_info(caller, correlation_id, "Transferred Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args) # ", Result: " # debug_show(result));
-
-    switch (result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_return", [
-          ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
-          ("from", Icrc3Log.account(this_canister_id(), null)), ("to", Icrc3Log.account(user_account_to.owner, null)),
-          ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-      };
-      case (#Err(_)) {};
-    };
-    return result;
-  };
-
-
-  public shared ({ caller }) func set_max_lock_length_days(new_max_lock_length_days: Nat64) : async () {    
+  public shared ({ caller }) func set_max_lock_length_days(new_max_lock_length_days: Nat64) : async () {
     if (not isAdmin(caller)) {
       Debug.trap("Only the SNEED governance can set the max lock length.");
     };
+    set_max_lock_length_days_impl<system>(caller, new_max_lock_length_days);
+  };
+
+  private func set_max_lock_length_days_impl<system>(caller : Principal, new_max_lock_length_days: Nat64) : () {
 
     let old_max_lock_length_ns = max_lock_length_ns;
     max_lock_length_ns := new_max_lock_length_days * day_ns;
@@ -3890,6 +3866,10 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       return #Err("Only admins can set the premium canister ID");
     };
+    admin_set_sneed_premium_canister_id_impl<system>(caller, canister_id);
+  };
+
+  private func admin_set_sneed_premium_canister_id_impl<system>(caller : Principal, canister_id : ?Principal) : { #Ok : Text; #Err : Text } {
     sneed_premium_canister_id := canister_id;
     icrc3_config<system>(caller, get_next_correlation_id(), "sneed_premium_canister_id",
       #Text(switch (canister_id) { case (?id) Principal.toText(id); case null "none" }), null);
@@ -3909,6 +3889,13 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       return #Err("Only admins can set lock fees");
     };
+    admin_set_lock_fees_icp_impl<system>(caller, token_lock_fee, position_lock_fee, premium_token_lock_fee, premium_position_lock_fee);
+  };
+
+  private func admin_set_lock_fees_icp_impl<system>(caller : Principal, token_lock_fee : ?Nat64,
+    position_lock_fee : ?Nat64,
+    premium_token_lock_fee : ?Nat64,
+    premium_position_lock_fee : ?Nat64) : { #Ok : Text; #Err : Text } {
     let correlation_id = get_next_correlation_id();
     
     switch (token_lock_fee) {
@@ -3939,6 +3926,11 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       return #Err("Only admins can set the fee recipient");
     };
+    admin_set_icp_fee_recipient_impl<system>(caller, recipient_principal, recipient_subaccount);
+  };
+
+  private func admin_set_icp_fee_recipient_impl<system>(caller : Principal, recipient_principal : ?Principal,
+    recipient_subaccount : ?Blob) : { #Ok : Text; #Err : Text } {
     
     icp_fee_recipient_principal := recipient_principal;
     icp_fee_recipient_subaccount := recipient_subaccount;
@@ -4187,6 +4179,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Admin: set the admin prices (applies to admins who are people; null = no admin price for that fee).
   public shared ({ caller }) func set_admin_prices(prices : SpecialLockPrices) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) { return #err("Only admins can set admin prices") };
+    set_admin_prices_impl<system>(caller, prices);
+  };
+
+  private func set_admin_prices_impl<system>(caller : Principal, prices : SpecialLockPrices) : { #ok; #err : Text } {
     switch (validSpecialPrices(prices)) { case (?e) { return #err(e) }; case null {} };
     let old = special_admin_prices;
     special_admin_prices := prices;
@@ -4197,6 +4193,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Admin: add or replace a partner's prices (public label, overrides, optional expiry in ns).
   public shared ({ caller }) func set_partner_prices(partner : Principal, entry : SpecialLockPartner) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) { return #err("Only admins can set partner prices") };
+    set_partner_prices_impl<system>(caller, partner, entry);
+  };
+
+  private func set_partner_prices_impl<system>(caller : Principal, partner : Principal, entry : SpecialLockPartner) : { #ok; #err : Text } {
     switch (SP.validatePartner(special_partner_prices, partner, entry, Time.now())) { case (?e) { return #err(e) }; case null {} };
     switch (validSpecialPrices(entry.prices)) { case (?e) { return #err(e) }; case null {} };
     let old = Map.get(special_partner_prices, phash, partner);
@@ -4209,6 +4209,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Admin: remove a partner's prices.
   public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) { return #err("Only admins can remove partner prices") };
+    remove_partner_prices_impl<system>(caller, partner);
+  };
+
+  private func remove_partner_prices_impl<system>(caller : Principal, partner : Principal) : { #ok; #err : Text } {
     switch (Map.remove(special_partner_prices, phash, partner)) {
       case (?o) {
         icrc3_partner_config<system>(caller, partner, #Text("removed"), ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at));
@@ -4640,7 +4644,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     log_info(caller, correlation_id, "Transferred " # debug_show(amount) # " " # debug_show(token) # " to the deposit subaccount of pool " # debug_show(pool_id));
 
-    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; re-run admin_pool_deposit then admin_withdraw_pool_balance_to_user";
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
     let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
       return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
@@ -4672,7 +4676,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (amount == 0) { return #Ok((0, 0)) };
     if (amount <= fee) { return #Ok((0, amount)) };
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
-    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; use admin_withdraw_pool_balance_to_user";
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
     let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
       return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
@@ -4926,6 +4930,10 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       Debug.trap("Only admin can clear completed requests");
     };
+    admin_clear_completed_claim_requests_impl<system>(caller);
+  };
+
+  private func admin_clear_completed_claim_requests_impl<system>(caller : Principal) : Nat {
 
     let before_count = completed_claim_requests.size();
     completed_claim_requests := [];
@@ -4942,6 +4950,10 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (not isAdmin(caller)) {
       Debug.trap("Only admin can clear failed requests");
     };
+    admin_clear_failed_claim_requests_impl<system>(caller);
+  };
+
+  private func admin_clear_failed_claim_requests_impl<system>(caller : Principal) : Nat {
 
     let before_count = failed_claim_requests.size();
     failed_claim_requests := [];
@@ -4953,73 +4965,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     before_count;
   };
 
-  // Admin: Rescue stuck tokens from sneed_lock principal
-  // Use this to transfer any tokens stuck on sneed_lock's main account back to users
-  // (e.g., if claim succeeded but transfer to user failed)
-  public shared ({ caller }) func admin_rescue_stuck_tokens(
-    token_ledger : TokenType,
-    recipient : Principal
-  ) : async {
-    #Ok : Text;
-    #Err : Text;
-  } {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can rescue stuck tokens");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Admin rescuing stuck tokens: ledger=" # debug_show(token_ledger) # ", recipient=" # debug_show(recipient));
-
-    // Get token ledger actor
-    let ledger = actor (Principal.toText(token_ledger)) : actor { 
-      icrc1_fee : () -> async Nat;
-      icrc1_balance_of : (account : Account) -> async Nat;
-      icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
-    };
-    
-    let fee = await ledger.icrc1_fee();
-    let canister_account : Account = { owner = this_canister_id(); subaccount = null };
-    let balance = await ledger.icrc1_balance_of(canister_account);
-
-    log_info(caller, correlation_id, "Sneed_lock balance: " # debug_show(balance) # ", fee: " # debug_show(fee));
-
-    // Check if there's anything to transfer
-    if (balance <= fee) {
-      let msg = "Nothing to rescue. Balance (" # debug_show(balance) # ") <= fee (" # debug_show(fee) # ")";
-      log_info(caller, correlation_id, msg);
-      return #Ok(msg);
-    };
-
-    let transfer_amount = balance - fee;
-    let user_account : Account = { owner = recipient; subaccount = null };
-    
-    let transfer_args : TransferArgs = {
-      from_subaccount = null;
-      to = user_account;
-      amount = transfer_amount;
-      fee = ?fee;
-      memo = null;
-      created_at_time = null;
-    };
-    
-    let transfer_result = await ledger.icrc1_transfer(transfer_args);
-    switch (transfer_result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_rescue", [
-          ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(token_ledger)),
-          ("to", Icrc3Log.account(recipient, null)), ("amount", #Nat(transfer_amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-        let success_msg = "Successfully rescued " # debug_show(transfer_amount) # " tokens to " # debug_show(recipient);
-        log_info(caller, correlation_id, success_msg);
-        #Ok(success_msg);
-      };
-      case (#Err(err)) {
-        let error_msg = "Failed to rescue tokens: " # debug_show(err);
-        log_error(caller, correlation_id, error_msg);
-        #Err(error_msg);
-      };
-    };
-  };
 
   // Admin: inspect this canister's unused balance held inside a swap pool.
   // Normally zero; a non-zero balance means a pool-side delivery failed after
@@ -5044,11 +4989,15 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Admin: re-run a pool deposit for tokens that were transferred to the
   // pool's deposit subaccount for this canister but never credited (a failed
   // `deposit` during a liquidity addition). Credits this canister's pool
-  // account; follow up with admin_withdraw_pool_balance_to_user.
+  // account; pay it out with admin_withdraw_stranded_to_owner (of its stranded record).
   public shared ({ caller }) func admin_pool_deposit(swap_canister_id : T.SwapCanisterId, token_ledger : T.TokenType, amount : Nat) : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) {
       Debug.trap("Only admin can run pool deposits");
     };
+    await* admin_pool_deposit_impl<system>(caller, swap_canister_id, token_ledger, amount);
+  };
+
+  private func admin_pool_deposit_impl<system>(caller : Principal, swap_canister_id : T.SwapCanisterId, token_ledger : T.TokenType, amount : Nat) : async* { #Ok : Nat; #Err : Text } {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Admin re-running pool deposit of " # debug_show(amount) # " " # debug_show(token_ledger) # " into pool " # debug_show(swap_canister_id));
     let pool : IcpSwapPool = actor (Principal.toText(swap_canister_id));
@@ -5073,49 +5022,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
-  // Admin: deliver a stranded pool-side balance to a user's wallet subaccount.
-  // Attribution to the right user is done by the admin from the pool's
-  // transaction log (getTransactionsByOwner / getFailedTransactions).
-  public shared ({ caller }) func admin_withdraw_pool_balance_to_user(
-    swap_canister_id : T.SwapCanisterId,
-    token_ledger : T.TokenType,
-    amount : Nat,
-    user : Principal
-  ) : async { #Ok : Nat; #Err : Text } {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can withdraw pool balances");
-    };
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Admin withdrawing " # debug_show(amount) # " of " # debug_show(token_ledger) # " from pool " # debug_show(swap_canister_id) # " to the wallet subaccount of " # debug_show(user));
-
-    let ledger = actor (Principal.toText(token_ledger)) : actor { icrc1_fee : () -> async Nat };
-    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
-      withdrawToSubaccount : (args : { token : Text; amount : Nat; fee : Nat; subaccount : Blob }) -> async { #ok : Nat; #err : T.SwapCanisterError };
-    };
-    try {
-      let fee = await ledger.icrc1_fee();
-      let args = { token = Principal.toText(token_ledger); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(user)) };
-      switch (await swap_canister.withdrawToSubaccount(args)) {
-        case (#ok(accepted)) {
-          log_info(caller, correlation_id, "Pool withdrawal accepted: " # debug_show(accepted));
-          icrc3_add<system>("sneedlock_admin_pool_withdraw", [
-            ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(swap_canister_id)), ("ledger", Icrc3Log.principal(token_ledger)),
-            ("amount", #Nat(amount)), ("user", Icrc3Log.principal(user)), ("accepted", #Nat(accepted)),
-          ]);
-          #Ok(accepted);
-        };
-        case (#err(err)) {
-          let msg = "Pool withdrawal failed: " # debug_show(err);
-          log_error(caller, correlation_id, msg);
-          #Err(msg);
-        };
-      };
-    } catch (e) {
-      let msg = "Pool withdrawal call failed: " # Error.message(e);
-      log_error(caller, correlation_id, msg);
-      #Err(msg);
-    };
-  };
 
   /// Stranded records (spec/support_audit.md P1-14), ascending ids after `prev`; public, like
   /// their sneedlock_stranded blocks.
@@ -5147,15 +5053,26 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// A paid record answers #Err with its payment. Logged as sneedlock_stranded_settle.
   public shared ({ caller }) func admin_withdraw_stranded_to_owner(stranded_id : Nat, amount : ?Nat, outcome_checked : Bool) : async { #Ok : T.Stranded; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can pay stranded records") };
-    let correlation_id = get_next_correlation_id();
-    let rec = switch (Map.get(stranded, nhash, stranded_id)) { case (?r) r; case null { return #Err("No stranded record " # Nat.toText(stranded_id)) } };
+    await* admin_withdraw_stranded_to_owner_impl<system>(caller, stranded_id, amount, outcome_checked);
+  };
+
+  /// The record and the amount a stranded payment would pay, or why it would be refused.
+  /// Shared by admin_withdraw_stranded_to_owner and dao_admin (and its validator).
+  private func stranded_check(stranded_id : Nat, amount : ?Nat, outcome_checked : Bool) : { #ok : (T.Stranded, Nat); #err : Text } {
+    let rec = switch (Map.get(stranded, nhash, stranded_id)) { case (?r) r; case null { return #err("No stranded record " # Nat.toText(stranded_id)) } };
     switch (rec.status) {
-      case (#Paid(p)) { return #Err("Stranded record " # Nat.toText(stranded_id) # " was already paid: " # debug_show(p)) };
-      case (#Uncertain) { if (not outcome_checked) { return #Err("Stranded record " # Nat.toText(stranded_id) # " is uncertain (" # rec.reason # "); check the pool, then pass outcome_checked = true") } };
+      case (#Paid(p)) { return #err("Stranded record " # Nat.toText(stranded_id) # " was already paid: " # debug_show(p)) };
+      case (#Uncertain) { if (not outcome_checked) { return #err("Stranded record " # Nat.toText(stranded_id) # " is uncertain (" # rec.reason # "); check the pool, then pass outcome_checked = true") } };
       case (#Open) {};
     };
     let pay = switch (amount) { case (?a) a; case null rec.amount };
-    if (pay > rec.amount) { return #Err("At most the recorded amount " # Nat.toText(rec.amount)) };
+    if (pay > rec.amount) { return #err("At most the recorded amount " # Nat.toText(rec.amount)) };
+    #ok(rec, pay);
+  };
+
+  private func admin_withdraw_stranded_to_owner_impl<system>(caller : Principal, stranded_id : Nat, amount : ?Nat, outcome_checked : Bool) : async* { #Ok : T.Stranded; #Err : Text } {
+    let correlation_id = get_next_correlation_id();
+    let (rec, pay) = switch (stranded_check(stranded_id, amount, outcome_checked)) { case (#ok(r, p)) (r, p); case (#err(e)) { return #Err(e) } };
     if (Map.has(stranded_in_flight, nhash, stranded_id)) { return #Err("A payment of this record is in progress") };
     if (is_pool_op_locked(rec.pool)) { return #Err("Busy: another operation is in progress on this pool; please retry in a few seconds") };
     Map.set(stranded_in_flight, nhash, stranded_id, ());
@@ -5415,13 +5332,23 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// means no limit). Logged as a config-update block.
   public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can set rate limits") };
+    admin_set_rate_limit_impl<system>(caller, action, rule);
+  };
+
+  /// Why a rate-limit change would be refused (null = valid). Shared by admin_set_rate_limit and dao_admin.
+  private func rate_limit_check(action : Text, rule : ?RateLimit.Rule) : ?Text {
     if (Array.find<(Text, RateLimit.Rule)>(RATE_LIMIT_DEFAULTS, func((a, _)) { a == action }) == null) {
-      return #Err("Unknown action; the limited actions are " # Text.join(", ", Iter.map<(Text, RateLimit.Rule), Text>(RATE_LIMIT_DEFAULTS.vals(), func((a, _)) { a })));
+      return ?("Unknown action; the limited actions are " # Text.join(", ", Iter.map<(Text, RateLimit.Rule), Text>(RATE_LIMIT_DEFAULTS.vals(), func((a, _)) { a })));
     };
     switch (rule) {
-      case (?r) { if (r.capacity > 0 and (r.per_minute == 0 or r.capacity > 1_000_000 or r.per_minute > 1_000_000)) { return #Err("per_minute must be 1..1,000,000 and capacity at most 1,000,000 (capacity 0 = no limit)") } };
+      case (?r) { if (r.capacity > 0 and (r.per_minute == 0 or r.capacity > 1_000_000 or r.per_minute > 1_000_000)) { return ?"per_minute must be 1..1,000,000 and capacity at most 1,000,000 (capacity 0 = no limit)" } };
       case null {};
     };
+    null;
+  };
+
+  private func admin_set_rate_limit_impl<system>(caller : Principal, action : Text, rule : ?RateLimit.Rule) : { #Ok; #Err : Text } {
+    switch (rate_limit_check(action, rule)) { case (?e) { return #Err(e) }; case null {} };
     let ruleV = func(r : RateLimit.Rule) : T3.Value { #Map([("capacity", #Nat(r.capacity)), ("per_minute", #Nat(r.per_minute))]) };
     let old = rate_rule(action);
     switch (rule) {
@@ -5430,6 +5357,348 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     icrc3_config<system>(caller, get_next_correlation_id(), "rate_limit." # action, ruleV(rate_rule(action)), ?ruleV(old));
     #Ok;
+  };
+
+  ////////////////
+  // DAO admin (the pattern of spec/dao_settings.md, for admin actions instead of settings)
+  ////////////////
+  // One generic nervous system function for the admin actions: SNS governance calls
+  // dao_admin(action) when a proposal passes, and validate_dao_admin (its validator, called when
+  // the proposal is made) renders exactly what will happen. Each arm runs the same code as its
+  // admin method (the *_impl functions above), so the effect and the ICRC-3 blocks are the same,
+  // with caller = governance. This lets the DAO do what admins do today, so that the admin list
+  // can later be emptied. Arms are added by upgrade (a variant argument may grow).
+  //
+  // admin_return_token, admin_return_token_from_failed_request, admin_rescue_stuck_tokens and
+  // admin_withdraw_pool_balance_to_user were removed (2026-11-02): they paid any amount to any
+  // recipient. If one is needed again, it comes back by an upgrade proposal.
+
+  public type DaoLockFees = {
+    token_lock_fee : ?Nat64;
+    position_lock_fee : ?Nat64;
+    premium_token_lock_fee : ?Nat64;
+    premium_position_lock_fee : ?Nat64;
+  };
+
+  public type DaoAdminAction = {
+    // settings
+    #set_max_lock_length_days : Nat64;
+    #set_lock_fees_icp : DaoLockFees;
+    #set_icp_fee_recipient : { recipient_principal : ?Principal; recipient_subaccount : ?Blob };
+    #set_sneed_premium_canister_id : ?Principal;
+    #set_admin_prices : SpecialLockPrices;
+    #set_partner_prices : { partner : Principal; entry : SpecialLockPartner };
+    #remove_partner_prices : Principal;
+    #set_rate_limit : { action : Text; rule : ?RateLimit.Rule };
+    // admins
+    #add_admin : Principal;
+    #remove_admin : Principal;
+    // support
+    #pool_deposit : { swap_canister_id : Principal; token_ledger : Principal; amount : Nat };
+    #withdraw_stranded_to_owner : { stranded_id : Nat; amount : ?Nat; outcome_checked : Bool };
+    #reconcile_token_lock : { lock_id : Nat; keep : Principal };
+    #clear_completed_claim_requests;
+    #clear_failed_claim_requests;
+    // ICRC-3 log
+    #set_icrc3_settings : T3.SettingsUpdate;
+    #icrc3_spill_now;
+    #set_icrc3_proposal_neuron : ?Blob;
+    #icrc3_register_archives_now;
+    #icrc3_reset_archive_registration : Principal;
+    #icrc3_import_history;
+    #icrc3_repair_archive_controllers;
+  };
+
+  transient let DAO_MAX_LOCK_DAYS : Nat64 = 36_500; // 100 years: a typo guard, not a policy
+  transient let DAO_MAX_FEE_E8S : Nat = 1_000_000_000; // 10 ICP: a typo guard, not a policy
+
+  private func dao_icp(e8s : Nat) : Text { DaoSettings.decimal(e8s, 8) # " ICP" };
+  private func dao_opt_icp(o : ?Nat) : Text { switch (o) { case (?n) dao_icp(n); case null "none" } };
+  private func dao_opt_p(o : ?Principal) : Text { switch (o) { case (?p) Principal.toText(p); case null "none" } };
+  private func dao_account(owner : Principal, sub : ?Blob) : Text {
+    switch (sub) {
+      case (?s) Principal.toText(owner) # " subaccount " # hex_of(s);
+      case null Principal.toText(owner) # " (default account)";
+    };
+  };
+  private func hex_of(b : Blob) : Text {
+    let r = DaoSettings.raw(#Account({ owner = Principal.fromText("aaaaa-aa"); subaccount = ?b }));
+    Text.trimStart(r, #text "aaaaa-aa.");
+  };
+  private func dao_wallet(p : Principal) : Text {
+    "the Sneed wallet of " # Principal.toText(p) # " (" # dao_account(this_canister_id(), ?Blob.fromArray(PrincipalToSubaccount(p))) # ")";
+  };
+  /// "1.5 AAA [150000000 base units of ledger …]", or the raw amount when the token is not known here.
+  private func dao_amount(ledger : Principal, amount : Nat) : Text {
+    let known : ?(Text, Nat) = if (ledger == Principal.fromText(ICP_LEDGER_ID)) { ?("ICP", 8) } else {
+      switch (Map.get(ledger_symbols, phash, ledger), Map.get(ledger_decimals, phash, ledger)) {
+        case (?s, ?d) ?(s, Nat8.toNat(d));
+        case _ null;
+      };
+    };
+    switch (known) {
+      case (?(sym, d)) DaoSettings.decimal(amount, d) # " " # sym # " [" # Nat.toText(amount) # " base units of ledger " # Principal.toText(ledger) # "]";
+      case null Nat.toText(amount) # " base units of ledger " # Principal.toText(ledger) # " (symbol and decimals not known to Sneed Lock)";
+    };
+  };
+  /// A lock fee is 0 (free) or at least one ICP ledger fee, and at most 10 ICP.
+  private func dao_fee_check(name : Text, n : Nat) : ?Text {
+    if (n != 0 and n < Nat64.toNat(ICP_FEE)) return ?(name # ": 0 (free) or at least " # dao_icp(Nat64.toNat(ICP_FEE)));
+    if (n > DAO_MAX_FEE_E8S) return ?(name # ": at most " # dao_icp(DAO_MAX_FEE_E8S));
+    null;
+  };
+  private func dao_prices_text(p : SpecialLockPrices) : Text {
+    "token lock fee " # dao_opt_icp(p.token_lock_fee_icp_e8s) # ", position lock fee " # dao_opt_icp(p.position_lock_fee_icp_e8s);
+  };
+  private func dao_prices_check(p : SpecialLockPrices) : ?Text {
+    switch (validSpecialPrices(p)) { case (?e) return ?e; case null {} };
+    for ((k, v) in specialPricesFields(p).vals()) {
+      switch (v) { case (?n) { switch (dao_fee_check(k, n)) { case (?e) return ?e; case null {} } }; case null {} };
+    };
+    null;
+  };
+  private func dao_partner_text(e : SpecialLockPartner) : Text {
+    "\"" # e.label_ # "\": " # dao_prices_text(e.prices) # ", " # (switch (e.expires_at) { case (?t) "expires " # dateText(Nat64.fromNat(Int.abs(t))); case null "no expiry" });
+  };
+  private func dao_rule_text(r : RateLimit.Rule) : Text {
+    if (r.capacity == 0) "no limit" else "burst " # Nat.toText(r.capacity) # ", " # Nat.toText(r.per_minute) # " a minute";
+  };
+  private func dao_fee_recipient_text(p : ?Principal, s : ?Blob) : Text {
+    switch (p) {
+      case (?o) dao_account(o, s);
+      case null "Sneed Lock itself: " # dao_account(this_canister_id(), s);
+    };
+  };
+
+  /// What `action` will do, in plain words a voter can check, or why it would be refused.
+  /// `submission`: the validator also refuses a proposal that would change nothing (a no-op, an
+  /// empty history); at execution such a proposal simply does nothing.
+  private func dao_plan(action : DaoAdminAction, submission : Bool) : { #ok : Text; #err : Text } {
+    let L = "Sneed Lock: ";
+    switch (action) {
+      case (#set_max_lock_length_days d) {
+        if (d < 1 or d > DAO_MAX_LOCK_DAYS) return #err("the maximum lock length must be 1 to " # Nat64.toText(DAO_MAX_LOCK_DAYS) # " days");
+        let new_ns = d * day_ns;
+        if (submission and new_ns == max_lock_length_ns) return #err("the maximum lock length is already " # Nat64.toText(d) # " days");
+        #ok(L # "maximum lock length " # DaoSettings.duration(Nat64.toNat(max_lock_length_ns / second_ns)) # " → " # Nat64.toText(d) # " d [max_lock_length_ns: " # Nat64.toText(max_lock_length_ns) # " → " # Nat64.toText(new_ns) # "]. Existing locks keep their expiry.");
+      };
+      case (#set_lock_fees_icp f) {
+        let rows : [(Text, Text, ?Nat64, Nat64)] = [
+          ("token_lock_fee_icp_e8s", "token lock fee", f.token_lock_fee, token_lock_fee_icp_e8s),
+          ("position_lock_fee_icp_e8s", "position lock fee", f.position_lock_fee, position_lock_fee_icp_e8s),
+          ("premium_token_lock_fee_icp_e8s", "premium token lock fee", f.premium_token_lock_fee, premium_token_lock_fee_icp_e8s),
+          ("premium_position_lock_fee_icp_e8s", "premium position lock fee", f.premium_position_lock_fee, premium_position_lock_fee_icp_e8s),
+        ];
+        let lines = Buffer.Buffer<Text>(4);
+        var changes = 0;
+        for ((key, label_, nv, cur) in rows.vals()) {
+          switch (nv) {
+            case (?n) {
+              switch (dao_fee_check(key, Nat64.toNat(n))) { case (?e) return #err(e); case null {} };
+              if (n != cur) changes += 1;
+              lines.add(L # label_ # " " # DaoSettings.decimal(Nat64.toNat(cur), 8) # " → " # dao_icp(Nat64.toNat(n)) # " [" # key # ": " # Nat64.toText(cur) # " → " # Nat64.toText(n) # "]");
+            };
+            case null {};
+          };
+        };
+        if (lines.size() == 0) return #err("no fee to set");
+        if (submission and changes == 0) return #err("every fee already holds its new value");
+        #ok(Text.join("\n", lines.vals()));
+      };
+      case (#set_icp_fee_recipient r) {
+        switch (r.recipient_principal) { case (?p) if (Principal.isAnonymous(p)) return #err("the anonymous principal cannot receive the fees"); case null {} };
+        switch (r.recipient_subaccount) { case (?s) if (s.size() != 32) return #err("a subaccount is 32 bytes"); case null {} };
+        if (submission and r.recipient_principal == icp_fee_recipient_principal and r.recipient_subaccount == icp_fee_recipient_subaccount) return #err("the fee recipient is already that account");
+        #ok(L # "ICP lock-fee recipient " # dao_fee_recipient_text(icp_fee_recipient_principal, icp_fee_recipient_subaccount) # " → " # dao_fee_recipient_text(r.recipient_principal, r.recipient_subaccount) # ". Every lock fee paid from then on goes to the new account.");
+      };
+      case (#set_sneed_premium_canister_id o) {
+        if (submission and o == sneed_premium_canister_id) return #err("the Sneed Premium canister is already " # dao_opt_p(o));
+        #ok(L # "Sneed Premium canister " # dao_opt_p(sneed_premium_canister_id) # " → " # dao_opt_p(o) # (if (o == null) ". With none, nobody gets premium lock fees." else ". Premium lock fees go to the members it reports."));
+      };
+      case (#set_admin_prices p) {
+        switch (dao_prices_check(p)) { case (?e) return #err(e); case null {} };
+        if (submission and p == special_admin_prices) return #err("the admin prices already hold those values");
+        #ok(L # "admin prices (for admins who are people): " # dao_prices_text(special_admin_prices) # " → " # dao_prices_text(p));
+      };
+      case (#set_partner_prices { partner; entry }) {
+        switch (SP.validatePartner(special_partner_prices, partner, entry, Time.now())) { case (?e) return #err(e); case null {} };
+        switch (dao_prices_check(entry.prices)) { case (?e) return #err(e); case null {} };
+        let old = Map.get(special_partner_prices, phash, partner);
+        if (submission and old == ?entry) return #err("the partner already has exactly these prices");
+        #ok(L # "partner prices of " # Principal.toText(partner) # ": " # (switch (old) { case (?o) dao_partner_text(o); case null "none" }) # " → " # dao_partner_text(entry));
+      };
+      case (#remove_partner_prices partner) {
+        switch (Map.get(special_partner_prices, phash, partner)) {
+          case (?o) #ok(L # "remove the partner prices of " # Principal.toText(partner) # " (" # dao_partner_text(o) # ")");
+          case null #err("No partner prices for " # Principal.toText(partner));
+        };
+      };
+      case (#set_rate_limit { action = a; rule }) {
+        switch (rate_limit_check(a, rule)) { case (?e) return #err(e); case null {} };
+        let old = rate_rule(a);
+        let nw = switch (rule) { case (?r) r; case null { var r : RateLimit.Rule = { capacity = 0; per_minute = 0 }; for ((x, dr) in RATE_LIMIT_DEFAULTS.vals()) { if (x == a) r := dr }; r } };
+        if (submission and old == nw and (rule == null) == (Map.get(rate_limit_rules, thash, a) == null)) return #err("the rate limit of " # a # " already is " # dao_rule_text(old));
+        #ok(L # "rate limit of " # a # ": " # dao_rule_text(old) # " → " # dao_rule_text(nw) # (if (rule == null) " (the default)" else ""));
+      };
+      case (#add_admin p) {
+        if (Principal.isAnonymous(p)) return #err("the anonymous principal cannot be an admin");
+        if (Array.find<Principal>(admin_list, func(x) { x == p }) != null) return #err("Principal is already an admin");
+        #ok(L # "add " # Principal.toText(p) # " to the admin list (" # Nat.toText(admin_list.size()) # " → " # Nat.toText(admin_list.size() + 1) # " admins). An admin can run every admin method without a proposal.");
+      };
+      case (#remove_admin p) {
+        if (Array.find<Principal>(admin_list, func(x) { x == p }) == null) return #err("Principal is not in the admin list");
+        let left = Array.filter<Principal>(admin_list, func(x) { x != p });
+        #ok(L # "remove " # Principal.toText(p) # " from the admin list (" # Nat.toText(admin_list.size()) # " → " # Nat.toText(left.size()) # " admins; left: " #
+          (if (left.size() == 0) "none" else Text.join(", ", Iter.map<Principal, Text>(left.vals(), Principal.toText))) # "). SNS governance and the controllers (SNS root) stay admins.");
+      };
+      case (#pool_deposit { swap_canister_id; token_ledger; amount }) {
+        if (amount == 0) return #err("the amount must be above 0");
+        #ok(L # "re-run the deposit of " # dao_amount(token_ledger, amount) # " at pool " # Principal.toText(swap_canister_id) #
+          ": from Sneed Lock's deposit subaccount there into Sneed Lock's unused balance in the pool (the pool takes the ledger fee). Nothing leaves Sneed Lock's accounts; it is paid out with its stranded record.");
+      };
+      case (#withdraw_stranded_to_owner { stranded_id; amount; outcome_checked }) {
+        switch (stranded_check(stranded_id, amount, outcome_checked)) {
+          case (#err(e)) #err(e);
+          case (#ok(rec, pay)) {
+            let where_ = switch (rec.held_in) { case (#pool_account) "Sneed Lock's unused balance in pool "; case (#deposit_subaccount) "Sneed Lock's deposit subaccount (deposited first) at pool " };
+            let status = switch (rec.status) { case (#Uncertain) "uncertain (outcome checked by the proposer)"; case _ "open" };
+            #ok(L # "pay stranded record " # Nat.toText(stranded_id) # ": " # dao_amount(rec.ledger, pay) # " (recorded " # Nat.toText(rec.amount) # ", " # status # ") from " # where_ # Principal.toText(rec.pool) #
+              " to its owner, into " # dao_wallet(rec.owner) # "; the pool takes the ledger fee. Recorded reason: " # rec.reason);
+          };
+        };
+      };
+      case (#reconcile_token_lock { lock_id; keep }) {
+        let recs = token_lock_records(lock_id);
+        if (recs.size() == 0) return #err("No live token lock " # Nat.toText(lock_id));
+        if (recs.size() == 1) return #err("token lock " # Nat.toText(lock_id) # " is held by one party: nothing to reconcile");
+        if (recs.size() > 2) return #err("token lock " # Nat.toText(lock_id) # " is held by " # Nat.toText(recs.size()) # " parties");
+        let (p1, ledger, lock) = recs[0];
+        let (p2, _, _) = recs[1];
+        if (keep != p1 and keep != p2) return #err("The side to keep must be one of the lock's holders: " # Principal.toText(p1) # " or " # Principal.toText(p2));
+        let other = if (keep == p1) p2 else p1;
+        #ok(L # "reconcile token lock " # Nat.toText(lock_id) # " (" # dao_amount(ledger, lock.amount) # "), held by both " # Principal.toText(p1) # " and " # Principal.toText(p2) #
+          ": when both wallets cover their locks and the ledger cannot decide, keep it with " # Principal.toText(keep) # " and release it from " # Principal.toText(other) #
+          "; when the balances or the ledger decide, they win. Nothing is paid out.");
+      };
+      case (#clear_completed_claim_requests) {
+        let n = completed_claim_requests.size();
+        if (submission and n == 0) return #err("there are no completed claim requests to clear");
+        #ok(L # "delete the " # Nat.toText(n) # " completed claim requests from the claim history (their ICRC-3 blocks stay)");
+      };
+      case (#clear_failed_claim_requests) {
+        let n = failed_claim_requests.size();
+        if (submission and n == 0) return #err("there are no failed claim requests to clear");
+        #ok(L # "delete the " # Nat.toText(n) # " failed claim requests from the claim history (their ICRC-3 blocks stay; users no longer see them as failed claims)");
+      };
+      case (#set_icrc3_settings u) {
+        switch (Icrc3Log.planSettings(icrc3, u)) {
+          case (#Err(e)) #err(e);
+          case (#Ok((_, changes))) {
+            if (changes.size() == 0) { if (submission) return #err("every ICRC-3 setting already holds its new value") else return #ok(L # "ICRC-3 settings: nothing to change") };
+            #ok(Text.join("\n", Iter.map<(Text, Nat, Nat), Text>(changes.vals(), func((k, o, n)) { L # "ICRC-3 setting " # k # " " # Nat.toText(o) # " → " # Nat.toText(n) })));
+          };
+        };
+      };
+      case (#icrc3_spill_now) {
+        #ok(L # "move every live ICRC-3 block (" # Nat.toText(icrc3.live.count) # " now) to the archive canisters, creating archives as needed with the canister's cycles, then submit pending archive registrations");
+      };
+      case (#set_icrc3_proposal_neuron n) {
+        switch (n) { case (?b) if (b.size() != 32) return #err("an SNS neuron id is a 32-byte subaccount, got " # Nat.toText(b.size()) # " bytes"); case null {} };
+        if (submission and n == icrc3_sns.neuron) return #err("the proposal neuron is already that");
+        let t = func(x : ?Blob) : Text { switch (x) { case (?b) hex_of(b); case null "none (no registration proposals)" } };
+        #ok(L # "neuron that proposes archive registrations " # t(icrc3_sns.neuron) # " → " # t(n));
+      };
+      case (#icrc3_register_archives_now) {
+        #ok(L # "submit the pending archive registration proposals now (with the configured proposal neuron, if any)");
+      };
+      case (#icrc3_reset_archive_registration c) {
+        if (Array.find<Icrc3Sns.Registration>(icrc3_sns.registrations, func(r) { r.canister_id == c }) == null) return #err(Principal.toText(c) # " is not an archive with a registration");
+        #ok(L # "forget the registration proposal of archive " # Principal.toText(c) # " so that a new one is submitted");
+      };
+      case (#icrc3_import_history) {
+        if (submission and icrc3.history_imported) return #err("the history is already imported");
+        #ok(L # "write the ICRC-3 log start and import blocks for the state from before the log, if not done yet");
+      };
+      case (#icrc3_repair_archive_controllers) {
+        if (submission and icrc3.archives.size() == 0) return #err("there are no archives");
+        #ok(L # "set the controllers of the " # Nat.toText(icrc3.archives.size()) # " ICRC-3 archives to Sneed Lock and SNS root " # Principal.toText(sneed_sns_root));
+      };
+    };
+  };
+
+  /// Execute a DAO decision (GNSF target). Sneed DAO governance only. Re-checks the action as
+  /// the validator did, then runs the admin method's own code with caller = governance. Replies
+  /// with the rendering and the result; any refusal or failure rejects (governance marks the
+  /// proposal failed with the reason) while keeping what the logs recorded.
+  public shared ({ caller }) func dao_admin(action : DaoAdminAction) : async Text {
+    if (caller != sneed_governance) { Debug.trap("Only Sneed DAO governance can call dao_admin") };
+    let cid = get_next_correlation_id();
+    let rendering = switch (dao_plan(action, false)) {
+      case (#ok r) r;
+      case (#err e) {
+        log_error(caller, cid, "dao_admin refused: " # e);
+        throw Error.reject("Sneed Lock: " # e);
+      };
+    };
+    log_info(caller, cid, "dao_admin: " # rendering);
+    let text = func(r : { #Ok : Text; #Err : Text }) : { #ok : Text; #err : Text } { switch r { case (#Ok t) #ok(t); case (#Err e) #err(e) } };
+    let unit = func(r : { #Ok; #Err : Text }) : { #ok : Text; #err : Text } { switch r { case (#Ok) #ok("done"); case (#Err e) #err(e) } };
+    let unit2 = func(r : { #ok; #err : Text }) : { #ok : Text; #err : Text } { switch r { case (#ok) #ok("done"); case (#err e) #err(e) } };
+    let count = func(r : { #Ok : Nat; #Err : Text }, what : Text) : { #ok : Text; #err : Text } { switch r { case (#Ok n) #ok(Nat.toText(n) # " " # what); case (#Err e) #err(e) } };
+    let outcome : { #ok : Text; #err : Text } = switch (action) {
+      case (#set_max_lock_length_days d) { set_max_lock_length_days_impl<system>(caller, d); #ok("done") };
+      case (#set_lock_fees_icp f) text(admin_set_lock_fees_icp_impl<system>(caller, f.token_lock_fee, f.position_lock_fee, f.premium_token_lock_fee, f.premium_position_lock_fee));
+      case (#set_icp_fee_recipient r) text(admin_set_icp_fee_recipient_impl<system>(caller, r.recipient_principal, r.recipient_subaccount));
+      case (#set_sneed_premium_canister_id o) text(admin_set_sneed_premium_canister_id_impl<system>(caller, o));
+      case (#set_admin_prices p) unit2(set_admin_prices_impl<system>(caller, p));
+      case (#set_partner_prices { partner; entry }) unit2(set_partner_prices_impl<system>(caller, partner, entry));
+      case (#remove_partner_prices p) unit2(remove_partner_prices_impl<system>(caller, p));
+      case (#set_rate_limit { action = a; rule }) unit(admin_set_rate_limit_impl<system>(caller, a, rule));
+      case (#add_admin p) text(admin_add_admin_impl<system>(caller, p));
+      case (#remove_admin p) text(admin_remove_admin_impl<system>(caller, p));
+      case (#pool_deposit { swap_canister_id; token_ledger; amount }) count(await* admin_pool_deposit_impl<system>(caller, swap_canister_id, token_ledger, amount), "credited");
+      case (#withdraw_stranded_to_owner { stranded_id; amount; outcome_checked }) {
+        switch (await* admin_withdraw_stranded_to_owner_impl<system>(caller, stranded_id, amount, outcome_checked)) {
+          case (#Ok(r)) #ok(switch (r.status) { case (#Paid(p)) "paid " # Nat.toText(p.amount) # " (pool accepted " # Nat.toText(p.accepted) # ")"; case _ "done" });
+          case (#Err(e)) #err(e);
+        };
+      };
+      case (#reconcile_token_lock { lock_id; keep }) {
+        switch (await* reconcile_token_lock_impl<system>(caller, lock_id, ?keep)) {
+          case (#Ok(r)) #ok("kept by " # Principal.toText(r.owner) # " (" # r.evidence # ")");
+          case (#Err(e)) #err(e);
+        };
+      };
+      case (#clear_completed_claim_requests) #ok(Nat.toText(admin_clear_completed_claim_requests_impl<system>(caller)) # " cleared");
+      case (#clear_failed_claim_requests) #ok(Nat.toText(admin_clear_failed_claim_requests_impl<system>(caller)) # " cleared");
+      case (#set_icrc3_settings u) {
+        switch (admin_set_icrc3_settings_impl<system>(caller, u)) { case (#Ok(_)) #ok("done"); case (#Err e) #err(e) };
+      };
+      case (#icrc3_spill_now) count(await* admin_icrc3_spill_now_impl<system>(caller), "blocks moved");
+      case (#set_icrc3_proposal_neuron n) unit(admin_set_icrc3_proposal_neuron_impl<system>(caller, n));
+      case (#icrc3_register_archives_now) count(await* admin_icrc3_register_archives_now_impl<system>(caller), "proposals submitted");
+      case (#icrc3_reset_archive_registration c) {
+        switch (admin_icrc3_reset_archive_registration_impl<system>(caller, c)) { case (#Ok(f)) #ok(if f "reset" else "not found"); case (#Err e) #err(e) };
+      };
+      case (#icrc3_import_history) count(admin_icrc3_import_history_impl<system>(caller), "blocks written");
+      case (#icrc3_repair_archive_controllers) {
+        let rs = await* admin_icrc3_repair_archive_controllers_impl<system>(caller);
+        let bad = Array.filter<(Principal, { #Ok; #Err : Text })>(rs, func((_, r)) { r != #Ok });
+        if (bad.size() == 0) #ok(Nat.toText(rs.size()) # " archives repaired") else #err(debug_show(bad));
+      };
+    };
+    switch (outcome) {
+      case (#ok(t)) { log_info(caller, cid, "dao_admin done: " # t); rendering # "\nResult: " # t };
+      case (#err(e)) { log_error(caller, cid, "dao_admin failed: " # e); throw Error.reject(rendering # "\nFailed: " # e) };
+    };
+  };
+
+  /// GNSF validator of dao_admin: exactly what the action will do, or why it would be refused.
+  public query func validate_dao_admin(action : DaoAdminAction) : async DaoSettings.ValidationResult {
+    switch (dao_plan(action, true)) {
+      case (#ok r) #Ok(r);
+      case (#err e) #Err(e);
+    };
   };
 
   // An NFT batch of the ingress guard below: a few accounts, ids and a memo per item
@@ -5446,6 +5715,8 @@ shared (deployer) persistent actor class SneedLock() = this {
     #get_api_doc : Any;
     #get_rate_limits : Any;
     #admin_set_rate_limit : Any;
+    #dao_admin : Any;
+    #validate_dao_admin : Any;
     #get_log_entries_for : Any;
     #get_payment_log_for : Any;
     #get_claim_requests_page_for : Any;
@@ -5474,15 +5745,11 @@ shared (deployer) persistent actor class SneedLock() = this {
     #admin_icrc3_spill_now : Any;
     #admin_pool_deposit : Any;
     #admin_remove_admin : Any;
-    #admin_rescue_stuck_tokens : Any;
-    #admin_return_token : Any;
-    #admin_return_token_from_failed_request : Any;
     #admin_set_icp_fee_recipient : Any;
     #admin_set_icrc3_proposal_neuron : Any;
     #admin_set_icrc3_settings : Any;
     #admin_set_lock_fees_icp : Any;
     #admin_set_sneed_premium_canister_id : Any;
-    #admin_withdraw_pool_balance_to_user : Any;
     #claim_position : Any;
     #claim_position_fees : Any;
     #clear_expired_locks : Any;
@@ -5648,7 +5915,11 @@ shared (deployer) persistent actor class SneedLock() = this {
         or #icrc7_total_supply _
         or #icrc7_tx_window _
         or #get_rate_limits _
+        or #validate_dao_admin _
       ) false;
+      // dao_admin is called by SNS governance, inter-canister, which inspect never sees: by ingress
+      // it is refused outright (there is no staging switch: its caller is governance exactly)
+      case (#dao_admin _) false;
       // rate limits: a caller with no call left is refused here, before the call costs anything
       case (#create_lock _) rate_allows(caller, "create_lock") and arg.size() <= IngressGuard.SMALL_ARG;
       case (#create_position_lock _) rate_allows(caller, "create_position_lock") and arg.size() <= IngressGuard.SMALL_ARG;

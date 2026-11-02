@@ -379,6 +379,14 @@ Admin-only:
 - the returns, rescues, pool withdrawals, claim-history clears and reconcile;
 - partner prices.
 
+**Superseded for Sneed Lock (2026-11-02, admin retirement step 1):** Sneed Lock gets `dao_admin` /
+`validate_dao_admin` instead of `dao_set`: one governance-only entry point whose argument is a
+variant with one arm per admin action (the settings above, the fee recipient, the premium id,
+partner prices, the admin list, pool deposits, stranded payments, reconcile with the admin's side,
+the claim-history clears and the ICRC-3 maintenance), each running the admin method's own code.
+Proposed registration: GNSF 6151 (the "critical twin" slot of §5.1), topic CriticalDappOperations.
+6101 stays free unless a plain `dao_set` is wanted later.
+
 ### 6.3 Sneed Premium (`src/sneed_premium`, EOP: upgrades need KEEP)
 
 | Setting | Unit | Bounds |

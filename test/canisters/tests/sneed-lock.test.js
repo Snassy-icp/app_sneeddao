@@ -491,20 +491,8 @@ describe('positions', () => {
 
 describe('admin operations', () => {
   it('reject non-admins', async () => {
-    await expect(lockAlice.admin_rescue_stuck_tokens(tokenAId, alice)).rejects.toThrow(/Only admin/);
     await expect(lockAlice.set_max_lock_length_days(1n)).rejects.toThrow(/Only the SNEED governance/);
     expect(errOf(await lockAlice.admin_add_admin(alice))).toMatch(/Only admins/);
-  });
-
-  it('rescues tokens stranded on the main account', async () => {
-    await tokenA.mint(account(lockId), 7_000n);
-    const r = unwrap(await lock.admin_rescue_stuck_tokens(tokenAId, carol));
-    expect(r).toMatch(/Successfully rescued 6_000 tokens/);
-    expect(await balance(tokenA, account(carol))).toBe(6_000n);
-    const block = await lastBlock();
-    expect(btype(block)).toBe('sneedlock_admin_token_rescue');
-    expect(txField(block, 'amount')).toEqual({ Nat: 6_000n });
-    expect(unwrap(await lock.admin_rescue_stuck_tokens(tokenAId, carol))).toMatch(/Nothing to rescue/);
   });
 
   it('manages admins and limits with a config trail', async () => {
@@ -542,7 +530,6 @@ describe('ICRC-3 log of sneed_lock', () => {
     expect(counts.sneedlock_fees_claim).toBe(1);
     expect(counts.sneedlock_liquidity_add).toBe(3);
     expect(counts.sneedlock_position_withdraw).toBe(1);
-    expect(counts.sneedlock_admin_token_rescue).toBe(1);
     // every block of its own carries a correlation id; the ICRC-7 / ICRC-37 blocks follow their standards
     expect(blocks.every((b) => btype(b) === 'sneedlock_log_start' || !btype(b).startsWith('sneedlock_') || txField(b, 'cid') !== undefined)).toBe(true);
   });

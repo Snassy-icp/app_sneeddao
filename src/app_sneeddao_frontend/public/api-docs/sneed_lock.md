@@ -547,10 +547,7 @@ Restricted to Sneed governance, the canister's controllers and listed admins (`g
 | `set_admin_prices(SpecialLockPrices)` | The admin price per fee (null = none). Returns `variant { ok; err : text }`. |
 | `set_partner_prices(principal, record { label; prices; expires_at })` | Add or replace a partner entry (label 1 to 100 characters, expiry in the future or null, at most 200 partners). |
 | `remove_partner_prices(principal)` | Remove a partner entry. |
-| `admin_return_token(ledger, amount, user)` | Send `amount` from `user`'s Sneed wallet to `user`'s default account. |
-| `admin_return_token_from_failed_request(ledger, amount, recipient)` | Send `amount` from the canister's main account to `recipient`'s default account. |
-| `admin_rescue_stuck_tokens(ledger, recipient)` | Send the canister main account's balance of a token (stuck outside any user's wallet) to `recipient`. |
-| `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)`, `admin_withdraw_pool_balance_to_user(pool, ledger, amount, user)` | Inspect and move the canister's unused balances inside an ICPSwap pool (refunds after a failed add-liquidity). |
+| `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)` | Inspect the canister's unused balance inside an ICPSwap pool; re-run a pool deposit that was never credited (the tokens stay in the canister's pool account and are paid out with their stranded record). |
 | `admin_withdraw_stranded_to_owner(stranded_id, amount : opt nat, outcome_checked : bool)` | Pay a stranded record (see 6.6) to its recorded owner's Sneed wallet: at most its recorded amount (`amount` may only be lower), once (a paid record answers `Err ... already paid`). A record in the deposit subaccount is deposited into the pool first. An `Uncertain` record is paid only with `outcome_checked = true`, after checking the pool. Answers `variant { Ok : Stranded; Err : text }`. |
 | `admin_clear_completed_claim_requests()`, `admin_clear_failed_claim_requests()` | Clear the fee-claim history. |
 | `admin_set_rate_limit(action, opt record { capacity; per_minute })` | The rate limit of `create_lock`, `create_position_lock` or `claim` (1.8): `capacity` calls at once, refilled at `per_minute` a minute; `capacity = 0` means no limit, `null` restores the default. Answers `variant { Ok; Err : text }`. |
@@ -559,6 +556,10 @@ Restricted to Sneed governance, the canister's controllers and listed admins (`g
 | `admin_icrc3_import_history()` | The one-time import of pre-log state (no-op once done). |
 | `admin_set_icrc3_proposal_neuron(opt blob)` | The SNS neuron that submits archive registration proposals. |
 | `admin_icrc3_register_archives_now()`, `admin_icrc3_reset_archive_registration(archive)`, `admin_icrc3_repair_archive_controllers()` | Archive registration with the SNS and controller repair. |
+
+**By DAO proposal: `dao_admin` and `validate_dao_admin`.** The Sneed DAO runs the admin actions through one generic nervous system function: target `dao_admin(DaoAdminAction) -> (text)`, validator `validate_dao_admin(DaoAdminAction) -> (variant { Ok : text; Err : text }) query`. `DaoAdminAction` has one arm per action, with the arguments of its admin method: `set_max_lock_length_days`, `set_lock_fees_icp`, `set_icp_fee_recipient`, `set_sneed_premium_canister_id`, `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`, `set_rate_limit`, `add_admin`, `remove_admin`, `pool_deposit`, `withdraw_stranded_to_owner`, `reconcile_token_lock` (the admin's choice of the side to keep), `clear_completed_claim_requests`, `clear_failed_claim_requests`, `set_icrc3_settings`, `icrc3_spill_now`, `set_icrc3_proposal_neuron`, `icrc3_register_archives_now`, `icrc3_reset_archive_registration`, `icrc3_import_history` and `icrc3_repair_archive_controllers`. An arm runs the same code as its admin method, so the effect and the ICRC-3 block are the same, with `caller` = Sneed governance.
+- `validate_dao_admin` (anyone, free as a query) renders exactly what the action will do: amounts with symbol and decimals when Sneed Lock knows the token (else the raw amount and the ledger id), accounts as principal and subaccount hex, old → new for settings. It answers `Err` for what `dao_admin` would refuse (bounds: a lock fee is 0 or 0.0001 to 10 ICP, the maximum lock length 1 to 36,500 days) and for a proposal that would change nothing.
+- `dao_admin` accepts only Sneed SNS governance (`fi3zi-fyaaa-aaaaq-aachq-cai`), not controllers or listed admins, and is refused at ingress. It re-checks the action, replies with the rendering and the result, and rejects on any refusal or failure, so the proposal shows as failed with the reason.
 
 ---
 
@@ -742,10 +743,10 @@ Admin and governance (only admins, governance or controllers can trigger these):
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded. | `cid`, `caller`, `ledger`, `from` (account), `to` (account), `amount`, `ledger_tx` |
-| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded. | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded (methods removed 2026-11-02; old blocks only). | `cid`, `caller`, `ledger`, `from` (account), `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded (method removed 2026-11-02; old blocks only). | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
 | `sneedlock_admin_pool_deposit` | `admin_pool_deposit` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `credited` |
-| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
+| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded (method removed 2026-11-02; old blocks only). | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
 | `sneedlock_stranded_settle` | `admin_withdraw_stranded_to_owner` paid a stranded record (a deposit it made first is a `sneedlock_admin_pool_deposit` with `stranded_id`). | `cid`, `caller`, `owner`, `pool`, `ledger`, `stranded_id`, `amount`, `accepted`, `to` (the owner's Sneed wallet account) |
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 

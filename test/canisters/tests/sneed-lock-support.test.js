@@ -356,8 +356,6 @@ describe('P1-14: stranded add-liquidity tokens', () => {
     expect(errOf(await env.lock.admin_withdraw_stranded_to_owner(leftId, [], false))).toMatch(/already paid/);
     expect(await env.tokenA.icrc1_balance_of(env.wallet(bob))).toBe(before + leftAmount - FEE_A);
     expect(await env.lock.get_stranded({ owner: [], unpaid_only: true, prev: [], take: [] })).toEqual([]);
-    // the old method is still there
-    expect(errOf(await env.lock.admin_withdraw_pool_balance_to_user(env.poolId, env.tokenAId, 5_000n, bob))).toMatch(/InsufficientFunds/);
   });
 
   it('a failed pool deposit is recorded in the deposit subaccount; paying it deposits first, then withdraws', async () => {
