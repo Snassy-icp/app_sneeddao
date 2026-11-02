@@ -547,10 +547,7 @@ Restricted to Sneed governance, the canister's controllers and listed admins (`g
 | `set_admin_prices(SpecialLockPrices)` | The admin price per fee (null = none). Returns `variant { ok; err : text }`. |
 | `set_partner_prices(principal, record { label; prices; expires_at })` | Add or replace a partner entry (label 1 to 100 characters, expiry in the future or null, at most 200 partners). |
 | `remove_partner_prices(principal)` | Remove a partner entry. |
-| `admin_return_token(ledger, amount, user)` | Send `amount` from `user`'s Sneed wallet to `user`'s default account. |
-| `admin_return_token_from_failed_request(ledger, amount, recipient)` | Send `amount` from the canister's main account to `recipient`'s default account. |
-| `admin_rescue_stuck_tokens(ledger, recipient)` | Send the canister main account's balance of a token (stuck outside any user's wallet) to `recipient`. |
-| `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)`, `admin_withdraw_pool_balance_to_user(pool, ledger, amount, user)` | Inspect and move the canister's unused balances inside an ICPSwap pool (refunds after a failed add-liquidity). |
+| `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)` | Inspect the canister's unused balance inside an ICPSwap pool; re-run a pool deposit that was never credited (the tokens stay in the canister's pool account and are paid out with their stranded record). |
 | `admin_withdraw_stranded_to_owner(stranded_id, amount : opt nat, outcome_checked : bool)` | Pay a stranded record (see 6.6) to its recorded owner's Sneed wallet: at most its recorded amount (`amount` may only be lower), once (a paid record answers `Err ... already paid`). A record in the deposit subaccount is deposited into the pool first. An `Uncertain` record is paid only with `outcome_checked = true`, after checking the pool. Answers `variant { Ok : Stranded; Err : text }`. |
 | `admin_clear_completed_claim_requests()`, `admin_clear_failed_claim_requests()` | Clear the fee-claim history. |
 | `admin_set_rate_limit(action, opt record { capacity; per_minute })` | The rate limit of `create_lock`, `create_position_lock` or `claim` (1.8): `capacity` calls at once, refilled at `per_minute` a minute; `capacity = 0` means no limit, `null` restores the default. Answers `variant { Ok; Err : text }`. |
@@ -746,10 +743,10 @@ Admin and governance (only admins, governance or controllers can trigger these):
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded. | `cid`, `caller`, `ledger`, `from` (account), `to` (account), `amount`, `ledger_tx` |
-| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded. | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded (methods removed 2026-11-02; old blocks only). | `cid`, `caller`, `ledger`, `from` (account), `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded (method removed 2026-11-02; old blocks only). | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
 | `sneedlock_admin_pool_deposit` | `admin_pool_deposit` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `credited` |
-| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
+| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded (method removed 2026-11-02; old blocks only). | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
 | `sneedlock_stranded_settle` | `admin_withdraw_stranded_to_owner` paid a stranded record (a deposit it made first is a `sneedlock_admin_pool_deposit` with `stranded_id`). | `cid`, `caller`, `owner`, `pool`, `ledger`, `stranded_id`, `amount`, `accepted`, `to` (the owner's Sneed wallet account) |
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 

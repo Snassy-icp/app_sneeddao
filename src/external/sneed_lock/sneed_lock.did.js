@@ -171,25 +171,10 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
         [],
       ),
-    'admin_rescue_stuck_tokens' : IDL.Func(
-        [TokenType, IDL.Principal],
-        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
     'admin_resume_claim_queue' : IDL.Func([], [], []),
     'admin_retry_claim_request' : IDL.Func(
         [ClaimRequestId],
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
-    'admin_return_token' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Principal],
-        [TransferResult],
-        [],
-      ),
-    'admin_return_token_from_failed_request' : IDL.Func(
-        [IDL.Principal, IDL.Nat, IDL.Principal],
-        [TransferResult],
         [],
       ),
     'admin_set_enforce_zero_balance_before_claim' : IDL.Func(

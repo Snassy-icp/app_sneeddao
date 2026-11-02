@@ -248,6 +248,14 @@ describe('dao_admin: the admin list, and who may call dao_admin', () => {
     expect((await env.lock.get_admin_list()).map(String)).toEqual([erin.toText()]);
   });
 
+  it('the four unrestricted fund-moving admin methods are gone (removed 2026-11-02)', async () => {
+    for (const n of ['admin_return_token', 'admin_return_token_from_failed_request', 'admin_rescue_stuck_tokens', 'admin_withdraw_pool_balance_to_user']) {
+      expect(method(n), n).toBeUndefined();
+    }
+    expect(method('admin_withdraw_stranded_to_owner')).toBeDefined();
+    expect(method('admin_pool_deposit')).toBeDefined();
+  });
+
   it('is refused by ingress for everyone: an admin-list member, a controller, a user, anonymous', async () => {
     for (const who of [erin, admin, alice, Principal.anonymous(), SNEED_GOVERNANCE]) {
       expect(await refusedAtIngress(env.lockAs(who).dao_admin({ add_admin: frank })), who.toText()).toBe(true);
@@ -383,7 +391,7 @@ describe('dao_admin: support actions', () => {
   it('re-runs a pool deposit into Sneed Lock\'s pool account', async () => {
     await env.tokenA.mint(account(env.poolId, principalToSubaccount(env.lockId)), 5_000n);
     const act = { pool_deposit: { swap_canister_id: env.poolId, token_ledger: env.tokenAId, amount: 5_000n } };
-    expect((await env.validate(act)).Ok).toBe(`Sneed Lock: re-run the deposit of 0.00005 AAA [5000 base units of ledger ${env.tokenAId.toText()}] at pool ${env.poolId.toText()}: from Sneed Lock's deposit subaccount there into Sneed Lock's unused balance in the pool (the pool takes the ledger fee). Nothing leaves Sneed Lock's accounts; pay it out with a stranded record or an admin withdrawal.`);
+    expect((await env.validate(act)).Ok).toBe(`Sneed Lock: re-run the deposit of 0.00005 AAA [5000 base units of ledger ${env.tokenAId.toText()}] at pool ${env.poolId.toText()}: from Sneed Lock's deposit subaccount there into Sneed Lock's unused balance in the pool (the pool takes the ledger fee). Nothing leaves Sneed Lock's accounts; it is paid out with its stranded record.`);
     expect((await env.validate({ pool_deposit: { ...act.pool_deposit, amount: 0n } })).Err).toBe('the amount must be above 0');
     const unknown = Principal.fromText('aaaaa-aa');
     expect((await env.validate({ pool_deposit: { ...act.pool_deposit, token_ledger: unknown } })).Ok).toContain('5000 base units of ledger aaaaa-aa (symbol and decimals not known to Sneed Lock)');

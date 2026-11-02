@@ -66,22 +66,12 @@ type SneedLock =
        Err: text;
        Ok: text;
      });
-   admin_rescue_stuck_tokens: (token_ledger: TokenType, recipient:
-    principal) -> (variant {
-                     Err: text;
-                     Ok: text;
-                   });
    admin_resume_claim_queue: () -> ();
    admin_retry_claim_request: (request_id: ClaimRequestId) ->
     (variant {
        Err: text;
        Ok: text;
      });
-   admin_return_token: (icrc1_ledger_canister_id: principal, amount: 
-    nat, user_principal: principal) -> (TransferResult);
-   admin_return_token_from_failed_request: (icrc1_ledger_canister_id:
-    principal, amount: nat, recipient_principal: principal) ->
-    (TransferResult);
    admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
    admin_trigger_claim_processing: () -> (text);
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->

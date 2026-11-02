@@ -3819,81 +3819,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   public query func get_admin_list() : async [Principal] {
     admin_list;
   };
-  
-  //
-  public shared ({ caller }) func admin_return_token(icrc1_ledger_canister_id: Principal, amount: Nat, user_principal : Principal) : async TransferResult {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only the SNEED governance or Admin can return tokens.");
-    };
-
-    let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
-      icrc1_transfer(args : TransferArgs) : async T.TransferResult;
-    };
-
-    let subaccount = PrincipalToSubaccount(user_principal);
-    let user_account_to : Account = { owner = user_principal; subaccount = null; };
-
-    let sneed_fee_transfer_args : TransferArgs = {
-      from_subaccount = ?Blob.fromArray(subaccount);
-      to = user_account_to;
-      amount = amount;
-      fee = null;
-      memo = null;
-      created_at_time = null;
-    };  
-
-    let result = await icrc1_ledger_canister.icrc1_transfer(sneed_fee_transfer_args);
-    //log_info(caller, correlation_id, "Transferred Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args) # ", Result: " # debug_show(result));
-
-    switch (result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_return", [
-          ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
-          ("from", Icrc3Log.account(this_canister_id(), ?Blob.fromArray(subaccount))), ("to", Icrc3Log.account(user_account_to.owner, null)),
-          ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-      };
-      case (#Err(_)) {};
-    };
-    return result;
-  };
-
-  public shared ({ caller }) func admin_return_token_from_failed_request(icrc1_ledger_canister_id: Principal, amount: Nat, recipient_principal : Principal) : async TransferResult {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only the SNEED governance or Admin can return tokens.");
-    };
-
-    let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
-      icrc1_transfer(args : TransferArgs) : async T.TransferResult;
-    };
-
-    let user_account_to : Account = { owner = recipient_principal; subaccount = null; };
-
-    let sneed_fee_transfer_args : TransferArgs = {
-      from_subaccount = null;
-      to = user_account_to;
-      amount = amount;
-      fee = null;
-      memo = null;
-      created_at_time = null;
-    };  
-
-    let result = await icrc1_ledger_canister.icrc1_transfer(sneed_fee_transfer_args);
-    //log_info(caller, correlation_id, "Transferred Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args) # ", Result: " # debug_show(result));
-
-    switch (result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_return", [
-          ("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)),
-          ("from", Icrc3Log.account(this_canister_id(), null)), ("to", Icrc3Log.account(user_account_to.owner, null)),
-          ("amount", #Nat(amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-      };
-      case (#Err(_)) {};
-    };
-    return result;
-  };
-
 
   public shared ({ caller }) func set_max_lock_length_days(new_max_lock_length_days: Nat64) : async () {
     if (not isAdmin(caller)) {
@@ -4719,7 +4644,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     log_info(caller, correlation_id, "Transferred " # debug_show(amount) # " " # debug_show(token) # " to the deposit subaccount of pool " # debug_show(pool_id));
 
-    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; re-run admin_pool_deposit then admin_withdraw_pool_balance_to_user";
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
     let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
       return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
@@ -4751,7 +4676,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (amount == 0) { return #Ok((0, 0)) };
     if (amount <= fee) { return #Ok((0, amount)) };
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
-    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; use admin_withdraw_pool_balance_to_user";
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
     let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
       return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
@@ -5040,73 +4965,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     before_count;
   };
 
-  // Admin: Rescue stuck tokens from sneed_lock principal
-  // Use this to transfer any tokens stuck on sneed_lock's main account back to users
-  // (e.g., if claim succeeded but transfer to user failed)
-  public shared ({ caller }) func admin_rescue_stuck_tokens(
-    token_ledger : TokenType,
-    recipient : Principal
-  ) : async {
-    #Ok : Text;
-    #Err : Text;
-  } {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can rescue stuck tokens");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Admin rescuing stuck tokens: ledger=" # debug_show(token_ledger) # ", recipient=" # debug_show(recipient));
-
-    // Get token ledger actor
-    let ledger = actor (Principal.toText(token_ledger)) : actor { 
-      icrc1_fee : () -> async Nat;
-      icrc1_balance_of : (account : Account) -> async Nat;
-      icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
-    };
-    
-    let fee = await ledger.icrc1_fee();
-    let canister_account : Account = { owner = this_canister_id(); subaccount = null };
-    let balance = await ledger.icrc1_balance_of(canister_account);
-
-    log_info(caller, correlation_id, "Sneed_lock balance: " # debug_show(balance) # ", fee: " # debug_show(fee));
-
-    // Check if there's anything to transfer
-    if (balance <= fee) {
-      let msg = "Nothing to rescue. Balance (" # debug_show(balance) # ") <= fee (" # debug_show(fee) # ")";
-      log_info(caller, correlation_id, msg);
-      return #Ok(msg);
-    };
-
-    let transfer_amount = balance - fee;
-    let user_account : Account = { owner = recipient; subaccount = null };
-    
-    let transfer_args : TransferArgs = {
-      from_subaccount = null;
-      to = user_account;
-      amount = transfer_amount;
-      fee = ?fee;
-      memo = null;
-      created_at_time = null;
-    };
-    
-    let transfer_result = await ledger.icrc1_transfer(transfer_args);
-    switch (transfer_result) {
-      case (#Ok(tx_index)) {
-        icrc3_add<system>("sneedlock_admin_token_rescue", [
-          ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("ledger", Icrc3Log.principal(token_ledger)),
-          ("to", Icrc3Log.account(recipient, null)), ("amount", #Nat(transfer_amount)), ("ledger_tx", #Nat(tx_index)),
-        ]);
-        let success_msg = "Successfully rescued " # debug_show(transfer_amount) # " tokens to " # debug_show(recipient);
-        log_info(caller, correlation_id, success_msg);
-        #Ok(success_msg);
-      };
-      case (#Err(err)) {
-        let error_msg = "Failed to rescue tokens: " # debug_show(err);
-        log_error(caller, correlation_id, error_msg);
-        #Err(error_msg);
-      };
-    };
-  };
 
   // Admin: inspect this canister's unused balance held inside a swap pool.
   // Normally zero; a non-zero balance means a pool-side delivery failed after
@@ -5131,7 +4989,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Admin: re-run a pool deposit for tokens that were transferred to the
   // pool's deposit subaccount for this canister but never credited (a failed
   // `deposit` during a liquidity addition). Credits this canister's pool
-  // account; follow up with admin_withdraw_pool_balance_to_user.
+  // account; pay it out with admin_withdraw_stranded_to_owner (of its stranded record).
   public shared ({ caller }) func admin_pool_deposit(swap_canister_id : T.SwapCanisterId, token_ledger : T.TokenType, amount : Nat) : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) {
       Debug.trap("Only admin can run pool deposits");
@@ -5164,49 +5022,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
-  // Admin: deliver a stranded pool-side balance to a user's wallet subaccount.
-  // Attribution to the right user is done by the admin from the pool's
-  // transaction log (getTransactionsByOwner / getFailedTransactions).
-  public shared ({ caller }) func admin_withdraw_pool_balance_to_user(
-    swap_canister_id : T.SwapCanisterId,
-    token_ledger : T.TokenType,
-    amount : Nat,
-    user : Principal
-  ) : async { #Ok : Nat; #Err : Text } {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can withdraw pool balances");
-    };
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Admin withdrawing " # debug_show(amount) # " of " # debug_show(token_ledger) # " from pool " # debug_show(swap_canister_id) # " to the wallet subaccount of " # debug_show(user));
-
-    let ledger = actor (Principal.toText(token_ledger)) : actor { icrc1_fee : () -> async Nat };
-    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
-      withdrawToSubaccount : (args : { token : Text; amount : Nat; fee : Nat; subaccount : Blob }) -> async { #ok : Nat; #err : T.SwapCanisterError };
-    };
-    try {
-      let fee = await ledger.icrc1_fee();
-      let args = { token = Principal.toText(token_ledger); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(user)) };
-      switch (await swap_canister.withdrawToSubaccount(args)) {
-        case (#ok(accepted)) {
-          log_info(caller, correlation_id, "Pool withdrawal accepted: " # debug_show(accepted));
-          icrc3_add<system>("sneedlock_admin_pool_withdraw", [
-            ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(swap_canister_id)), ("ledger", Icrc3Log.principal(token_ledger)),
-            ("amount", #Nat(amount)), ("user", Icrc3Log.principal(user)), ("accepted", #Nat(accepted)),
-          ]);
-          #Ok(accepted);
-        };
-        case (#err(err)) {
-          let msg = "Pool withdrawal failed: " # debug_show(err);
-          log_error(caller, correlation_id, msg);
-          #Err(msg);
-        };
-      };
-    } catch (e) {
-      let msg = "Pool withdrawal call failed: " # Error.message(e);
-      log_error(caller, correlation_id, msg);
-      #Err(msg);
-    };
-  };
 
   /// Stranded records (spec/support_audit.md P1-14), ascending ids after `prev`; public, like
   /// their sneedlock_stranded blocks.
@@ -5554,10 +5369,9 @@ shared (deployer) persistent actor class SneedLock() = this {
   // with caller = governance. This lets the DAO do what admins do today, so that the admin list
   // can later be emptied. Arms are added by upgrade (a variant argument may grow).
   //
-  // Not (yet) arms, pending the DAO's decision: admin_return_token (pays out of a user's lock
-  // wallet, so it could release locked tokens early), admin_return_token_from_failed_request and
-  // admin_rescue_stuck_tokens (pay from the main account to any recipient), and
-  // admin_withdraw_pool_balance_to_user (pays a pool balance to any named user).
+  // admin_return_token, admin_return_token_from_failed_request, admin_rescue_stuck_tokens and
+  // admin_withdraw_pool_balance_to_user were removed (2026-11-02): they paid any amount to any
+  // recipient. If one is needed again, it comes back by an upgrade proposal.
 
   public type DaoLockFees = {
     token_lock_fee : ?Nat64;
@@ -5740,7 +5554,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#pool_deposit { swap_canister_id; token_ledger; amount }) {
         if (amount == 0) return #err("the amount must be above 0");
         #ok(L # "re-run the deposit of " # dao_amount(token_ledger, amount) # " at pool " # Principal.toText(swap_canister_id) #
-          ": from Sneed Lock's deposit subaccount there into Sneed Lock's unused balance in the pool (the pool takes the ledger fee). Nothing leaves Sneed Lock's accounts; pay it out with a stranded record or an admin withdrawal.");
+          ": from Sneed Lock's deposit subaccount there into Sneed Lock's unused balance in the pool (the pool takes the ledger fee). Nothing leaves Sneed Lock's accounts; it is paid out with its stranded record.");
       };
       case (#withdraw_stranded_to_owner { stranded_id; amount; outcome_checked }) {
         switch (stranded_check(stranded_id, amount, outcome_checked)) {
@@ -5931,15 +5745,11 @@ shared (deployer) persistent actor class SneedLock() = this {
     #admin_icrc3_spill_now : Any;
     #admin_pool_deposit : Any;
     #admin_remove_admin : Any;
-    #admin_rescue_stuck_tokens : Any;
-    #admin_return_token : Any;
-    #admin_return_token_from_failed_request : Any;
     #admin_set_icp_fee_recipient : Any;
     #admin_set_icrc3_proposal_neuron : Any;
     #admin_set_icrc3_settings : Any;
     #admin_set_lock_fees_icp : Any;
     #admin_set_sneed_premium_canister_id : Any;
-    #admin_withdraw_pool_balance_to_user : Any;
     #claim_position : Any;
     #claim_position_fees : Any;
     #clear_expired_locks : Any;
