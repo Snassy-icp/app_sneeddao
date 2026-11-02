@@ -413,6 +413,7 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_lock_type(lock_id)` | `opt LockType` | `TokenLock` or `PositionLock`. |
 | `get_claimed_positions_for_principal(owner)` | `vec ClaimedPosition` | Positions `owner` has a claim on, each with `position_lock` (`[]` when not locked; an expired lock stays until archived). |
 | `get_position_nft(pool, position_id)` | `opt nat` | The position's NFT id. |
+| `get_verified_pool(pool)` | `opt record { token0; token1; fee; verified_at }` | The pool as the ICPSwap factory confirmed it when Sneed Lock checked it (section 9); null = not verified. |
 | `get_lock_gas(lock_id)` | `opt record { account; ledger; transfer_fee : opt nat }` | A token lock's gas tank (3.9). |
 
 `FullyQualifiedLock` is the tuple `(owner, ledger, Lock)`; `FullyQualifiedPositionLock` is `(owner, pool, PositionLock)`. In JavaScript these arrive as arrays `[owner, ledger, lock]`.
@@ -857,7 +858,26 @@ The log starts with this release; nothing before it is reconstructed except the 
 
 ---
 
-## 9. Integration checklist
+## 9. Verifying a lock (for integrators)
+
+A DEX, a token-safety rating or a launchpad that shows "liquidity locked in Sneed Lock" should check it itself, from the chain, rather than trust a screenshot, a page of ours or any single answer. Five checks, all free queries:
+
+1. **The pool is a genuine ICPSwap pool.** Anyone can deploy a canister that answers like an ICPSwap pool and names real tokens in its `metadata`. Ask ICPSwap's SwapFactory (`4mmnk-kiaaa-aaaag-qbllq-cai`): `getPool({ token0 = { address; standard }; token1 = { address; standard }; fee })` with the pool's token pair (in the pool's order) and fee must return `ok` with `canisterId` equal to the pool (or list `getPools()` and look the canister id up). Sneed Lock does the same before it creates a position lock or adds liquidity, and refuses pools the factory does not confirm; it caches each confirmed pool, readable with `get_verified_pool(pool : principal) : opt record { token0 : principal; token1 : principal; fee : nat; verified_at : nat64 }` (null = never verified). Position locks created before this check (November 2026) may sit on unverified pools: check the factory yourself. Sneed Hub labels such pools "unverified pool" and leaves them out of every TVL.
+2. **Sneed Lock holds the position.** On the pool, `getUserPositionIdsByPrincipal(pqsms-lqaaa-aaaal-ajjza-cai)` must contain the position id. A lock record on a position that Sneed Lock does not hold locks nothing; a position its owner holds directly at the pool is not locked, whatever any lock record says.
+3. **An active lock covers it.** `get_lock_states_page({ owner = null; ledger = null; swap_canister_id = opt pool; token = null; kind = opt variant { PositionLock }; status = opt variant { Active }; include_archived = false; prev = null; take = null })` must answer a `LockState` with this `position_id` and `locked = true`. `Active` and `locked` compare the effective expiry with the canister's clock at query time; expired locks stay listed (with `locked = false`) until archived, so never count a lock that is not `locked`. For token locks use `kind = opt variant { TokenLock }` and `ledger = opt <ledger>`, and check that the owner's Sneed wallet holds at least the summed `amount` of its active locks.
+4. **Read the expiry right.** `expiry` is nanoseconds since the Unix epoch. `2^64 − 1` (`18446744073709551615`) means **until dissolved**: the lock has a dissolve delay and is not dissolving; it unlocks no sooner than `earliest_unlock`, and only after its owner starts dissolving it (`dissolving_until` is then set). It is not "never" and not a date in the year 2554.
+5. **Check the history.** Every lock, extension, transfer and withdrawal is a block in the ICRC-3 log (section 8). Verify the certified tip (`icrc3_get_tip_certificate`) against the IC root key and the hash chain down to the blocks you rely on. Each lock is also an ICRC-7 NFT (`get_position_nft`, `icrc7_owner_of`): who can move the lock is whoever owns that NFT.
+
+**Trust model.**
+
+- **Controller.** The only controller of `pqsms-lqaaa-aaaal-ajjza-cai` is the Sneed DAO's SNS root (`fp274-iaaaa-aaaaq-aacha-cai`); check it with the IC management canister's `canister_info` or the dashboard. Nobody can upgrade or stop the canister except by an SNS proposal that Sneed DAO's neurons adopt.
+- **Code.** Releases are reproducible builds of this repository: anyone can rebuild the module and compare its hash with the one the upgrade proposal installs and the one the canister runs (`canister_info`'s `module_hash`). The [Sneed Verifier](https://github.com/Snassy-icp/app_sneeddao/tree/main/tools/verifier) rebuilds every Sneed upgrade proposal and posts the result in the proposal's forum thread.
+- **No release by admins.** No method, admin or not, releases a lock early or moves a locked asset to anyone but the lock's owner after it unlocks. Admin actions are settings (fees, limits, rate limits, the ICRC-3 log) and repairs that pay users exactly what is recorded as theirs (stranded records, reconciliation). They now run by DAO proposal (`dao_admin`, one generic nervous system function), and the admin list is being emptied.
+- **Hanging canisters cannot block upgrades.** Calls to canisters a caller names (token ledgers other than ICP, pools) are bounded-wait calls with a timeout, so a ledger or pool that never answers cannot keep Sneed Lock from being stopped and upgraded; an answer that does not arrive in time is treated as an unknown outcome (stranded or uncertain records, reconciliation), never as success.
+
+---
+
+## 10. Integration checklist
 
 - [ ] Use the **staging** canister `25fsc-7yaaa-aaaal-qjt5q-cai` first. It runs the same code with its own state; the ICPSwap pools and ledgers are the real mainnet ones.
 - [ ] Derive the Sneed wallet account with `principalToSubAccount`; fetch the payment subaccount from the canister.
@@ -868,5 +888,6 @@ The log starts with this release; nothing before it is reconstructed except the 
 - [ ] Read lock state with `get_lock_state` / `get_lock_states_page` (paged) or `get_claimed_positions_for_principal`; never cache "locked" across the expiry, and show `earliest_unlock` for locks with a dissolve delay.
 - [ ] Link users to `https://app.sneeddao.com/lock/<lock_id>` for a public view of any lock, and to `https://app.sneeddao.com/sneedlock_info` for the overview.
 - [ ] For audits or proofs, read the ICRC-3 activity log (section 8) and verify it from the certified tip rather than trusting any single response.
+- [ ] Before showing a position as locked, run the checks of section 9: factory-verified pool, held by Sneed Lock, an active lock.
 
 Questions, bugs, or an integration you would like listed here: open an issue on [GitHub](https://github.com/Snassy-icp/app_sneeddao/issues) or find Sneed DAO on [OpenChat](https://oc.app).
