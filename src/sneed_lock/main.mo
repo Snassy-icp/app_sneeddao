@@ -891,14 +891,17 @@ shared (deployer) persistent actor class SneedLock() = this {
     lock_token_op(caller);
 
     try {
-    // make sure to clean out any expired locks
-    clear_expired_locks_for_principal<system>(caller, correlation_id);
-
-    let sum_locked = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
-
     let token_fee = await icrc1_ledger_canister.icrc1_fee();
     let caller_subaccount_on_this : T.Account =  { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount); };
     let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+
+    // The locked sum is read AFTER the balance, never before: a token lock moved to the caller
+    // meanwhile (its owner's transfer_token_lock_ownership, which this caller's guard does not
+    // exclude) is recorded here before its tokens are sent, so a balance that already holds
+    // those tokens is always checked against a sum that includes their lock. Read before the
+    // awaits, the new tokens counted as free and the recipient could withdraw a lock at once.
+    clear_expired_locks_for_principal<system>(caller, correlation_id);
+    let sum_locked = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
     let full_amount = amount + token_fee;
     if (token_balance < full_amount + sum_locked) {
         let error = #Err(#GenericError{
@@ -4624,10 +4627,11 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let from_subaccount = PrincipalToSubaccount(caller);
     let caller_account : Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount) };
-    let sum_locked = get_summed_locks_from_principal_and_token(caller, token);
     let balance = try { await ledger.icrc1_balance_of(caller_account) } catch (e) {
       return #Err("Failed to read backend wallet balance for " # debug_show(token) # ": " # Error.message(e));
     };
+    // after the balance, as in transfer_tokens: a lock moved to the caller during the await is counted
+    let sum_locked = get_summed_locks_from_principal_and_token(caller, token);
     if (balance < amount + fee + sum_locked) {
       return #Err("Insufficient unlocked balance in backend wallet for " # debug_show(token) # ": balance " # debug_show(balance) # ", locked " # debug_show(sum_locked) # ", needed " # debug_show(amount + fee));
     };
