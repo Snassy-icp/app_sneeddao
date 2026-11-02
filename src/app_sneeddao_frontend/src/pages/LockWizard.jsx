@@ -23,6 +23,7 @@ import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 import { icrc1Transfer } from '../utils/icrcTx';
 import { verifyIcpswapPool } from '../utils/icpswapPoolVerify';
+import { displayDecimals } from '../utils/sneedLockDisplay';
 
 // Custom CSS for animations
 const customStyles = `
@@ -813,7 +814,11 @@ function LockWizard() {
                 ? `with a ${formatNsDuration(dissolveDelayNs)} dissolve delay and no lock period: it stays locked until you start dissolving it, and unlocks ${formatNsDuration(dissolveDelayNs)} after that. `
                 : `until ${dateToReadable(expiryDate)} ${get_short_timezone()} (for ${duration}), and then with a ${formatNsDuration(dissolveDelayNs)} dissolve delay: it stays locked until you start dissolving it, and unlocks ${formatNsDuration(dissolveDelayNs)} after that. `)
             : `until ${dateToReadable(expiryDate)} ${get_short_timezone()} (for ${duration}). `;
-        setConfirmMessage(`You are about to lock ${what} ${when}` + describeFeePlan(plan));
+        // Irreversible (audit 2026-11-02): said plainly before the user confirms.
+        setConfirmMessage(`You are about to lock ${what} ${when}` + describeFeePlan(plan)
+            + ' THIS CANNOT BE UNDONE: once created, the lock cannot be cancelled or shortened by you, by Sneed DAO or by any admin. '
+            + (lockType === 'token' ? 'The tokens' : 'The position') + ' stay in Sneed Lock until the lock ends'
+            + (dissolveDelayNs > 0n ? ' (and, with a dissolve delay, until you have dissolved it).' : '.'));
         
         setConfirmAction(() => executeLock);
         setShowConfirmModal(true);
@@ -1997,7 +2002,7 @@ function LockWizard() {
                                 <div>
                                     <div style={styles.tokenSymbol}>{selectedToken?.symbol}</div>
                                     <div style={styles.tokenBalance}>
-                                        Available: {formatAmount(selectedToken?.available || 0n, selectedToken?.decimals || 8)}
+                                        Available: {formatAmount(selectedToken?.available || 0n, displayDecimals(selectedToken?.decimals))}
                                     </div>
                                 </div>
                             </>
@@ -2022,7 +2027,7 @@ function LockWizard() {
                                         {selectedPosition?.symbols} #{selectedPosition?.id?.toString()}
                                     </div>
                                     <div style={styles.tokenBalance}>
-                                        {formatAmount(selectedPosition?.token0Amount || 0n, selectedPosition?.token0Decimals || 8)} {selectedPosition?.token0Symbol} / {formatAmount(selectedPosition?.token1Amount || 0n, selectedPosition?.token1Decimals || 8)} {selectedPosition?.token1Symbol}
+                                        {formatAmount(selectedPosition?.token0Amount || 0n, displayDecimals(selectedPosition?.token0Decimals))} {selectedPosition?.token0Symbol} / {formatAmount(selectedPosition?.token1Amount || 0n, displayDecimals(selectedPosition?.token1Decimals))} {selectedPosition?.token1Symbol}
                                     </div>
                                 </div>
                             </>
@@ -2078,6 +2083,10 @@ function LockWizard() {
                     </div>
 
                     {renderFeePanel()}
+
+                    <div role="note" style={{ margin: '1rem 0 0 0', padding: '10px 14px', borderRadius: 10, border: `1px solid ${theme.colors.warning}66`, background: `${theme.colors.warning}14`, color: theme.colors.primaryText, fontSize: '0.85rem', lineHeight: 1.5 }}>
+                        <strong style={{ color: theme.colors.warning }}>A lock is irreversible.</strong> Once created it cannot be cancelled or shortened, by you, by Sneed DAO or by any admin: {lockType === 'token' ? 'the tokens stay' : 'the position stays'} in Sneed Lock until the lock ends{dissolveDelayNs > 0n ? ' and you have dissolved it' : ''}. You can still extend it, and transfer it to someone else.
+                    </div>
 
                     {lockError && (
                         <div style={styles.errorBox}>
