@@ -68,6 +68,17 @@ git archive "$LOCK_PREDAOADMIN_COMMIT" src | tar -x -C "$PREV_SRC"
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_lock_predaoadmin.wasm"
 
+# sneed_lock as production runs it since #480 (PR #33, ab9226f3): the upgrade test of
+# sneed-lock-audit-2.test.js and its fail-before run (SNEED_LOCK_WASM=sneed_lock_pr33)
+LOCK_PR33_COMMIT=ab9226f3
+echo "== sneed_lock at $LOCK_PR33_COMMIT (moc, sneed_lock_pr33)"
+PREV_SRC="$(mktemp -d)"
+git archive "$LOCK_PR33_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2046
+"$MOC" $(mops sources) "$PREV_SRC/src/sneed_lock/main.mo" -o "$OUT/sneed_lock_pr33.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_lock_pr33.wasm"
+
 # backend, sms and forum as production ran them from April to October 2026 ("persistent actors",
 # enhanced orthogonal persistence), for the tests that rehearse upgrading production from there
 LIVE_COMMIT=92eefd18
