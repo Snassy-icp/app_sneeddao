@@ -169,6 +169,8 @@ describe('rate limits', () => {
       create_lock: { capacity: 30n, per_minute: 10n },
       create_position_lock: { capacity: 30n, per_minute: 10n },
       claim: { capacity: 30n, per_minute: 10n },
+      payment_balance: { capacity: 60n, per_minute: 30n },
+      effective_fee: { capacity: 60n, per_minute: 30n },
     });
   });
 
@@ -244,7 +246,7 @@ describe('upgrades rebuild the index', () => {
       const id = unwrap(await lockAs(cid, erin).create_lock(10_000n, tokenAId, (await nowNs()) + DAY_NS, []));
       expect((await lockAs(cid, erin).icrc7_transfer([{ from_subaccount: [], to: acc(alice, sub(3)), token_id: id, memo: [], created_at_time: [] }]))[0][0]).toHaveProperty('Ok');
       await expectIndexMatches(cid, [...ACCOUNTS(), acc(alice, sub(3))]);
-      expect((await lockAs(cid, admin).get_rate_limits()).length).toBe(3);
+      expect((await lockAs(cid, admin).get_rate_limits()).length).toBe(5);
     }, 120_000);
   }
 });

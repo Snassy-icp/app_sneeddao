@@ -837,7 +837,9 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   public shared ({ caller }) func claim_position(swap_canister_id : Principal, position_id : T.PositionId) : async Bool /*ClaimPositionResult*/ {
-    
+    // Anyone can call as the anonymous principal, so a claim (and a lock) held by it would be anyone's.
+    if (Principal.isAnonymous(caller)) { return false };
+
     let correlation_id = get_next_correlation_id();
 
     log_info(caller, correlation_id, "Claiming position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id) # " for " # debug_show(caller));
@@ -1160,6 +1162,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (Map.has(positions_in_flight, thash, position_key(swap_canister_id, position_id))) {
       return #Err({ message = "A withdrawal of this position is in progress" });
     };
+    if (Principal.isAnonymous(to_principal)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here" }) };
 
     // Verify that the caller is the current owner
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
@@ -1250,6 +1253,15 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// owner, or an approved spender), for the logs. Error codes: 3 busy, 7 no gas, 8 expired,
   /// 9 other. Shared by transfer_token_lock_ownership and the NFT transfers.
   private func token_lock_move(caller : Principal, owner : Principal, to_principal : Principal, token_type : T.TokenType, lock_id : T.LockId, correlation_id : Nat, use_tank : Bool, labels : (?Blob, ?Blob)) : async* Result.Result<Text, MoveError> {
+    // To its own owner a move would send the locked tokens from the wallet to itself (a fee) and, if
+    // that transfer's outcome were unknown, leave two records of the lock on one owner, which
+    // reconciliation cannot tell apart. An NFT move between one owner's accounts only relabels.
+    if (to_principal == owner) {
+      return #err({ code = 9; message = "The lock already belongs to " # Principal.toText(owner); transfer_error = null });
+    };
+    if (Principal.isAnonymous(to_principal)) {
+      return #err({ code = 9; message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null });
+    };
     // A lock held by two parties (an earlier transfer's outcome is unknown) moves only once
     // reconciled: moving it again could leave a third copy.
     if (token_lock_records(lock_id).size() > 1) {
@@ -1694,6 +1706,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
   /// to period + delay, and the tokens stay locked until the lock has dissolved.
   public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async CreateLockResult {
+      if (Principal.isAnonymous(caller)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null }) };
       if (not rate_take(caller, "create_lock")) { return #Err({ message = rate_limited_text("create_lock"); transfer_error = null }) };
       // Serialized with every other token operation of the caller (the balance checked here
       // must still be there when the lock is recorded after the fee check's awaits) and with
@@ -1933,6 +1946,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     token0 : T.TokenType,
     token1 : T.TokenType,
     dissolve_delay : ?Nat64) : async T.CreateLockResult {
+      if (Principal.isAnonymous(caller)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null }) };
       if (not rate_take(caller, "create_position_lock")) { return #Err({ message = rate_limited_text("create_position_lock"); transfer_error = null }) };
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Creating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
@@ -2474,16 +2488,9 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Every ACTIVE record of this lock id. More than one means a transfer whose outcome was
   /// unknown left it on both owners pending reconciliation (transfer_token_lock_ownership).
+  /// Read through the owner index (token_lock_index), not a scan of every owner's locks.
   private func token_lock_records(lock_id : T.LockId) : [(Principal, TokenType, Lock)] {
-    var out = List.nil<(Principal, TokenType, Lock)>();
-    for ((owner, token_locks_map) in state.principal_token_locks.entries()) {
-      for ((token_type, locks_list) in token_locks_map.entries()) {
-        for (lock in List.toIter(locks_list)) {
-          if (lock.lock_id == lock_id) { out := List.push((owner, token_type, lock), out) };
-        };
-      };
-    };
-    List.toArray(out);
+    token_lock_records_indexed(lock_id);
   };
 
   private func position_lock_records(lock_id : T.LockId) : [(Principal, T.SwapCanisterId, T.PositionLock)] {
@@ -4232,7 +4239,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Query: Get payment balance for a user
-  public func getPaymentBalance(user : Principal) : async Nat {
+  // An update call that calls the ICP ledger: rate-limited per caller (audit 2026-11-02, LOW), so
+  // a script cannot make this canister pay for an endless stream of ledger calls.
+  public shared ({ caller }) func getPaymentBalance(user : Principal) : async Nat {
+    if (not rate_take(caller, "payment_balance")) { throw Error.reject(rate_limited_text("payment_balance")) };
     let subaccount = userPaymentSubaccount(user);
     let icpLedger = actor(ICP_LEDGER_ID) : actor {
       icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
@@ -4255,10 +4265,12 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Get effective lock fee for a user (based on premium status and lock type)
-  public func getEffectiveLockFee(user : Principal, is_position_lock : Bool) : async {
+  // An update call that may call Sneed Premium: rate-limited per caller like getPaymentBalance.
+  public shared ({ caller }) func getEffectiveLockFee(user : Principal, is_position_lock : Bool) : async {
     fee_e8s : Nat64;
     is_premium : Bool;
   } {
+    if (not rate_take(caller, "effective_fee")) { throw Error.reject(rate_limited_text("effective_fee")) };
     let is_premium = await* checkUserPremium(user);
     // the lowest applicable price, special prices included (capped to the Nat64 of this answer)
     let (fee, _) = effectiveLockFee(user, is_premium, is_position_lock);
@@ -5459,6 +5471,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     ("create_lock", { capacity = 30; per_minute = 10 }),
     ("create_position_lock", { capacity = 30; per_minute = 10 }),
     ("claim", { capacity = 30; per_minute = 10 }),
+    // update calls that call another canister for a read (the ICP ledger, Sneed Premium)
+    ("payment_balance", { capacity = 60; per_minute = 30 }),
+    ("effective_fee", { capacity = 60; per_minute = 30 }),
   ];
   /// Admin overrides of the defaults (admin_set_rate_limit); capacity 0 = no limit.
   stable var rate_limit_rules = Map.new<Text, RateLimit.Rule>();
@@ -6085,6 +6100,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#create_lock _) rate_allows(caller, "create_lock") and arg.size() <= IngressGuard.SMALL_ARG;
       case (#create_position_lock _) rate_allows(caller, "create_position_lock") and arg.size() <= IngressGuard.SMALL_ARG;
       case (#claim_position_fees _ or #request_claim_and_withdraw _) rate_allows(caller, "claim") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#getPaymentBalance _) rate_allows(caller, "payment_balance") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#getEffectiveLockFee _) rate_allows(caller, "effective_fee") and arg.size() <= IngressGuard.SMALL_ARG;
       // ICRC-7/37 batches: at most icrc7_max_update_batch_size items (the memos inside are checked
       // per item by the method, against icrc7_max_memo_size)
       case (#icrc7_transfer f) nftBatchOk(arg, f().size());

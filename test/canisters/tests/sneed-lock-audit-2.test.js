@@ -326,3 +326,46 @@ describe('M2: the lock fee never comes from locked ICP', () => {
     expect((await covered()).ok).toBe(true);
   }, 120_000);
 });
+
+describe('LOW: anonymous owners, self-transfers, rate limits', () => {
+  const anon = Principal.anonymous();
+
+  it('the anonymous principal cannot claim, lock or receive', async () => {
+    const pos = 9_001n;
+    await env.poolAs(env.poolId, admin).mint_position(anon, pos, 1_000_000n);
+    expect(await env.lockAs(anon).claim_position(env.poolId, pos)).toBe(false);
+    await env.tokenA.mint(env.wallet(anon), 10_000n);
+    expect(errOf(await env.lockAs(anon).create_lock(1_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, [])).message).toMatch(/anonymous principal/);
+    expect(errOf(await env.lockAs(anon).create_position_lock(env.poolId, 1n, pos, (await env.nowNs()) + DAY_NS, env.tokenAId, env.tokenBId, [])).message).toMatch(/anonymous principal/);
+    const owner = user('low-owner');
+    await env.tokenA.mint(env.wallet(owner), 100_000n);
+    const lid = unwrap(await env.lockAs(owner).create_lock(10_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, []));
+    expect(errOf(await env.lockAs(owner).transfer_token_lock_ownership(anon, env.tokenAId, lid)).message).toMatch(/anonymous principal/);
+    const p2 = await env.depositPosition(owner);
+    expect(errOf(await env.lockAs(owner).transfer_position_ownership(anon, env.poolId, p2)).message).toMatch(/anonymous principal/);
+    expect((await env.lockAs(owner).get_claimed_positions_for_principal(owner)).some((c) => c.position_id === p2)).toBe(true);
+  });
+
+  it('a token lock is not transferred to its own owner (no ledger self-transfer, no fee)', async () => {
+    const owner = user('low-self');
+    await env.tokenA.mint(env.wallet(owner), 100_000n);
+    const lid = unwrap(await env.lockAs(owner).create_lock(10_000n, env.tokenAId, (await env.nowNs()) + DAY_NS, []));
+    const r = await env.lockAs(owner).transfer_token_lock_ownership(owner, env.tokenAId, lid);
+    console.log('token lock transfer to its own owner:', JSON.stringify(r, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
+    expect(errOf(r).message).toMatch(/already belongs to/);
+    expect(await env.tokenA.icrc1_balance_of(env.wallet(owner))).toBe(100_000n);
+    expect(await env.lockedOf(owner, env.tokenAId)).toBe(10_000n);
+  });
+
+  it('getPaymentBalance and getEffectiveLockFee are rate-limited per caller', async () => {
+    const spammer = user('low-spam');
+    for (const [action, call] of [['payment_balance', (a) => a.getPaymentBalance(spammer)], ['effective_fee', (a) => a.getEffectiveLockFee(spammer, false)]]) {
+      unwrap(await env.lockAs(admin).admin_set_rate_limit(action, [{ capacity: 3n, per_minute: 1n }]));
+      const a = env.lockAs(spammer);
+      for (let i = 0; i < 3; i++) await call(a);
+      expect(await refusedAtIngress(call(a))).toBe(true);
+      await call(env.lockAs(user('low-other'))); // others are not affected
+      unwrap(await env.lockAs(admin).admin_set_rate_limit(action, []));
+    }
+  });
+});
