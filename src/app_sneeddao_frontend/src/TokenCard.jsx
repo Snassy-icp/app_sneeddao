@@ -124,7 +124,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal, showPockets = false, onPocketAction }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, currentLockId = null, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal, showPockets = false, onPocketAction }) => {
     // Pockets (spec/programmable_accounts.md §4.3): the card's total counts every pocket; Main and
     // the Sneed Lock wallet are the Wallet / Sneed Lock rows below, other pockets are rows of their
     // own, and "in N pockets" shows only when more than one pocket holds the token.
@@ -2502,7 +2502,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 <span className="lock-label">Lock ID:</span>
                                                 <span className="lock-value">
                                                     {lock.lock_id?.toString()}
-                                                    {lock.lock_id && (
+                                                    {lock.lock_id && (currentLockId == null || lock.lock_id.toString() !== String(currentLockId)) && (
                                                         <a 
                                                             href={`/lock/${lock.lock_id.toString()}`}
                                                             style={{

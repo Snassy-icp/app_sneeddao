@@ -77,7 +77,7 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     );
 };
 
-const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, openAddLiquidityModal, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
+const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, openAddLiquidityModal, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal, currentLockId = null }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames, verifiedNames } = useNaming();
@@ -990,7 +990,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     <span className="lock-label">Lock ID:</span>
                                     <span className="lock-value">
                                         {positionDetails.lockInfo.lock_id?.toString()}
-                                        {positionDetails.lockInfo.lock_id && (
+                                        {positionDetails.lockInfo.lock_id && (currentLockId == null || positionDetails.lockInfo.lock_id.toString() !== String(currentLockId)) && (
                                             <a 
                                                 href={`/lock/${positionDetails.lockInfo.lock_id.toString()}`}
                                                 style={{

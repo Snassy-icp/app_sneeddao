@@ -344,7 +344,9 @@ function Lock() {
                     Lock Details
                 </h2>
             </div>
-            <main className="wallet-container centered">
+            {/* One column, the lock's card first (as in the wallet), then its dissolve and NFT panels:
+                side by side they were squeezed on phones */}
+            <main className="wallet-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem', width: '100%', maxWidth: 760, margin: '0 auto', boxSizing: 'border-box' }}>
                 {loading && (
                     <div className="card">
                         <div className="spinner"></div>
@@ -372,18 +374,8 @@ function Lock() {
                         hideButtons={true}
                         defaultExpanded={true}
                         defaultLocksExpanded={true}
+                        currentLockId={id}
                     />
-                )}
-                
-                {!loading && !error && lockType && (
-                    <LockDissolvePanel lockId={id} onChanged={() => fetchLockById(id)} />
-                )}
-
-                {!loading && !error && lockType === 'token' && (
-                    <LockNftPanel tokenId={id} onChanged={() => fetchLockById(id)} />
-                )}
-                {!loading && !error && lockType === 'position' && position && positionDetails && (
-                    <LockNftPanel swapCanisterId={position.swap_canister_id} positionId={positionDetails.positionId} onChanged={() => fetchLockById(id)} />
                 )}
 
                 {!loading && !error && lockType === 'position' && position && positionDetails && (
@@ -406,8 +398,20 @@ function Lock() {
                         hideUnclaimedFees={false}
                         defaultExpanded={true}
                         defaultLocksExpanded={true}
+                        currentLockId={id}
                     />
                     </>
+                )}
+
+                {!loading && !error && lockType && (
+                    <LockDissolvePanel lockId={id} onChanged={() => fetchLockById(id)} />
+                )}
+
+                {!loading && !error && lockType === 'token' && (
+                    <LockNftPanel tokenId={id} onChanged={() => fetchLockById(id)} />
+                )}
+                {!loading && !error && lockType === 'position' && position && positionDetails && (
+                    <LockNftPanel swapCanisterId={position.swap_canister_id} positionId={positionDetails.positionId} onChanged={() => fetchLockById(id)} />
                 )}
             </main>
         </div>
