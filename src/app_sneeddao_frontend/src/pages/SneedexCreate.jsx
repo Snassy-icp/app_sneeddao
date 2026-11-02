@@ -35,7 +35,8 @@ import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcrc7Actor } from 'external/icrc7_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
-import { SneedLockAssetIcon, sneedLockAssetText, fmtUnits as fmtLockUnits, lockExpiryDate } from '../components/SneedLockAssetView';
+import { SneedLockAssetIcon, sneedLockAssetText, fmtUnits as fmtLockUnits } from '../components/SneedLockAssetView';
+import { lockExpiryLabel, UNTIL_DISSOLVED } from '../utils/sneedLockDisplay';
 import { getTokenMetadata } from '../hooks/useTokenCache';
 import { describeSwapPool } from '../components/SwapPoolPicker';
 import { loadNftCollection, detectStandards, approveToken, getNftImage, getNftName, getSavedNftCollections, fetchCollectionInfo } from '../utils/NftUtils';
@@ -4719,7 +4720,7 @@ function SneedexCreate() {
                                                             <SneedLockAssetIcon details={l} size={32} />
                                                             <span style={{ minWidth: 0 }}>
                                                                 <span style={{ display: 'block', fontSize: '0.85rem', color: theme.colors.primaryText }}>{l.kind === 'token' ? `${fmtLockUnits(l.amount, Number(l.token?.decimals ?? 8))} ${l.token?.symbol || '…'}` : `LP position #${l.position_id} ${l.pool ? `(${l.pool.token0.symbol}/${l.pool.token1.symbol})` : ''}`}</span>
-                                                                <span style={{ display: 'block', fontSize: '0.75rem', color: theme.colors.mutedText }}>Lock #{id} · unlocks {lockExpiryDate(l.expiry).toLocaleDateString()}</span>
+                                                                <span style={{ display: 'block', fontSize: '0.75rem', color: theme.colors.mutedText }}>Lock #{id} · {lockExpiryLabel(l.expiry) === UNTIL_DISSOLVED ? 'locked until dissolved' : `unlocks ${lockExpiryLabel(l.expiry, (d) => d.toLocaleDateString())}`}</span>
                                                             </span>
                                                         </label>
                                                     );

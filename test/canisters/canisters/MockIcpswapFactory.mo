@@ -31,5 +31,15 @@ persistent actor class MockIcpswapFactory() {
       fee = 3000;
     });
   };
+  /// Register a pool with its fee, tokens in the pool's own order (Sneed Lock tests: every MockSwapPool
+  /// installed through lib/pic.js `install` is registered here unless the test says otherwise).
+  public shared func register_pool(pool : Principal, token0 : Principal, token1 : Principal, fee : Nat) : async () {
+    pools.add({
+      canisterId = pool;
+      token0 = { address = Principal.toText(token0); standard = "ICRC1" };
+      token1 = { address = Principal.toText(token1); standard = "ICRC1" };
+      fee;
+    });
+  };
   public shared func clear_pools() : async () { pools.clear() };
 };

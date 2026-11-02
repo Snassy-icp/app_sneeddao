@@ -25,9 +25,9 @@ export function LockUntil({ lockId, expiry, fmt = (d) => d.toLocaleString() }) {
     const held = isUntilDissolved(expiry);
     const st = useLockState(lockId, held);
     if (!held) return <>{fmt(expiry instanceof Date ? expiry : lockExpiryToDate(expiry))}</>;
-    if (!st) return <>when dissolved</>;
+    if (!st) return <>until dissolved</>;
     const soonest = lockExpiryToDate(earliestUnlockNs(st));
-    return <span title="It has a dissolve delay: it unlocks only once its owner starts dissolving it and the delay has run out.">{soonest ? `${fmt(soonest)} at the soonest` : 'when dissolved'}{' '}<span style={{ opacity: 0.7 }}>(dissolve delay {formatNsDuration(st.dissolve_delay)}, not dissolving)</span></span>;
+    return <span title="It has a dissolve delay: it unlocks only once its owner starts dissolving it and the delay has run out.">{soonest ? `${fmt(soonest)} at the soonest` : 'until dissolved'}{' '}<span style={{ opacity: 0.7 }}>(dissolve delay {formatNsDuration(st.dissolve_delay)}, not dissolving)</span></span>;
 }
 
 /** The time left of a delay lock that is not dissolving: "≥ 2h". */

@@ -12,6 +12,8 @@ import { useTheme } from './contexts/ThemeContext';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
+import { verifyIcpswapPool } from './utils/icpswapPoolVerify';
+import { knownDecimals } from './utils/sneedLockDisplay';
 import Header from './components/Header';
 import { useAuth } from './AuthContext';
 import { FaWater, FaShieldAlt, FaSpinner } from 'react-icons/fa';
@@ -138,9 +140,13 @@ function PositionLock() {
             const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister_id);
 
             // Use the same robust approach as Wallet.jsx to extract token metadata
-            const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
+            // Unknown decimals are not guessed (8 was): amounts then show as raw units, with a note,
+            // and no money value (audit 2026-11-02).
+            const token0DecimalsKnown = knownDecimals(token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat);
+            const token0Decimals = token0DecimalsKnown ?? 0;
             const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
-            const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
+            const token1DecimalsKnown = knownDecimals(token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat);
+            const token1Decimals = token1DecimalsKnown ?? 0;
             const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
             
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
@@ -153,9 +159,10 @@ function PositionLock() {
 
             // Fetch conversion rates for both tokens using the new price service
             const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
-                get_token_conversion_rate(icrc1_ledger0, token0Decimals),
-                get_token_conversion_rate(icrc1_ledger1, token1Decimals)
+                token0DecimalsKnown === null ? 0 : get_token_conversion_rate(icrc1_ledger0, token0Decimals),
+                token1DecimalsKnown === null ? 0 : get_token_conversion_rate(icrc1_ledger1, token1Decimals)
             ]);
+            const rawUnitsWarning = [token0DecimalsKnown === null ? token0Symbol : null, token1DecimalsKnown === null ? token1Symbol : null].filter(Boolean);
 
             let offset = 0;
             const limit = 10;
@@ -175,6 +182,8 @@ function PositionLock() {
             }
 
             var position_locks = await getSwapPositionLocks(sneedLockActor, Principal.fromText(swap_canister_id));
+            // Is this a genuine ICPSwap pool? Only the ICPSwap factory can say (audit H2).
+            const poolCheck = await verifyIcpswapPool(swap_canister_id, icrc1_ledger0, icrc1_ledger1);
 
             const positions_detailed = await Promise.all(positions.map(async (position) => {
                 
@@ -214,6 +223,9 @@ function PositionLock() {
 
                 var position_detailed = {
                     swap_canister_id,
+                    poolVerified: poolCheck.verified === true,
+                    poolVerifyReason: poolCheck.reason,
+                    rawUnitsWarning,
                     swapCanisterId: swap_canister_id,
                     token0,
                     token1,
@@ -341,6 +353,16 @@ function PositionLock() {
             <main style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem' }}>
                 {positions[0] && positions[0].details ? (
                     <div className="positionlock-fade-in">
+                        {positions[0].rawUnitsWarning?.length > 0 && (
+                            <div role="note" style={{ margin: '0 0 12px 0', padding: '10px 14px', borderRadius: 10, border: `1px solid ${theme.colors.warning}66`, background: `${theme.colors.warning}14`, color: theme.colors.primaryText ?? theme.colors.text, fontSize: '0.9rem', lineHeight: 1.5 }}>
+                                <strong style={{ color: theme.colors.warning }}>Decimals unknown:</strong> amounts of {positions[0].rawUnitsWarning.join(' and ')} are shown in raw base units (the token's decimals could not be read), and no money value is given for them.
+                            </div>
+                        )}
+                        {positions[0].poolVerified === false && (
+                            <div role="alert" style={{ margin: '0 0 12px 0', padding: '10px 14px', borderRadius: 10, border: `1px solid ${theme.colors.warning}66`, background: `${theme.colors.warning}14`, color: theme.colors.primaryText ?? theme.colors.text, fontSize: '0.9rem', lineHeight: 1.5 }}>
+                                <strong style={{ color: theme.colors.warning }}>Unverified pool.</strong> {positions[0].poolVerifyReason}. A lock here proves nothing about real liquidity: the pool canister reports its own tokens and amounts. It is not counted in any TVL.
+                            </div>
+                        )}
                         <PositionCard
                             position={positions[0]}
                             positionDetails={positions[0].details}

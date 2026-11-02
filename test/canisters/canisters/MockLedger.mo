@@ -41,6 +41,9 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
   transient let balances = HashMap.HashMap<Text, Nat>(64, Text.equal, Text.hash);
   transient let txs = Buffer.Buffer<Tx>(64);
   transient var paused : Bool = false;
+  // Sneed Lock audit M1: a transfer that lands but whose reply does not come (the ledger waits in a
+  // self-call loop after booking it, until set_hang_transfers(false) or a cap of rounds)
+  transient var hang_transfers : Bool = false;
 
   func key(a : Account) : Text {
     let sub = switch (a.subaccount) {
@@ -77,6 +80,8 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
     balances.put(key(args.to), balance(args.to) + args.amount);
     let index = txs.size();
     txs.add({ index; from; to = args.to; amount = args.amount; fee });
+    var n = 0;
+    while (hang_transfers and n < 1_000_000) { await async {}; n += 1 };
     #Ok(index);
   };
 
@@ -139,5 +144,6 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
 
   public shared func set_fee(f : Nat) : async () { fee := f };
   public shared func set_paused(p : Bool) : async () { paused := p };
+  public shared func set_hang_transfers(h : Bool) : async () { hang_transfers := h };
   public query func get_transactions() : async [Tx] { Buffer.toArray(txs) };
 };

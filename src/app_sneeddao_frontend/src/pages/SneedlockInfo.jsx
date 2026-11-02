@@ -18,6 +18,7 @@ import TokenSelector from '../components/TokenSelector';
 import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
 import { useDenomination } from '../contexts/DenominationContext';
 import { isUntilDissolved, NEVER_NS } from '../utils/lockTime';
+import { lockExpiryLabel, UNTIL_DISSOLVED, displayDecimals, knownDecimals, RAW_UNITS_NOTE } from '../utils/sneedLockDisplay';
 import { LockUntil } from '../components/LockUntil';
 import { getActivePositionLocks, getActiveTokenLocks, getExpiredPositionLocks, getExpiredTokenLocks } from '../utils/sneedLockLists';
 
@@ -282,8 +283,8 @@ function SneedlockInfo() {
         Object.entries(getFilteredData()).forEach(([tokenKey, data]) => {
             const token = tokenMetadata[tokenKey];
             if (token) {
-                const tokenLockUSD = getUSDValue(data.tokenLockAmount, token.decimals || 8, token.symbol);
-                const positionLockUSD = getUSDValue(data.positionLockAmount, token.decimals || 8, token.symbol);
+                const tokenLockUSD = getUSDValue(data.tokenLockAmount, displayDecimals(token.decimals), token.symbol);
+                const positionLockUSD = getUSDValue(data.positionLockAmount, displayDecimals(token.decimals), token.symbol);
                 
                 if (tokenLockUSD) tokenLockTotal += tokenLockUSD;
                 if (positionLockUSD) positionLockTotal += positionLockUSD;
@@ -431,84 +432,29 @@ function SneedlockInfo() {
         });
     };
 
-    const formatTimestamp = (timestamp) => {
-        if (!timestamp) return "Never";
-        
-        try {
-            // For token locks, the field is named 'expiry'
-            // For position locks, we need to handle both 'expiry' and 'expiration'
-            const actualTimestamp = typeof timestamp === 'object' && timestamp.expiry ? 
-                timestamp.expiry : timestamp;
-
-            // Convert BigInt to string to avoid precision loss
-            const timestampStr = actualTimestamp.toString();
-            // Convert nanoseconds to milliseconds
-            const milliseconds = Number(timestampStr) / 1_000_000;
-            
-            const date = new Date(milliseconds);
-            
-            // Check if date is valid
-            if (isNaN(date.getTime())) {
-                return "Never";
-            }
-            
-            // Check if it's effectively "never" (far future date)
-            if (date.getFullYear() > 2100) {
-                return "Never";
-            }
-            
-            return date.toLocaleString();
-        } catch (error) {
-            console.error("Error formatting timestamp:", error);
-            return "Invalid Date";
-        }
-    };
+    // Expiry labels (audit 2026-11-02): 2^64-1 is "until dissolved" (a dissolve delay), never
+    // "Never" or the year 2554; a missing expiry is "unknown".
+    // Amounts of a token whose decimals are unknown are raw base units, said so next to them.
+    const rawNote = (d) => (knownDecimals(d) === null
+        ? <span title={RAW_UNITS_NOTE} style={{ color: theme.colors.warning, fontSize: '0.8em', marginLeft: 4 }}>(raw units, decimals unknown)</span>
+        : null);
+    const expiryOf = (timestamp) => (typeof timestamp === 'object' && timestamp !== null && timestamp.expiry !== undefined ? timestamp.expiry : timestamp);
 
     const formatExpirationWithColor = (timestamp, lockId) => {
-        if (!timestamp) {
-            return <span style={{ color: theme.colors.success }}>Never</span>;
+        const expiry = expiryOf(timestamp);
+        if (expiry === undefined || expiry === null) {
+            return <span style={{ color: theme.colors.mutedText }}>unknown</span>;
         }
         // a lock with a dissolve delay that is not dissolving has no unlock time yet
-        if (isUntilDissolved(typeof timestamp === 'object' && timestamp.expiry ? timestamp.expiry : timestamp)) {
-            return <span style={{ color: theme.colors.success }}>{typeof lockId === 'bigint' ? <LockUntil lockId={lockId} expiry={NEVER_NS} /> : 'When dissolved (dissolve delay)'}</span>;
+        if (isUntilDissolved(expiry)) {
+            return <span style={{ color: theme.colors.success }}>{typeof lockId === 'bigint' ? <LockUntil lockId={lockId} expiry={NEVER_NS} /> : `${UNTIL_DISSOLVED} (dissolve delay)`}</span>;
         }
-        
-        try {
-            // For token locks, the field is named 'expiry'
-            // For position locks, we need to handle both 'expiry' and 'expiration'
-            const actualTimestamp = typeof timestamp === 'object' && timestamp.expiry ? 
-                timestamp.expiry : timestamp;
-
-            // Convert BigInt to string to avoid precision loss
-            const timestampStr = actualTimestamp.toString();
-            // Convert nanoseconds to milliseconds
-            const milliseconds = Number(timestampStr) / 1_000_000;
-            
-            const date = new Date(milliseconds);
-            
-            // Check if date is valid
-            if (isNaN(date.getTime())) {
-                return <span style={{ color: theme.colors.success }}>Never</span>;
-            }
-            
-            // Check if it's effectively "never" (far future date)
-            if (date.getFullYear() > 2100) {
-                return <span style={{ color: theme.colors.success }}>Never</span>;
-            }
-            
-            // Check if expired
-            const now = new Date();
-            const isExpired = date <= now;
-            
-            if (isExpired) {
-                return <span style={{ color: theme.colors.error }}>Expired</span>;
-            } else {
-                return <span style={{ color: theme.colors.success }}>{date.toLocaleString()}</span>;
-            }
-        } catch (error) {
-            console.error("Error formatting timestamp:", error);
-            return <span style={{ color: theme.colors.mutedText }}>Invalid Date</span>;
-        }
+        const label = lockExpiryLabel(expiry);
+        if (label === 'unknown') return <span style={{ color: theme.colors.mutedText }}>unknown</span>;
+        const expired = BigInt(expiry) <= BigInt(Date.now()) * 1_000_000n;
+        return expired
+            ? <span style={{ color: theme.colors.error }}>Expired</span>
+            : <span style={{ color: theme.colors.success }}>{label}</span>;
     };
 
     const truncatePrincipal = (principal) => {
@@ -653,7 +599,7 @@ function SneedlockInfo() {
                         [tokenKey]: whitelistedToken || {
                             ledger_id: tokenKey,
                             symbol: tokenKey.slice(0, 8) + '...',
-                            decimals: 8,
+                            decimals: null, // unknown: amounts show as raw units (not a guessed 8)
                             logo: ''
                         }
                     }));
@@ -878,7 +824,7 @@ function SneedlockInfo() {
                         [tokenKey]: whitelistedToken || {
                             ledger_id: tokenKey,
                             symbol: tokenKey.slice(0, 8) + '...',
-                            decimals: 8,
+                            decimals: null, // unknown: amounts show as raw units (not a guessed 8)
                             logo: ''
                         }
                     }));
@@ -1514,10 +1460,10 @@ function SneedlockInfo() {
                                                     <div style={styles.statGroup}>
                                                         <div style={styles.statBox}>
                                                             <div style={styles.statValue}>
-                                                                {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
+                                                                {formatAmount(data.tokenLockAmount + data.positionLockAmount, displayDecimals(token?.decimals))}{rawNote(token?.decimals)}
                                                             </div>
                                                             <div style={styles.statLabel}>
-                                                                {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8, token?.symbol))}
+                                                                {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, displayDecimals(token?.decimals), token?.symbol))}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1549,9 +1495,9 @@ function SneedlockInfo() {
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Amount</div>
                                                                         <div style={styles.lockDetailValue}>
-                                                                            {formatAmount(lock.amount, token?.decimals || 8)} {token?.symbol || ''}
+                                                                            {formatAmount(lock.amount, displayDecimals(token?.decimals))} {token?.symbol || ''}{rawNote(token?.decimals)}
                                                                             <span style={{ fontSize: '0.85em', color: theme.colors.mutedText, marginLeft: '4px' }}>
-                                                                                {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                                {formatUSD(getUSDValue(lock.amount, displayDecimals(token?.decimals), token?.symbol))}
                                                                             </span>
                                                                         </div>
                                                                     </div>
@@ -1600,16 +1546,16 @@ function SneedlockInfo() {
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Token 1</div>
                                                                         <div style={styles.lockDetailValue}>
-                                                                            {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey.slice(0,6)}
+                                                                            {formatAmount(lock.amount || 0n, displayDecimals(token?.decimals))} {token?.symbol || tokenKey.slice(0,6)}{rawNote(token?.decimals)}
                                                                             <span style={{ fontSize: '0.85em', color: theme.colors.mutedText, marginLeft: '4px' }}>
-                                                                                {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                                {formatUSD(getUSDValue(lock.amount, displayDecimals(token?.decimals), token?.symbol))}
                                                                             </span>
                                                                         </div>
                                                                     </div>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Token 2</div>
                                                                         <div style={styles.lockDetailValue}>
-                                                                            {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || 'Unknown'}
+                                                                            {formatAmount(lock.otherAmount || 0n, displayDecimals(tokenMetadata[lock.otherToken?.toText() || '']?.decimals))} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || 'Unknown'}{rawNote(tokenMetadata[lock.otherToken?.toText() || '']?.decimals)}
                                                                         </div>
                                                                     </div>
                                                                     <div style={styles.lockDetail}>

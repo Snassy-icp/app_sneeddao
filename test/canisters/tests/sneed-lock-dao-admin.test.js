@@ -194,7 +194,7 @@ describe('dao_admin: settings', () => {
 
     const rl = { set_rate_limit: { action: 'create_lock', rule: [{ capacity: 5n, per_minute: 2n }] } };
     expect(await env.validate(rl)).toEqual({ Ok: 'Sneed Lock: rate limit of create_lock: burst 30, 10 a minute → burst 5, 2 a minute' });
-    expect((await env.validate({ set_rate_limit: { action: 'nope', rule: [] } })).Err).toMatch(/^Unknown action; the limited actions are create_lock, create_position_lock, claim$/);
+    expect((await env.validate({ set_rate_limit: { action: 'nope', rule: [] } })).Err).toMatch(/^Unknown action; the limited actions are create_lock, create_position_lock, claim, payment_balance, effective_fee$/);
     expect((await env.validate({ set_rate_limit: { action: 'claim', rule: [{ capacity: 5n, per_minute: 0n }] } })).Err).toMatch(/per_minute must be/);
     expect((await env.validate({ set_rate_limit: { action: 'claim', rule: [] } })).Err).toBe('the rate limit of claim already is burst 30, 10 a minute');
     executed(await env.propose(rl));

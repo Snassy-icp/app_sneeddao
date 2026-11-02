@@ -268,6 +268,13 @@ shared (deployer) persistent actor class SneedLock() = this {
   // ICP Ledger for lock creation fees
   transient let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
   transient let ICP_FEE : Nat64 = 10_000; // 0.0001 ICP
+  // Calls to canisters a caller names (token ledgers, pools) and to the ICPSwap factory are
+  // bounded-wait (audit 2026-11-02, M1): the system answers SYS_UNKNOWN after this many seconds
+  // (300 = the maximum) instead of letting a canister that never answers keep a call open, which
+  // would keep Sneed Lock from stopping, so from being upgraded. Every such call site treats an
+  // unknown outcome safely (see the notes there). The ICP ledger calls of the lock fees and the
+  // payment balance (the NNS ledger by its fixed id) and the Sneed Premium check stay unbounded.
+  transient let UNTRUSTED_CALL_TIMEOUT_S : Nat32 = 300;
 
   // ephemeral state
   transient let state : State = object { 
@@ -830,7 +837,9 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   public shared ({ caller }) func claim_position(swap_canister_id : Principal, position_id : T.PositionId) : async Bool /*ClaimPositionResult*/ {
-    
+    // Anyone can call as the anonymous principal, so a claim (and a lock) held by it would be anyone's.
+    if (Principal.isAnonymous(caller)) { return false };
+
     let correlation_id = get_next_correlation_id();
 
     log_info(caller, correlation_id, "Claiming position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id) # " for " # debug_show(caller));
@@ -891,9 +900,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     lock_token_op(caller);
 
     try {
-    let token_fee = await icrc1_ledger_canister.icrc1_fee();
+    let token_fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_fee();
     let caller_subaccount_on_this : T.Account =  { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount); };
-    let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+    let token_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
 
     // The locked sum is read AFTER the balance, never before: a token lock moved to the caller
     // meanwhile (its owner's transfer_token_lock_ownership, which this caller's guard does not
@@ -924,7 +933,20 @@ shared (deployer) persistent actor class SneedLock() = this {
         created_at_time = null;
     };
 
-    let result = await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    // Bounded wait (M1). An unknown outcome is safe here: nothing is recorded for the transfer,
+    // and the next token operation of the caller reads the balance again. That read is a later call
+    // to the same ledger, which the IC delivers after this one (calls from one canister to another
+    // arrive in order), so it sees this transfer if it was executed: the locked tokens stay covered.
+    let result = try {
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    } catch (e) {
+      let error = #Err(#GenericError{
+        message = "The ledger call failed (" # Error.message(e) # "); the transfer may or may not have happened: check the wallet balance before retrying";
+        error_code = 3;
+      });
+      log_error(caller, correlation_id, "Transfer outcome unknown. Args: " # debug_show(transfer_args) # ". " # debug_show(error));
+      return error;
+    };
 
     switch (result) {
       case (#Ok(tx_index)) {
@@ -1000,7 +1022,20 @@ shared (deployer) persistent actor class SneedLock() = this {
             transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
         };
 
-        let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
+        // Bounded wait (M1). When the outcome is unknown the pool is asked again where the position
+        // is (a later call to the same pool, delivered after this one): gone from this canister means
+        // the transfer happened; still here means it did not; no answer keeps the claim (the safe side:
+        // a claim on a position that left cannot lock or move anything it does not hold).
+        let result : T.TransferPositionResult = try {
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.transferPosition(this_canister_id(), to, position_id);
+        } catch (e) {
+          log_error(caller, correlation_id, "transferPosition of " # pkey # " failed with an unknown outcome: " # Error.message(e) # "; asking the pool where the position is");
+          switch (await* position_held_by(this_canister_id(), swap_canister_id, position_id)) {
+            case (?false) { #ok(true) };
+            case (?true) { #err(#InternalError("The pool did not answer the transfer (" # Error.message(e) # "); the position is still held by Sneed Lock")) };
+            case null { #err(#InternalError("The pool did not answer the transfer (" # Error.message(e) # ") nor where the position is now; your claim stays: try again later")) };
+          };
+        };
         Map.delete(positions_in_flight, thash, pkey);
 
         // if result is #ok, we can clear the position claim. this code uses the switch keyword.
@@ -1127,6 +1162,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (Map.has(positions_in_flight, thash, position_key(swap_canister_id, position_id))) {
       return #Err({ message = "A withdrawal of this position is in progress" });
     };
+    if (Principal.isAnonymous(to_principal)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here" }) };
 
     // Verify that the caller is the current owner
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
@@ -1217,6 +1253,15 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// owner, or an approved spender), for the logs. Error codes: 3 busy, 7 no gas, 8 expired,
   /// 9 other. Shared by transfer_token_lock_ownership and the NFT transfers.
   private func token_lock_move(caller : Principal, owner : Principal, to_principal : Principal, token_type : T.TokenType, lock_id : T.LockId, correlation_id : Nat, use_tank : Bool, labels : (?Blob, ?Blob)) : async* Result.Result<Text, MoveError> {
+    // To its own owner a move would send the locked tokens from the wallet to itself (a fee) and, if
+    // that transfer's outcome were unknown, leave two records of the lock on one owner, which
+    // reconciliation cannot tell apart. An NFT move between one owner's accounts only relabels.
+    if (to_principal == owner) {
+      return #err({ code = 9; message = "The lock already belongs to " # Principal.toText(owner); transfer_error = null });
+    };
+    if (Principal.isAnonymous(to_principal)) {
+      return #err({ code = 9; message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null });
+    };
     // A lock held by two parties (an earlier transfer's outcome is unknown) moves only once
     // reconciled: moving it again could leave a third copy.
     if (token_lock_records(lock_id).size() > 1) {
@@ -1282,10 +1327,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
         let caller_subaccount = PrincipalToSubaccount(owner);
         let caller_account : T.Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(caller_subaccount); };
-        var caller_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_account);
+        var caller_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_account);
 
         // Get the transfer fee
-        let token_fee = await icrc1_ledger_canister.icrc1_fee();
+        let token_fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_fee();
         Map.set(ledger_fees, phash, token_type, token_fee);
 
         // Calculate total locked balance for this token (this includes the lock being transferred)
@@ -1310,7 +1355,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         if (caller_balance < sum_locked + token_fee) {
           let free_balance = if (caller_balance >= sum_locked) { caller_balance - sum_locked } else { 0 };
           let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
-          let tank_balance = await icrc1_ledger_canister.icrc1_balance_of(tank);
+          let tank_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(tank);
           if (not use_tank or tank_balance < 2 * token_fee) {
             let error = #err({
               code = 7;
@@ -1321,7 +1366,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             return error;
           };
           let hop = try {
-            await icrc1_ledger_canister.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to = caller_account; amount = token_fee; fee = null; memo = null; created_at_time = null });
+            await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to = caller_account; amount = token_fee; fee = null; memo = null; created_at_time = null });
           } catch (e) {
             let error = #err({ code = 9; message = "The gas tank's fee transfer failed: " # Error.message(e); transfer_error = null });
             log_error(caller, correlation_id, debug_show(error));
@@ -1371,7 +1416,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         // temporarily over-locking the other until expiry. Never leave either
         // side's tokens unlocked.
         let transfer_result = try {
-          await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_transfer(transfer_args);
         } catch e {
           let not_executed = switch (Error.code(e)) {
             case (#system_fatal or #system_transient or #destination_invalid or #canister_error) { true };
@@ -1517,9 +1562,9 @@ shared (deployer) persistent actor class SneedLock() = this {
       let l = actor (Principal.toText(ledger)) : Icrc1Ledger;
       let wallet = func(p : Principal) : T.Account { { owner = this_canister_id(); subaccount = ?Blob.fromArray(PrincipalToSubaccount(p)) } };
       let (bal1, bal2, fee) = try {
-        let b1 = await l.icrc1_balance_of(wallet(p1));
-        let b2 = await l.icrc1_balance_of(wallet(p2));
-        let f = await l.icrc1_fee();
+        let b1 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(wallet(p1));
+        let b2 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(wallet(p2));
+        let f = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_fee();
         (b1, b2, f);
       } catch (e) {
         return #Err("The ledger did not answer (" # Error.message(e) # "); nothing changed, please retry");
@@ -1547,7 +1592,7 @@ shared (deployer) persistent actor class SneedLock() = this {
               (m.from, "both wallets cover the lock; the sender cannot pay a resubmission: kept by the original owner")
             } else {
               let r = try {
-                await l.icrc1_transfer({ from_subaccount = wallet(m.from).subaccount; to = wallet(m.to); amount = m.amount; fee = null; memo = ?m.memo; created_at_time = ?m.created_at_time });
+                await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_transfer({ from_subaccount = wallet(m.from).subaccount; to = wallet(m.to); amount = m.amount; fee = null; memo = ?m.memo; created_at_time = ?m.created_at_time });
               } catch (e) {
                 return #Err("Resubmitting the transfer failed (" # Error.message(e) # "); nothing changed here, please retry (the ledger deduplicates it)");
               };
@@ -1615,6 +1660,20 @@ shared (deployer) persistent actor class SneedLock() = this {
     Buffer.toArray(out);
   };
 
+  /// Whether the pool lists the position under `owner`: ?true / ?false, or null when the pool does
+  /// not answer (or answers an error).
+  private func position_held_by(owner : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async* ?Bool {
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+      getUserPositionIdsByPrincipal(principal : Principal) : async GetUserPositionIdsByPrincipalResult;
+    };
+    try {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPositionIdsByPrincipal(owner)) {
+        case (#ok(ids)) { ?(Array.find<Nat>(ids, func(i) { i == position_id }) != null) };
+        case (#err(_)) { null };
+      };
+    } catch (_) { null };
+  };
+
   private func verify_position_ownership(caller : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async Bool {
 
       try 
@@ -1624,7 +1683,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             getUserPositionIdsByPrincipal(principal : Principal) : async GetUserPositionIdsByPrincipalResult;
         };
 
-        switch (await swap_canister.getUserPositionIdsByPrincipal(caller)) {
+        switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPositionIdsByPrincipal(caller)) {
           case (#ok(userPositionIds)) {
             for (userPositionId in userPositionIds.vals()) {
               if (position_id == userPositionId) { 
@@ -1647,6 +1706,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
   /// to period + delay, and the tokens stay locked until the lock has dissolved.
   public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async CreateLockResult {
+      if (Principal.isAnonymous(caller)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null }) };
       if (not rate_take(caller, "create_lock")) { return #Err({ message = rate_limited_text("create_lock"); transfer_error = null }) };
       // Serialized with every other token operation of the caller (the balance checked here
       // must still be there when the lock is recorded after the fee check's awaits) and with
@@ -1711,7 +1771,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           icrc1_balance_of(account : Account) : async Nat;
       };
 
-      let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+      let token_balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
       if (token_balance < amount) {
           let error = #Err({
             message = "Insufficient balance to lock for caller: " # debug_show(caller) 
@@ -1751,7 +1811,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
 
       // Step 1: Verify ICP funds are available (balance check only)
-      let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false);
+      let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false, if (icrc1_ledger_canister_id == Principal.fromText(ICP_LEDGER_ID)) { amount } else { 0 });
       let fee_and_tier = switch (icp_verify_result) {
           case (#Err(e)) {
             let create_lock_error : CreateLockError = {
@@ -1812,24 +1872,70 @@ shared (deployer) persistent actor class SneedLock() = this {
       return #Ok(lock.lock_id);
   };
 
-  /// Null when `token0` and `token1` are the pool's token0 and token1 (its metadata), in that
-  /// order; else why not (also when the pool cannot be asked).
-  private func pool_tokens_refusal(pool_id : Principal, token0 : Principal, token1 : Principal) : async* ?Text {
-    let pool = actor (Principal.toText(pool_id)) : actor {
-      metadata : () -> async { #ok : { token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text } }; #err : T.SwapCanisterError };
-    };
-    let meta = try { await pool.metadata() } catch (e) {
-      return ?("Could not read the pool's tokens (metadata): " # Error.message(e));
-    };
-    switch (meta) {
-      case (#err(e)) { ?("Could not read the pool's tokens (metadata): " # debug_show(e)) };
-      case (#ok(m)) {
-        if (m.token0.address == Principal.toText(token0) and m.token1.address == Principal.toText(token1)) { null }
-        else {
-          ?("token0/token1 must be the pool's own, in its order: token0 = " # m.token0.address # ", token1 = " # m.token1.address)
+  // ICPSwap pools (audit 2026-11-02, H2). A pool's own metadata proves nothing: anyone can deploy a
+  // canister that answers like a pool and names real tokens. The ICPSwap SwapFactory is the
+  // authority: a pool is genuine when the factory's getPool for the pool's token pair and fee
+  // answers that very canister id. Verified pools are kept (one factory call per new pool); new
+  // position locks and liquidity additions are refused on any other pool.
+  transient let ICPSWAP_FACTORY_ID : Text = "4mmnk-kiaaa-aaaag-qbllq-cai";
+  public type VerifiedPool = { token0 : Principal; token1 : Principal; fee : Nat; verified_at : Nat64 };
+  stable var verified_pools = Map.new<Principal, VerifiedPool>();
+
+  /// Public: the pool's tokens and fee as the ICPSwap factory confirmed them, when Sneed Lock has
+  /// verified the pool (null = not verified yet, or not a genuine ICPSwap pool).
+  public query func get_verified_pool(pool : Principal) : async ?VerifiedPool { Map.get(verified_pools, phash, pool) };
+
+  /// Null when `pool_id` is a genuine ICPSwap pool (the factory confirms it, or did before) and,
+  /// with `tokens`, they are the pool's token0 and token1 in that order; else why not (also when
+  /// the pool or the factory cannot be asked).
+  private func pool_refusal(pool_id : Principal, tokens : ?(Principal, Principal)) : async* ?Text {
+    let vp : VerifiedPool = switch (Map.get(verified_pools, phash, pool_id)) {
+      case (?v) v;
+      case null {
+        let pool = actor (Principal.toText(pool_id)) : actor {
+          metadata : () -> async { #ok : { token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text }; fee : Nat }; #err : T.SwapCanisterError };
         };
+        let meta = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.metadata() } catch (e) {
+          return ?("Could not read the pool's tokens (metadata): " # Error.message(e));
+        };
+        let m = switch (meta) {
+          case (#err(e)) { return ?("Could not read the pool's tokens (metadata): " # debug_show(e)) };
+          case (#ok(m)) m;
+        };
+        let factory = actor (ICPSWAP_FACTORY_ID) : actor {
+          getPool : shared query ({ token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text }; fee : Nat }) -> async { #ok : { canisterId : Principal }; #err : T.SwapCanisterError };
+        };
+        let answer = try {
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) factory.getPool({ token0 = m.token0; token1 = m.token1; fee = m.fee });
+        } catch (e) {
+          return ?("Could not ask the ICPSwap factory about this pool: " # Error.message(e) # "; please retry");
+        };
+        switch (answer) {
+          case (#ok(p)) {
+            if (p.canisterId != pool_id) {
+              return ?("Not a genuine ICPSwap pool: the ICPSwap factory's pool for " # m.token0.address # " / " # m.token1.address # " (fee " # Nat.toText(m.fee) # ") is " # Principal.toText(p.canisterId) # ", not " # Principal.toText(pool_id));
+            };
+          };
+          case (#err(e)) {
+            return ?("Not a genuine ICPSwap pool: the ICPSwap factory has no pool for " # m.token0.address # " / " # m.token1.address # " (fee " # Nat.toText(m.fee) # "): " # debug_show(e));
+          };
+        };
+        // the factory vouches for the pool, so its token addresses are principals
+        let v : VerifiedPool = { token0 = Principal.fromText(m.token0.address); token1 = Principal.fromText(m.token1.address); fee = m.fee; verified_at = NowAsNat64() };
+        Map.set(verified_pools, phash, pool_id, v);
+        log_info(pool_id, get_next_correlation_id(), "Pool " # Principal.toText(pool_id) # " verified with the ICPSwap factory: " # debug_show(v));
+        v;
       };
     };
+    switch (tokens) {
+      case (?(token0, token1)) {
+        if (vp.token0 != token0 or vp.token1 != token1) {
+          return ?("token0/token1 must be the pool's own, in its order: token0 = " # Principal.toText(vp.token0) # ", token1 = " # Principal.toText(vp.token1));
+        };
+      };
+      case null {};
+    };
+    null;
   };
 
   public shared ({ caller }) func create_position_lock(
@@ -1840,22 +1946,28 @@ shared (deployer) persistent actor class SneedLock() = this {
     token0 : T.TokenType,
     token1 : T.TokenType,
     dissolve_delay : ?Nat64) : async T.CreateLockResult {
+      if (Principal.isAnonymous(caller)) { return #Err({ message = "The anonymous principal is everyone's: it cannot own a lock or a position here"; transfer_error = null }) };
       if (not rate_take(caller, "create_position_lock")) { return #Err({ message = rate_limited_text("create_position_lock"); transfer_error = null }) };
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Creating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
       // One lock creation (or payment-balance withdrawal) per caller at a time: the lock fee is
       // verified before awaits and charged after them, so concurrent creates could each pass
       // the checks and make two locks with two fees.
-      if (Map.has(payment_ops_in_flight, phash, caller)) {
-        let error = #Err({ message = "A lock creation or payment withdrawal is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
+      // When the payment subaccount is the caller's wallet (M2), the fee comes from the account
+      // their token operations use: those are excluded meanwhile, as in create_lock.
+      let is_wallet = payment_is_wallet(caller);
+      if (Map.has(payment_ops_in_flight, phash, caller) or (is_wallet and is_token_op_locked(caller))) {
+        let error = #Err({ message = "A lock creation, token operation or payment withdrawal is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
         log_error(caller, correlation_id, debug_show(error));
         return error;
       };
       Map.set(payment_ops_in_flight, phash, caller, ());
+      if (is_wallet) { lock_token_op(caller) };
       let result = try {
         await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1, dissolve_delay);
       } finally {
         Map.delete(payment_ops_in_flight, phash, caller);
+        if (is_wallet) { unlock_token_op(caller) };
       };
       switch (result) {
         case (#Ok(_)) {
@@ -1989,9 +2101,10 @@ shared (deployer) persistent actor class SneedLock() = this {
               case (?token1_value) { token1_value; };
             };
 
-            // The tokens must be the pool's own, in its order: they are stored on the lock and
-            // fee claims and liquidity additions use them to talk to the ledgers.
-            switch (await* pool_tokens_refusal(swap_canister_id, token0_value, token1_value)) {
+            // The pool must be a genuine ICPSwap pool (the factory confirms it) and the tokens its
+            // own, in its order: they are stored on the lock and fee claims and liquidity additions
+            // use them to talk to the ledgers.
+            switch (await* pool_refusal(swap_canister_id, ?(token0_value, token1_value))) {
               case (?why) {
                 log_error(caller, correlation_id, why);
                 return #Err({ message = why; transfer_error = null });
@@ -2000,7 +2113,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             };
 
             // Step 1: Verify ICP funds are available (balance check only)
-            let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true);
+            let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true, 0);
             let fee_and_tier = switch (icp_verify_result) {
                 case (#Err(e)) {
                   return #Err({
@@ -2375,16 +2488,9 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   /// Every ACTIVE record of this lock id. More than one means a transfer whose outcome was
   /// unknown left it on both owners pending reconciliation (transfer_token_lock_ownership).
+  /// Read through the owner index (token_lock_index), not a scan of every owner's locks.
   private func token_lock_records(lock_id : T.LockId) : [(Principal, TokenType, Lock)] {
-    var out = List.nil<(Principal, TokenType, Lock)>();
-    for ((owner, token_locks_map) in state.principal_token_locks.entries()) {
-      for ((token_type, locks_list) in token_locks_map.entries()) {
-        for (lock in List.toIter(locks_list)) {
-          if (lock.lock_id == lock_id) { out := List.push((owner, token_type, lock), out) };
-        };
-      };
-    };
-    List.toArray(out);
+    token_lock_records_indexed(lock_id);
   };
 
   private func position_lock_records(lock_id : T.LockId) : [(Principal, T.SwapCanisterId, T.PositionLock)] {
@@ -2745,10 +2851,10 @@ shared (deployer) persistent actor class SneedLock() = this {
               icrc1_decimals : shared query () -> async Nat8;
               icrc1_fee : shared query () -> async Nat;
             };
-            let sym = await ledger.icrc1_symbol();
+            let sym = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_symbol();
             if (sym.size() > 0 and sym.size() <= 32) { Map.set(ledger_symbols, phash, l, sym) };
-            Map.set(ledger_decimals, phash, l, await ledger.icrc1_decimals());
-            Map.set(ledger_fees, phash, l, await ledger.icrc1_fee());
+            Map.set(ledger_decimals, phash, l, await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_decimals());
+            Map.set(ledger_fees, phash, l, await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee());
           } catch (_) {};
         };
       };
@@ -3009,11 +3115,11 @@ shared (deployer) persistent actor class SneedLock() = this {
         icrc1_transfer : shared (TransferArgs) -> async T.TransferResult;
       };
       let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
-      let balance = await l.icrc1_balance_of(tank);
-      let fee = await l.icrc1_fee();
+      let balance = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_balance_of(tank);
+      let fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_fee();
       Map.set(ledger_fees, phash, ledger, fee);
       if (balance <= fee) { return #Err("The gas tank holds " # Nat.toText(balance) # ", not more than one ledger fee (" # Nat.toText(fee) # ")") };
-      switch (await l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
         case (#Ok(i)) {
           icrc3_add<system>("sneedlock_gas_withdraw", [
             ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
@@ -4133,7 +4239,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Query: Get payment balance for a user
-  public func getPaymentBalance(user : Principal) : async Nat {
+  // An update call that calls the ICP ledger: rate-limited per caller (audit 2026-11-02, LOW), so
+  // a script cannot make this canister pay for an endless stream of ledger calls.
+  public shared ({ caller }) func getPaymentBalance(user : Principal) : async Nat {
+    if (not rate_take(caller, "payment_balance")) { throw Error.reject(rate_limited_text("payment_balance")) };
     let subaccount = userPaymentSubaccount(user);
     let icpLedger = actor(ICP_LEDGER_ID) : actor {
       icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
@@ -4156,10 +4265,12 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Get effective lock fee for a user (based on premium status and lock type)
-  public func getEffectiveLockFee(user : Principal, is_position_lock : Bool) : async {
+  // An update call that may call Sneed Premium: rate-limited per caller like getPaymentBalance.
+  public shared ({ caller }) func getEffectiveLockFee(user : Principal, is_position_lock : Bool) : async {
     fee_e8s : Nat64;
     is_premium : Bool;
   } {
+    if (not rate_take(caller, "effective_fee")) { throw Error.reject(rate_limited_text("effective_fee")) };
     let is_premium = await* checkUserPremium(user);
     // the lowest applicable price, special prices included (capped to the Nat64 of this answer)
     let (fee, _) = effectiveLockFee(user, is_premium, is_position_lock);
@@ -4268,7 +4379,23 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Collect ICP lock fee from user's payment subaccount
   // Verify that user has sufficient ICP in payment subaccount (balance check only)
   // Returns the fee amount if sufficient, or error if insufficient
-  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : (Nat, SP.Tier); #Err : Text } {
+  // For ~1/256 of principals the payment subaccount IS their Sneed wallet subaccount (byte 23 of
+  // the wallet subaccount is already 0x50): the ICP they locked sits in the same account, so the fee
+  // may only come from what is not locked there (audit 2026-11-02, M2; as withdraw_payment_balance).
+  private func payment_is_wallet(p : Principal) : Bool {
+    userPaymentSubaccount(p) == Blob.fromArray(PrincipalToSubaccount(p));
+  };
+
+  /// ICP locked in `p`'s payment subaccount: their ICP token locks when it is their wallet, else 0.
+  private func locked_in_payment_subaccount<system>(p : Principal, correlation_id : Nat) : Nat {
+    if (not payment_is_wallet(p)) { return 0 };
+    clear_expired_locks_for_principal<system>(p, correlation_id);
+    get_summed_locks_from_principal_and_token(p, Principal.fromText(ICP_LEDGER_ID));
+  };
+
+  /// `pending_icp_lock`: ICP about to be locked by the call verifying the fee (a token lock of ICP),
+  /// which must stay in the account too.
+  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool, pending_icp_lock : Nat) : async* { #Ok : (Nat, SP.Tier); #Err : Text } {
     // Check premium status and get effective fee (the lowest applicable price, spec/special_prices.md)
     let is_premium = await* checkUserPremium(caller);
     let (fee_nat, tier) = effectiveLockFee(caller, is_premium, is_position_lock);
@@ -4290,9 +4417,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       subaccount = ?subaccount;
     });
     
-    if (balance < fee_nat) {
-      log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(balance));
-      return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(balance) # " e8s");
+    let locked = if (payment_is_wallet(caller)) { locked_in_payment_subaccount<system>(caller, correlation_id) + pending_icp_lock } else { 0 };
+    let available = if (balance > locked) { balance - locked } else { 0 };
+    if (available < fee_nat) {
+      let lockedText = if (locked > 0) { " (balance " # Nat.toText(balance) # " e8s, of which " # Nat.toText(locked) # " e8s are locked)" } else { "" };
+      log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(available) # lockedText);
+      return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(available) # " e8s" # lockedText);
     };
     
     log_info(caller, correlation_id, "ICP payment verified: " # Nat.toText(fee_nat) # " e8s available (" # SP.tierText(tier) # " price)");
@@ -4327,6 +4457,20 @@ shared (deployer) persistent actor class SneedLock() = this {
       case null { this_canister_id() };
     };
     let transfer_amount = if (fee_nat > icp_fee_nat) { fee_nat - icp_fee_nat } else { 0 };
+    if (transfer_amount > 0 and payment_is_wallet(caller)) {
+      // The account also holds locked ICP: the fee only from what is not locked, read again now
+      // (the lock just created may itself be an ICP lock).
+      let reader = actor (ICP_LEDGER_ID) : actor { icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat };
+      let balance = try { await reader.icrc1_balance_of({ owner = this_canister_id(); subaccount = ?subaccount }) } catch (e) {
+        log_error(caller, correlation_id, "Lock fee not charged: reading the payment balance failed: " # Error.message(e));
+        return #Err("Reading the payment balance failed: " # Error.message(e));
+      };
+      let locked = locked_in_payment_subaccount<system>(caller, correlation_id);
+      if (balance < locked + fee_nat) {
+        log_error(caller, correlation_id, "Lock fee not charged: it would take locked ICP (balance " # Nat.toText(balance) # ", locked " # Nat.toText(locked) # ", fee " # Nat.toText(fee_nat) # ")");
+        return #Err("The fee would take locked ICP");
+      };
+    };
     if (transfer_amount > 0) {
       let transfer_result = await icpLedger.icrc1_transfer({
         to = { owner = recipient_owner; subaccount = icp_fee_recipient_subaccount };
@@ -4490,9 +4634,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     // The pool charges the ledger fee on delivery and drops any amount at or
     // below the fee, so only claim when at least one side is worth delivering.
     let (token0_fee, token1_fee, tokens_owed0, tokens_owed1) = try {
-      let fee0 = await token0_ledger.icrc1_fee();
-      let fee1 = await token1_ledger.icrc1_fee();
-      switch (await swap_canister.getUserPosition(position_id)) {
+      let fee0 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) token0_ledger.icrc1_fee();
+      let fee1 = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) token1_ledger.icrc1_fee();
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserPosition(position_id)) {
         case (#ok(info)) { (fee0, fee1, info.tokensOwed0, info.tokensOwed1) };
         case (#err(err)) { return fail("Failed to get position info: " # debug_show(err)) };
       };
@@ -4506,7 +4650,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let subaccount = Blob.fromArray(PrincipalToSubaccount(caller));
     let claim_result = try {
-      await swap_canister.claimToSubaccount({ positionId = position_id; subaccount });
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.claimToSubaccount({ positionId = position_id; subaccount });
     } catch (e) {
       // The pool either rolled the claim back or will still deliver to the
       // owner's subaccount from its own queue; sneed_lock never holds the funds.
@@ -4640,7 +4784,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let from_subaccount = PrincipalToSubaccount(caller);
     let caller_account : Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount) };
-    let balance = try { await ledger.icrc1_balance_of(caller_account) } catch (e) {
+    let balance = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_balance_of(caller_account) } catch (e) {
       return #Err("Failed to read backend wallet balance for " # debug_show(token) # ": " # Error.message(e));
     };
     // after the balance, as in transfer_tokens: a lock moved to the caller during the await is counted
@@ -4651,7 +4795,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let to : Account = { owner = pool_id; subaccount = ?Blob.fromArray(PrincipalToSubaccount(this_canister_id())) };
     let transfer = try {
-      await ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
+      await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
     } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true,
         "transfer to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # "; if the wallet still holds it, nothing is stranded");
@@ -4664,7 +4808,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     log_info(caller, correlation_id, "Transferred " # debug_show(amount) # " " # debug_show(token) # " to the deposit subaccount of pool " # debug_show(pool_id));
 
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
-    let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
+    let deposited = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
       return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
@@ -4696,7 +4840,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (amount <= fee) { return #Ok((0, amount)) };
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; an admin pays the stranded record with admin_withdraw_stranded_to_owner";
-    let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+    let result = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.withdrawToSubaccount(args) } catch (e) {
       let sid = record_stranded<system>(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
       return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
@@ -4731,7 +4875,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let ledger0 : Icrc1Ledger = actor (Principal.toText(token0));
     let ledger1 : Icrc1Ledger = actor (Principal.toText(token1));
 
-    let (fee0, fee1) = try { (await ledger0.icrc1_fee(), await ledger1.icrc1_fee()) } catch (e) {
+    let (fee0, fee1) = try { (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger0.icrc1_fee(), await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger1.icrc1_fee()) } catch (e) {
       return err("Failed to query ledger fees: " # Error.message(e));
     };
     // Moving a token in costs one fee for the transfer and one inside the pool's
@@ -4741,7 +4885,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     // Quiescence: the live balance must equal the expected resting level.
     let live = try {
-      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
         case (#err(e)) { return err("Failed to read pool balance: " # debug_show(e)) };
       };
@@ -4778,7 +4922,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     // Add liquidity. Whatever the outcome, the leftover is measured from the
     // live balance afterwards, which is exact while the pool lock is held.
     let increase_error : ?Text = try {
-      switch (await pool.increaseLiquidity({ positionId = position_id; amount0Desired = Nat.toText(credited0); amount1Desired = Nat.toText(credited1) })) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.increaseLiquidity({ positionId = position_id; amount0Desired = Nat.toText(credited0); amount1Desired = Nat.toText(credited1) })) {
         case (#ok(_)) { null };
         case (#err(e)) { ?("Pool refused to add liquidity: " # debug_show(e)) };
       };
@@ -4802,7 +4946,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       "Liquidity step done but reading the pool balance failed: " # why # ". ADMIN ACTION: check this canister's balance in pool " # debug_show(pool_id) # " for " # debug_show(caller) # " (stranded records " # ids # ")";
     };
     let after = try {
-      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
         case (#err(e)) { return err(strand_unmeasured<system>(debug_show(e))) };
       };
@@ -4874,6 +5018,14 @@ shared (deployer) persistent actor class SneedLock() = this {
       #Err(message);
     };
 
+    // Only into a genuine ICPSwap pool (the factory confirms it; locks made before that check may
+    // sit on any pool). Checked first: the checks below then run after this await.
+    switch (get_position_lock(caller, swap_canister_id, position_id)) {
+      case (?l) {
+        switch (await* pool_refusal(swap_canister_id, ?(l.token0, l.token1))) { case (?why) { return err(why) }; case null {} };
+      };
+      case null {};
+    };
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
       return err("Caller does not own position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
     };
@@ -4996,7 +5148,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       getUserUnusedBalance : (principal : Principal) -> async { #ok : { balance0 : Nat; balance1 : Nat }; #err : T.SwapCanisterError };
     };
     try {
-      switch (await swap_canister.getUserUnusedBalance(this_canister_id())) {
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) swap_canister.getUserUnusedBalance(this_canister_id())) {
         case (#ok(balances)) { #Ok(balances) };
         case (#err(err)) { #Err(debug_show(err)) };
       };
@@ -5022,8 +5174,8 @@ shared (deployer) persistent actor class SneedLock() = this {
     let pool : IcpSwapPool = actor (Principal.toText(swap_canister_id));
     let ledger : Icrc1Ledger = actor (Principal.toText(token_ledger));
     try {
-      let fee = await ledger.icrc1_fee();
-      switch (await pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
+      let fee = await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee();
+      switch (await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
         case (#ok(credited)) {
           log_info(caller, correlation_id, "Pool credited " # debug_show(credited));
           icrc3_add<system>("sneedlock_admin_pool_deposit", [
@@ -5107,10 +5259,10 @@ shared (deployer) persistent actor class SneedLock() = this {
       #Err(msg);
     };
     try {
-      let fee = try { await ledger.icrc1_fee() } catch (e) { return fail("reading the ledger fee failed: " # Error.message(e), false) };
+      let fee = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) ledger.icrc1_fee() } catch (e) { return fail("reading the ledger fee failed: " # Error.message(e), false) };
       var to_withdraw = pay;
       if (rec.held_in == #deposit_subaccount) {
-        let deposited = try { await pool.deposit({ token = Principal.toText(rec.ledger); amount = pay; fee }) } catch (e) {
+        let deposited = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.deposit({ token = Principal.toText(rec.ledger); amount = pay; fee }) } catch (e) {
           return fail("pool deposit failed with unknown outcome: " # Error.message(e), true);
         };
         switch (deposited) {
@@ -5129,7 +5281,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
       if (to_withdraw <= fee) { return fail("the amount " # Nat.toText(to_withdraw) # " does not exceed the ledger fee " # Nat.toText(fee), false) };
       let args = { token = Principal.toText(rec.ledger); amount = to_withdraw; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(rec.owner)) };
-      let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+      let result = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.withdrawToSubaccount(args) } catch (e) {
         return fail("pool withdrawal failed with unknown outcome: " # Error.message(e), true);
       };
       switch (result) {
@@ -5319,6 +5471,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     ("create_lock", { capacity = 30; per_minute = 10 }),
     ("create_position_lock", { capacity = 30; per_minute = 10 }),
     ("claim", { capacity = 30; per_minute = 10 }),
+    // update calls that call another canister for a read (the ICP ledger, Sneed Premium)
+    ("payment_balance", { capacity = 60; per_minute = 30 }),
+    ("effective_fee", { capacity = 60; per_minute = 30 }),
   ];
   /// Admin overrides of the defaults (admin_set_rate_limit); capacity 0 = no limit.
   stable var rate_limit_rules = Map.new<Text, RateLimit.Rule>();
@@ -5744,6 +5899,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     #admin_withdraw_stranded_to_owner : Any;
     #reconcile_token_lock : Any;
     #get_uncertain_token_locks : Any;
+    #get_verified_pool : Any;
     #add_liquidity_to_locked_position : Any;
     #admin_add_admin : Any;
     #admin_clear_completed_claim_requests : Any;
@@ -5898,6 +6054,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         or #get_token_lock_by_id _
         or #get_token_locks _
         or #get_uncertain_token_locks _
+        or #get_verified_pool _
         or #has_expired_locks _
         or #has_expired_position_locks _
         or #icrc10_supported_standards _
@@ -5943,6 +6100,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#create_lock _) rate_allows(caller, "create_lock") and arg.size() <= IngressGuard.SMALL_ARG;
       case (#create_position_lock _) rate_allows(caller, "create_position_lock") and arg.size() <= IngressGuard.SMALL_ARG;
       case (#claim_position_fees _ or #request_claim_and_withdraw _) rate_allows(caller, "claim") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#getPaymentBalance _) rate_allows(caller, "payment_balance") and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#getEffectiveLockFee _) rate_allows(caller, "effective_fee") and arg.size() <= IngressGuard.SMALL_ARG;
       // ICRC-7/37 batches: at most icrc7_max_update_batch_size items (the memos inside are checked
       // per item by the method, against icrc7_max_memo_size)
       case (#icrc7_transfer f) nftBatchOk(arg, f().size());

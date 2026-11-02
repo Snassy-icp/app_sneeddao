@@ -18,6 +18,8 @@ import { createSneedexActor } from '../utils/SneedexUtils';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { getAllPositionLocks, getAllTokenLocks } from '../utils/sneedLockLists';
+import { activeLockTuples } from '../utils/sneedLockActive';
+import { loadFactoryPoolIndex, isFactoryVerifiedPool } from '../utils/icpswapPoolVerify';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -440,10 +442,11 @@ function Products() {
             
             // Fetch all locks (whitelisted tokens from shared cache)
             console.time('Fetch locks and tokens');
-            const [tokenLocks, positionLocks] = await Promise.all([
+            // active locks only: expired locks stay listed until archived and lock nothing (H3)
+            const [tokenLocks, positionLocks] = (await Promise.all([
                 getAllTokenLocks(sneedLockActor),
                 getAllPositionLocks(sneedLockActor)
-            ]);
+            ])).map((l) => activeLockTuples(l));
             console.timeEnd('Fetch locks and tokens');
             console.log('Token locks count:', tokenLocks.length);
             console.log('Position locks count:', positionLocks.length);
@@ -535,6 +538,10 @@ function Products() {
                 fetchPositionDetails(Principal.fromText(canisterId))
             );
             
+            // Only pools the ICPSwap factory confirms count towards the TVL (audit H2): anyone can
+            // deploy a pool look-alike that reports real tokens.
+            const factoryPools = await loadFactoryPoolIndex();
+
             // Process each canister's data as it comes in
             for (let i = 0; i < canisterIds.length; i++) {
                 const canisterId = canisterIds[i];
@@ -544,6 +551,10 @@ function Products() {
                 // Wait for this canister's data
                 const canisterData = await canisterDetailsPromises[i];
                 if (!canisterData || canisterData.error) continue;
+                if (!isFactoryVerifiedPool(factoryPools, canisterId, locks[0]?.[2]?.token0, locks[0]?.[2]?.token1)) {
+                    if (isLastCanister) setIsLastPositionProcessed(true);
+                    continue;
+                }
 
                 let canisterValue = 0;
                 for (const lock of locks) {
