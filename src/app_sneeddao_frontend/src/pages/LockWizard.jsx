@@ -22,6 +22,7 @@ import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 import { icrc1Transfer } from '../utils/icrcTx';
+import { verifyIcpswapPool } from '../utils/icpswapPoolVerify';
 
 // Custom CSS for animations
 const customStyles = `
@@ -922,6 +923,13 @@ function LockWizard() {
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
         const expiryBigInt = lockEndNs();
+
+        // Sneed Lock only locks positions in pools the ICPSwap factory confirms (audit H2). Check
+        // first, so a position is never moved into Sneed Lock for a lock that will be refused.
+        const poolCheck = await verifyIcpswapPool(selectedPosition.swapCanisterId, selectedPosition.token0, selectedPosition.token1);
+        if (poolCheck.verified !== true) {
+            throw new Error(`This pool cannot be locked: ${poolCheck.reason}.`);
+        }
         
         if (selectedPosition.frontendOwnership) {
             // Position is owned by user - need to claim and transfer

@@ -14,6 +14,7 @@ import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
+import { verifyIcpswapPool } from './utils/icpswapPoolVerify';
 import Header from './components/Header';
 import LockDissolvePanel from './components/LockDissolvePanel';
 import LockNftPanel from './components/LockNftPanel';
@@ -194,6 +195,8 @@ function Lock() {
             const token1 = Principal.fromText(icrc1_ledger1);
 
             const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister_id);
+            // Is this a genuine ICPSwap pool? Only the ICPSwap factory can say (audit H2).
+            const poolCheck = await verifyIcpswapPool(swap_canister_id, icrc1_ledger0, icrc1_ledger1);
 
             // Extract token metadata
             const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
@@ -270,6 +273,8 @@ function Lock() {
 
             const positionDetailed = {
                 swap_canister_id,
+                poolVerified: poolCheck.verified === true,
+                poolVerifyReason: poolCheck.reason,
                 swapCanisterId: swap_canister_id,
                 token0,
                 token1,
@@ -375,6 +380,12 @@ function Lock() {
                 )}
 
                 {!loading && !error && lockType === 'position' && position && positionDetails && (
+                    <>
+                    {position.poolVerified === false && (
+                        <div role="alert" style={{ margin: '0 0 12px 0', padding: '10px 14px', borderRadius: 10, border: `1px solid ${theme.colors.warning}66`, background: `${theme.colors.warning}14`, color: theme.colors.primaryText ?? theme.colors.text, fontSize: '0.9rem', lineHeight: 1.5 }}>
+                            <strong style={{ color: theme.colors.warning }}>Unverified pool.</strong> {position.poolVerifyReason}. A lock here proves nothing about real liquidity: the pool canister reports its own tokens and amounts. It is not counted in any TVL.
+                        </div>
+                    )}
                     <PositionCard
                         position={position}
                         positionDetails={positionDetails}
@@ -384,6 +395,7 @@ function Lock() {
                         defaultExpanded={true}
                         defaultLocksExpanded={true}
                     />
+                    </>
                 )}
             </main>
         </div>

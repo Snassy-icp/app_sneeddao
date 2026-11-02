@@ -14,6 +14,7 @@ import './Wallet.css';
 import Header from './components/Header';
 import { getLedgerTokenLocks, getSwapPositionLocks, getTokenPositionLocks } from './utils/sneedLockLists';
 import { isLockActive, activeLockTuples, sumActiveAmounts } from './utils/sneedLockActive';
+import { loadFactoryPoolIndex, poolVerdict } from './utils/icpswapPoolVerify';
 
 function TokenLocksOverview() {
     const [token, setToken] = useState(null);
@@ -143,6 +144,8 @@ function TokenLocksOverview() {
                     try {
                         // active position locks only (expired ones stay in the list until archived)
                         const rawPositionLocks = activeLockTuples(await getTokenPositionLocks(sneedLockActor, ledgerPrincipal));
+                        // the ICPSwap factory's pool list: only pools it confirms are genuine (audit H2)
+                        const factoryPools = await loadFactoryPoolIndex();
                         const positionLocksWithDetails = await Promise.all(
                             rawPositionLocks.map(async ([principal, swapCanisterId, positionLock]) => {
                                 try {
@@ -209,8 +212,12 @@ function TokenLocksOverview() {
                                     // Get position lock info using lockFromLocks utility
                                     const lock = lockFromLocks(position.id, position_locks);
 
+                                    const poolCheck = poolVerdict(factoryPools, swapCanisterId, token0, token1);
+
                                     return {
                                         swap_canister_id: swapCanisterId.toText(),
+                                        poolVerified: poolCheck.verified === true,
+                                        poolVerifyReason: poolCheck.reason,
                                         token0,
                                         token1,
                                         token0Symbol,
@@ -244,8 +251,9 @@ function TokenLocksOverview() {
                         const validPositionLocks = positionLocksWithDetails.filter(lock => lock !== null);
                         setPositionLocks(validPositionLocks);
 
-                        // Calculate position locks TVL
-                        const positionLocksValue = validPositionLocks.reduce((sum, position) => {
+                        // Calculate position locks TVL: genuine ICPSwap pools only (unverified pools
+                        // are shown, labelled, but their tokens prove nothing)
+                        const positionLocksValue = validPositionLocks.filter((p) => p.poolVerified).reduce((sum, position) => {
                             const token0AmountStr = position.details.token0Amount.toString();
                             const token0Amount = parseFloat(token0AmountStr);
                             const token0DecimalNum = Number(position.token0Decimals);

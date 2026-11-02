@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
 import { isUntilDissolved } from './utils/lockTime';
+import { UNVERIFIED_POOL_LABEL } from './utils/icpswapPoolMatch';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaArrowUp, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
 
@@ -214,7 +215,18 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                 <div className="header-content-column">
                     {/* Row 1: Token pair name + position ID, USD total */}
                     <div className="header-row-1">
-                        <span className="token-name">{position.token0Symbol}/{position.token1Symbol} #{positionDetails.positionId.toString()}</span>
+                        <span className="token-name">
+                            {position.token0Symbol}/{position.token1Symbol} #{positionDetails.positionId.toString()}
+                            {position.poolVerified === false && (
+                                <span
+                                    title={`${position.poolVerifyReason || 'The ICPSwap factory does not confirm this pool.'} Its tokens and amounts are whatever the pool canister says; it is left out of TVL and totals.`}
+                                    style={{ marginLeft: 8, fontSize: '11px', fontWeight: 600, padding: '1px 8px', borderRadius: '999px', cursor: 'help', verticalAlign: 'middle',
+                                        background: `${theme.colors.warning}22`, color: theme.colors.warning, border: `1px solid ${theme.colors.warning}66` }}
+                                >
+                                    {UNVERIFIED_POOL_LABEL}
+                                </span>
+                            )}
+                        </span>
                         <span className="token-usd-value">
                             {denomFormatValue(getPositionTVL(position, positionDetails, hideUnclaimedFees))}
                         </span>
