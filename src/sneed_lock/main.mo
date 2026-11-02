@@ -891,14 +891,17 @@ shared (deployer) persistent actor class SneedLock() = this {
     lock_token_op(caller);
 
     try {
-    // make sure to clean out any expired locks
-    clear_expired_locks_for_principal<system>(caller, correlation_id);
-
-    let sum_locked = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
-
     let token_fee = await icrc1_ledger_canister.icrc1_fee();
     let caller_subaccount_on_this : T.Account =  { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount); };
     let token_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_subaccount_on_this);
+
+    // The locked sum is read AFTER the balance, never before: a token lock moved to the caller
+    // meanwhile (its owner's transfer_token_lock_ownership, which this caller's guard does not
+    // exclude) is recorded here before its tokens are sent, so a balance that already holds
+    // those tokens is always checked against a sum that includes their lock. Read before the
+    // awaits, the new tokens counted as free and the recipient could withdraw a lock at once.
+    clear_expired_locks_for_principal<system>(caller, correlation_id);
+    let sum_locked = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
     let full_amount = amount + token_fee;
     if (token_balance < full_amount + sum_locked) {
         let error = #Err(#GenericError{
@@ -969,6 +972,24 @@ shared (deployer) persistent actor class SneedLock() = this {
       return error;
     };
 
+    // Only the position's claimant may withdraw it (checked again after the await below).
+    if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
+      let error = #err(#InternalError("Failed to validate claim when transferring position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " to " # debug_show(to)));
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
+
+    // The position is marked in flight in the same message as the lock checks above, before
+    // the first await: create_position_lock re-checks this mark after its own awaits, so no
+    // lock can be created while the withdrawal runs. (Marked only after the ownership await, a
+    // lock created in that window stayed "active" on a position that then left.)
+    let pkey = position_key(swap_canister_id, position_id);
+    if (Map.has(positions_in_flight, thash, pkey)) {
+      return #err(#InternalError("A withdrawal of this position is already in progress"));
+    };
+    Map.set(positions_in_flight, thash, pkey, ());
+    try {
+
     // Ensure the position is currently controlled by this canister
     if (await verify_position_ownership(this_canister_id(), swap_canister_id, position_id)) {
 
@@ -979,15 +1000,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
         };
 
-        let pkey = position_key(swap_canister_id, position_id);
-        if (Map.has(positions_in_flight, thash, pkey)) {
-          return #err(#InternalError("A withdrawal of this position is already in progress"));
-        };
-        Map.set(positions_in_flight, thash, pkey, ());
-        let result = try { await swap_canister.transferPosition(this_canister_id(), to, position_id) } catch (e) {
-          Map.delete(positions_in_flight, thash, pkey);
-          throw e;
-        };
+        let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
         Map.delete(positions_in_flight, thash, pkey);
 
         // if result is #ok, we can clear the position claim. this code uses the switch keyword.
@@ -1021,6 +1034,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     let error = #err(#InternalError("Failed to verify ownership when transferring position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " to " # debug_show(to)));
     log_error(caller, correlation_id, debug_show(error));
     return error;
+    } finally {
+      Map.delete(positions_in_flight, thash, pkey);
+    };
   };
 
   private func clear_position_claim(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : () {
@@ -4624,10 +4640,11 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let from_subaccount = PrincipalToSubaccount(caller);
     let caller_account : Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount) };
-    let sum_locked = get_summed_locks_from_principal_and_token(caller, token);
     let balance = try { await ledger.icrc1_balance_of(caller_account) } catch (e) {
       return #Err("Failed to read backend wallet balance for " # debug_show(token) # ": " # Error.message(e));
     };
+    // after the balance, as in transfer_tokens: a lock moved to the caller during the await is counted
+    let sum_locked = get_summed_locks_from_principal_and_token(caller, token);
     if (balance < amount + fee + sum_locked) {
       return #Err("Insufficient unlocked balance in backend wallet for " # debug_show(token) # ": balance " # debug_show(balance) # ", locked " # debug_show(sum_locked) # ", needed " # debug_show(amount + fee));
     };
