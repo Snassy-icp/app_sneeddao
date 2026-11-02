@@ -33,3 +33,43 @@ export function sumActiveAmounts(locks, nowMs = Date.now()) {
     for (const l of locks || []) if (isLockActive(l, nowMs)) sum += BigInt(l.amount ?? 0);
     return sum;
 }
+
+/**
+ * The lock tuple [owner, swap, lock] of `positionId` among `positionLocks` (one pool's locks):
+ * its active lock when it has one, else its newest (highest lock id) record, else null.
+ */
+export function pickPositionLock(positionId, positionLocks, nowMs = Date.now()) {
+    const id = BigInt(positionId);
+    let active = null; let newest = null;
+    for (const t of positionLocks || []) {
+        const rec = t?.[2];
+        if (!rec || BigInt(rec.position_id) !== id) continue;
+        if (!newest || BigInt(rec.lock_id) > BigInt(newest[2].lock_id)) newest = t;
+        if (isLockActive(rec, nowMs) && (!active || BigInt(rec.lock_id) > BigInt(active[2].lock_id))) active = t;
+    }
+    return active || newest;
+}
+
+/**
+ * Where a position stands, for display:
+ *  'wallet'        the viewer holds it at the pool (frontendOwnership)
+ *  'locked'        an active lock AND Sneed Lock holds the position at the pool
+ *  'lock-not-held' an active lock record, but the pool says Sneed Lock does not hold the position
+ *  'unlocked'      in Sneed Lock without an active lock (expired, or never locked)
+ *  'not-locked'    held directly by its owner at the pool (ownershipStatus 'match'): NOT locked
+ * `ownershipStatus` ('match' | 'locked' | 'mismatch'), when the page asked the pool, says who
+ * holds it; without it, a position Sneed Lock lists for its owner is taken as held by Sneed Lock.
+ */
+export function positionLockStatus(pd, nowMs = Date.now()) {
+    if (!pd) return 'unlocked';
+    if (pd.frontendOwnership) return 'wallet';
+    const active = isLockActive(pd.lockInfo, nowMs);
+    const s = pd.ownershipStatus;
+    if (s === 'match') return 'not-locked';
+    const held = s === undefined || s === null ? true : s === 'locked';
+    if (active) return held ? 'locked' : 'lock-not-held';
+    return 'unlocked';
+}
+
+/** True only when the position is really locked (see positionLockStatus). */
+export const isPositionEffectivelyLocked = (pd, nowMs = Date.now()) => positionLockStatus(pd, nowMs) === 'locked';

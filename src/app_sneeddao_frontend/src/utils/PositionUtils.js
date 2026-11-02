@@ -1,5 +1,6 @@
 import { computeUsdValue } from './StringUtils';
 import { principalText } from './IdUtils';
+import { pickPositionLock } from './sneedLockActive';
 
 // ICPSwap app links (the old info.icpswap.com swap-scan URLs no longer resolve).
 function getIcpSwapPoolLink(swapCanisterId) {
@@ -24,14 +25,9 @@ const isLockedPosition = (position) => {
     return position.lockInfo !== null;
 };
 
-const lockFromLocks = (positionId, position_locks) => {
-    for (const lock of position_locks) {
-        if (lock[2].position_id === positionId) {
-            return lock;
-        }
-    }
-    return null;
-};
+// The position's active lock when it has one, else its newest record (the lists include
+// expired and archived locks: the first match was often an old one, audit M4).
+const lockFromLocks = (positionId, position_locks) => pickPositionLock(positionId, position_locks);
 
 function getPositionTVL(position, positionDetails, hideUnclaimedFees) {
     // Handle both token0Amount/token1Amount and amount0/amount1 naming conventions

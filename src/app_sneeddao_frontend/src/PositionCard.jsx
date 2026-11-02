@@ -3,6 +3,7 @@ import { formatAmount, getUSD } from './utils/StringUtils';
 import { useDenomination } from './contexts/DenominationContext';
 import { bigDateToReadable, format_duration } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
+import { positionLockStatus, isPositionEffectivelyLocked } from './utils/sneedLockActive';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
@@ -165,15 +166,16 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
     const getLocationStatus = () => {
         if (positionDetails.frontendOwnership) {
             return { text: 'In Your Wallet', color: theme.colors.success, icon: <FaBriefcase size={12} /> };
-        } else if (isLockedPosition(positionDetails)) {
-            const now = new Date();
-            // Convert BigInt nanoseconds to milliseconds for Date
-            const lockExpiry = new Date(Number(positionDetails.lockInfo.expiry / 1000000n));
-            if (lockExpiry > now) {
-                return { text: 'Deposited (Locked)', color: theme.colors.warning, icon: <FaLock size={12} /> };
-            } else {
-                return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: <FaUnlock size={12} /> };
-            }
+        }
+        // Locked = an active lock AND Sneed Lock holds the position at the pool, not the expiry
+        // alone (audit M4).
+        const st = positionLockStatus(positionDetails);
+        if (st === 'locked') {
+            return { text: 'Deposited (Locked)', color: theme.colors.warning, icon: <FaLock size={12} /> };
+        } else if (st === 'lock-not-held') {
+            return { text: 'NOT locked: Sneed Lock does not hold this position', color: theme.colors.error, icon: <FaTimes size={12} /> };
+        } else if (st === 'not-locked') {
+            return { text: 'NOT locked: the owner holds this position directly', color: theme.colors.error, icon: <FaTimes size={12} /> };
         } else {
             return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: <FaUnlock size={12} /> };
         }
@@ -337,7 +339,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                         </span>
                     </div>
                     {/* Row 4: Status icons (if any) */}
-                    {(inRange !== null || isLockedPosition(positionDetails) || (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n)) && (
+                    {(inRange !== null || isPositionEffectivelyLocked(positionDetails) || (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n)) && (
                         <div className="header-row-4" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
                             {inRange !== null && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, padding: '1px 8px', borderRadius: '999px', cursor: 'help',
@@ -347,13 +349,13 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     {inRange ? 'In range' : 'Out of range'}
                                 </span>
                             )}
-                            {isLockedPosition(positionDetails) && (
+                            {isPositionEffectivelyLocked(positionDetails) && (
                                 <span style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     cursor: 'help',
                                     color: theme.colors.mutedText
-                                }} title="Position is locked">
+                                }} title="Position is locked: an active lock, and Sneed Lock holds the position">
                                     <FaLock size={12} />
                                 </span>
                             )}
@@ -1071,25 +1073,25 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     borderRadius: '4px',
                                     fontSize: '12px',
                                                 background: 
-                                                    positionDetails.ownershipStatus === 'match' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
+                                                    positionDetails.ownershipStatus === 'match' ? `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)` :
                                                     positionDetails.ownershipStatus === 'locked' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
                                                     `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
                                     color: 
-                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.success :
+                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.error :
                                                     positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
                                                     theme.colors.error,
                                     display: 'flex',
                                     alignItems: 'center',
                                                 gap: '4px',
                                                 border: `1px solid ${
-                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.success :
+                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.error :
                                                     positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
                                                     theme.colors.error
                                                 }30`
                                 }}>
-                                    {positionDetails.ownershipStatus === 'match' ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Match!</> :
-                                     positionDetails.ownershipStatus === 'locked' ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Match!</> :
-                                     <><FaTimes size={10} style={{ marginRight: '4px' }} /> Mismatch!</>}
+                                    {positionDetails.ownershipStatus === 'match' ? <><FaTimes size={10} style={{ marginRight: '4px' }} /> NOT locked: the owner holds it directly at the pool</> :
+                                     positionDetails.ownershipStatus === 'locked' ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Held by Sneed Lock</> :
+                                     <><FaTimes size={10} style={{ marginRight: '4px' }} /> Not held by Sneed Lock or the lock owner</>}
                                 </span>
                             )}
                                     </span>
