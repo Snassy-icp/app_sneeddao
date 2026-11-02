@@ -17,7 +17,7 @@ Sneed Lock is Sneed DAO's time-locking canister. It holds ICRC-1 tokens and ICPS
 
 ## Authentication
 
-Calls are authorised by the signing principal only; there is nothing else to register. Nothing on-chain is anonymous: locks, owners and the ICRC-3 activity log are public and tied to the principal that signs. A lock belongs to the principal that made it, so a user logged in with another principal sees other locks. Only the owner can move unlocked funds out, act on a position (one claimant per position) or change a lock. Admin methods are for Sneed governance, controllers and listed admins (`get_admin_list`).
+Calls are authorised by the signing principal only; there is nothing else to register. Nothing on-chain is anonymous: locks, owners and the ICRC-3 activity log are public and tied to the principal that signs. A lock belongs to the principal that made it, so a user logged in with another principal sees other locks. Only the owner can move unlocked funds out, act on a position (one claimant per position) or change a lock. Admin methods are for Sneed governance, controllers and listed admins (`get_admin_list`); the DAO runs them by proposal via `dao_admin` (validator `validate_dao_admin`).
 
 ## Fees, transfers and irreversible actions
 
