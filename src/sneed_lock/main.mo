@@ -268,6 +268,13 @@ shared (deployer) persistent actor class SneedLock() = this {
   // ICP Ledger for lock creation fees
   transient let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
   transient let ICP_FEE : Nat64 = 10_000; // 0.0001 ICP
+  // Calls to canisters a caller names (token ledgers, pools) and to the ICPSwap factory are
+  // bounded-wait (audit 2026-11-02, M1): the system answers SYS_UNKNOWN after this many seconds
+  // (300 = the maximum) instead of letting a canister that never answers keep a call open, which
+  // would keep Sneed Lock from stopping, so from being upgraded. Every such call site treats an
+  // unknown outcome safely (see the notes there). The ICP ledger calls of the lock fees and the
+  // payment balance (the NNS ledger by its fixed id) and the Sneed Premium check stay unbounded.
+  transient let UNTRUSTED_CALL_TIMEOUT_S : Nat32 = 300;
 
   // ephemeral state
   transient let state : State = object { 
@@ -1812,24 +1819,70 @@ shared (deployer) persistent actor class SneedLock() = this {
       return #Ok(lock.lock_id);
   };
 
-  /// Null when `token0` and `token1` are the pool's token0 and token1 (its metadata), in that
-  /// order; else why not (also when the pool cannot be asked).
-  private func pool_tokens_refusal(pool_id : Principal, token0 : Principal, token1 : Principal) : async* ?Text {
-    let pool = actor (Principal.toText(pool_id)) : actor {
-      metadata : () -> async { #ok : { token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text } }; #err : T.SwapCanisterError };
-    };
-    let meta = try { await pool.metadata() } catch (e) {
-      return ?("Could not read the pool's tokens (metadata): " # Error.message(e));
-    };
-    switch (meta) {
-      case (#err(e)) { ?("Could not read the pool's tokens (metadata): " # debug_show(e)) };
-      case (#ok(m)) {
-        if (m.token0.address == Principal.toText(token0) and m.token1.address == Principal.toText(token1)) { null }
-        else {
-          ?("token0/token1 must be the pool's own, in its order: token0 = " # m.token0.address # ", token1 = " # m.token1.address)
+  // ICPSwap pools (audit 2026-11-02, H2). A pool's own metadata proves nothing: anyone can deploy a
+  // canister that answers like a pool and names real tokens. The ICPSwap SwapFactory is the
+  // authority: a pool is genuine when the factory's getPool for the pool's token pair and fee
+  // answers that very canister id. Verified pools are kept (one factory call per new pool); new
+  // position locks and liquidity additions are refused on any other pool.
+  transient let ICPSWAP_FACTORY_ID : Text = "4mmnk-kiaaa-aaaag-qbllq-cai";
+  public type VerifiedPool = { token0 : Principal; token1 : Principal; fee : Nat; verified_at : Nat64 };
+  stable var verified_pools = Map.new<Principal, VerifiedPool>();
+
+  /// Public: the pool's tokens and fee as the ICPSwap factory confirmed them, when Sneed Lock has
+  /// verified the pool (null = not verified yet, or not a genuine ICPSwap pool).
+  public query func get_verified_pool(pool : Principal) : async ?VerifiedPool { Map.get(verified_pools, phash, pool) };
+
+  /// Null when `pool_id` is a genuine ICPSwap pool (the factory confirms it, or did before) and,
+  /// with `tokens`, they are the pool's token0 and token1 in that order; else why not (also when
+  /// the pool or the factory cannot be asked).
+  private func pool_refusal(pool_id : Principal, tokens : ?(Principal, Principal)) : async* ?Text {
+    let vp : VerifiedPool = switch (Map.get(verified_pools, phash, pool_id)) {
+      case (?v) v;
+      case null {
+        let pool = actor (Principal.toText(pool_id)) : actor {
+          metadata : () -> async { #ok : { token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text }; fee : Nat }; #err : T.SwapCanisterError };
         };
+        let meta = try { await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) pool.metadata() } catch (e) {
+          return ?("Could not read the pool's tokens (metadata): " # Error.message(e));
+        };
+        let m = switch (meta) {
+          case (#err(e)) { return ?("Could not read the pool's tokens (metadata): " # debug_show(e)) };
+          case (#ok(m)) m;
+        };
+        let factory = actor (ICPSWAP_FACTORY_ID) : actor {
+          getPool : shared query ({ token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text }; fee : Nat }) -> async { #ok : { canisterId : Principal }; #err : T.SwapCanisterError };
+        };
+        let answer = try {
+          await (with timeout = UNTRUSTED_CALL_TIMEOUT_S) factory.getPool({ token0 = m.token0; token1 = m.token1; fee = m.fee });
+        } catch (e) {
+          return ?("Could not ask the ICPSwap factory about this pool: " # Error.message(e) # "; please retry");
+        };
+        switch (answer) {
+          case (#ok(p)) {
+            if (p.canisterId != pool_id) {
+              return ?("Not a genuine ICPSwap pool: the ICPSwap factory's pool for " # m.token0.address # " / " # m.token1.address # " (fee " # Nat.toText(m.fee) # ") is " # Principal.toText(p.canisterId) # ", not " # Principal.toText(pool_id));
+            };
+          };
+          case (#err(e)) {
+            return ?("Not a genuine ICPSwap pool: the ICPSwap factory has no pool for " # m.token0.address # " / " # m.token1.address # " (fee " # Nat.toText(m.fee) # "): " # debug_show(e));
+          };
+        };
+        // the factory vouches for the pool, so its token addresses are principals
+        let v : VerifiedPool = { token0 = Principal.fromText(m.token0.address); token1 = Principal.fromText(m.token1.address); fee = m.fee; verified_at = NowAsNat64() };
+        Map.set(verified_pools, phash, pool_id, v);
+        log_info(pool_id, get_next_correlation_id(), "Pool " # Principal.toText(pool_id) # " verified with the ICPSwap factory: " # debug_show(v));
+        v;
       };
     };
+    switch (tokens) {
+      case (?(token0, token1)) {
+        if (vp.token0 != token0 or vp.token1 != token1) {
+          return ?("token0/token1 must be the pool's own, in its order: token0 = " # Principal.toText(vp.token0) # ", token1 = " # Principal.toText(vp.token1));
+        };
+      };
+      case null {};
+    };
+    null;
   };
 
   public shared ({ caller }) func create_position_lock(
@@ -1989,9 +2042,10 @@ shared (deployer) persistent actor class SneedLock() = this {
               case (?token1_value) { token1_value; };
             };
 
-            // The tokens must be the pool's own, in its order: they are stored on the lock and
-            // fee claims and liquidity additions use them to talk to the ledgers.
-            switch (await* pool_tokens_refusal(swap_canister_id, token0_value, token1_value)) {
+            // The pool must be a genuine ICPSwap pool (the factory confirms it) and the tokens its
+            // own, in its order: they are stored on the lock and fee claims and liquidity additions
+            // use them to talk to the ledgers.
+            switch (await* pool_refusal(swap_canister_id, ?(token0_value, token1_value))) {
               case (?why) {
                 log_error(caller, correlation_id, why);
                 return #Err({ message = why; transfer_error = null });
@@ -4874,6 +4928,14 @@ shared (deployer) persistent actor class SneedLock() = this {
       #Err(message);
     };
 
+    // Only into a genuine ICPSwap pool (the factory confirms it; locks made before that check may
+    // sit on any pool). Checked first: the checks below then run after this await.
+    switch (get_position_lock(caller, swap_canister_id, position_id)) {
+      case (?l) {
+        switch (await* pool_refusal(swap_canister_id, ?(l.token0, l.token1))) { case (?why) { return err(why) }; case null {} };
+      };
+      case null {};
+    };
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
       return err("Caller does not own position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
     };
@@ -5744,6 +5806,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     #admin_withdraw_stranded_to_owner : Any;
     #reconcile_token_lock : Any;
     #get_uncertain_token_locks : Any;
+    #get_verified_pool : Any;
     #add_liquidity_to_locked_position : Any;
     #admin_add_admin : Any;
     #admin_clear_completed_claim_requests : Any;
@@ -5898,6 +5961,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         or #get_token_lock_by_id _
         or #get_token_locks _
         or #get_uncertain_token_locks _
+        or #get_verified_pool _
         or #has_expired_locks _
         or #has_expired_position_locks _
         or #icrc10_supported_standards _

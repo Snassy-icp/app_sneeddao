@@ -456,7 +456,7 @@ for c in sneed_notifications sneed_mon; do
   test -s "$OUT/${c}_preicrc3.wasm"
 done
 rm -rf "$PREV_SRC"
-for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
+for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap MockHang \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget MockCkBtcMinter MockCkEthMinter MockAttSnsGov MockAttOhShii MockAttAssets MockAttTarget MockAttTargetV2 Icrc3Demo; do
   echo "== $c"

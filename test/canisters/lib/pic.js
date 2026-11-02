@@ -41,11 +41,38 @@ export async function createPic() {
   return { pic, appSubnet, nnsSubnet, rootKey };
 }
 
+/// The ICPSwap SwapFactory's mainnet id: Sneed Lock asks it whether a pool is genuine.
+export const ICPSWAP_FACTORY_ID = Principal.fromText('4mmnk-kiaaa-aaaag-qbllq-cai');
+const factoryMockIdl = ({ IDL }) => IDL.Service({
+  register_pool: IDL.Func([IDL.Principal, IDL.Principal, IDL.Principal, IDL.Nat], [], []),
+});
+const factories = new WeakMap(); // pic -> Promise of the MockIcpswapFactory at ICPSWAP_FACTORY_ID
+
+/// The mock ICPSwap factory of this PocketIC instance, installed at its mainnet id on first use.
+export function icpswapFactory(pic) {
+  if (!factories.has(pic)) {
+    factories.set(pic, (async () => {
+      if (!(await pic.canisterExists(ICPSWAP_FACTORY_ID))) {
+        const canisterId = await pic.createCanister({ sender: admin, cycles: 100n * T, targetCanisterId: ICPSWAP_FACTORY_ID, controllers: [admin] });
+        await pic.installCode({ sender: admin, canisterId, wasm: wasm('MockIcpswapFactory'), arg: IDL.encode([], []) });
+      }
+      return actorAs(pic, factoryMockIdl, ICPSWAP_FACTORY_ID, admin);
+    })());
+  }
+  return factories.get(pic);
+}
+
 /// Create + install a built canister. `initTypes`/`initArgs` encode the actor
-/// class argument. Returns the canister id.
-export async function install(pic, { name, initTypes = [], initArgs = [], cycles = 100n * T, targetCanisterId, targetSubnetId, controllers = [admin], sender = admin }) {
+/// class argument. Returns the canister id. A MockSwapPool is also registered with the mock ICPSwap
+/// factory (as every real ICPSwap pool is), unless `registerPool: false` (a pool the factory does
+/// not know, which Sneed Lock must refuse).
+export async function install(pic, { name, initTypes = [], initArgs = [], cycles = 100n * T, targetCanisterId, targetSubnetId, controllers = [admin], sender = admin, registerPool = true }) {
   const canisterId = await pic.createCanister({ sender, cycles, targetCanisterId, targetSubnetId, controllers });
   await pic.installCode({ sender, canisterId, wasm: wasm(name), arg: IDL.encode(initTypes, initArgs) });
+  if (name === 'MockSwapPool' && registerPool) {
+    const { token0, token1, fee } = initArgs[0];
+    await (await icpswapFactory(pic)).register_pool(canisterId, token0, token1, fee);
+  }
   return canisterId;
 }
 
