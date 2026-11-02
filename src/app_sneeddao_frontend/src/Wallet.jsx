@@ -44,6 +44,7 @@ import { get_available, get_available_backend, getTokenLogo, resolveTokenLogo, g
 import { planSend } from './utils/sendPlan';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
+import { positionRecipientRefusal } from "./utils/positionRecipient";
 import { principalText } from './utils/IdUtils';
 import { readBackendWalletBaselines, forwardClaimedFees, describeForwarding } from './utils/FeeForwarding';
 import { headerStyles } from './styles/HeaderStyles';
@@ -4101,6 +4102,9 @@ function Wallet() {
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient, recipientSubaccount) => {
         const isBackendTransfer = liquidityPosition.isBackendTransfer || false;
+        // never to Sneed Lock itself, the anonymous principal or a pool (the position gets stuck, audit M5)
+        const recipientRefusal = positionRecipientRefusal(recipient, { sneedLockIds: [sneedLockCanisterId], poolId: liquidityPosition.swapCanisterId });
+        if (recipientRefusal) throw new Error(recipientRefusal);
         console.log('=== handleSendLiquidityPosition ===');
         console.log('isBackendTransfer:', isBackendTransfer);
         console.log('liquidityPosition:', liquidityPosition);

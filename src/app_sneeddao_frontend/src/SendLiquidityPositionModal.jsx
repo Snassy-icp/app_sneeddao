@@ -5,6 +5,9 @@ import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { parseSubaccountHex } from './utils/lockNft';
+import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { positionRecipientRefusal } from './utils/positionRecipient';
+import { loadFactoryPoolIndex, isKnownPoolCanister } from './utils/icpswapPoolVerify';
 
 // Accent colors
 const walletPrimary = '#10b981';
@@ -41,6 +44,18 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
       Principal.fromText(trimmedRecipient);
     } catch {
       setErrorText("Invalid recipient address! Please enter a valid recipient address.");
+      return;
+    }
+    // Recipients that would make the position stuck or lost: Sneed Lock itself, the anonymous
+    // principal, pool canisters (audit M5). Any ICPSwap pool counts when the factory list loads.
+    const poolIndex = await loadFactoryPoolIndex().catch(() => null);
+    const refusal = positionRecipientRefusal(trimmedRecipient, {
+      sneedLockIds: [sneedLockCanisterId],
+      poolId: liquidityPosition?.swapCanisterId,
+      isPool: (id) => isKnownPoolCanister(poolIndex, id),
+    });
+    if (refusal) {
+      setErrorText(refusal);
       return;
     }
     if (isBackendTransfer && parseSubaccountHex(recipientSub) === null) {
