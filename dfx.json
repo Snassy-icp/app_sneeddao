@@ -206,6 +206,11 @@
       "main": "src/icrc7_demo/main.mo",
       "type": "motoko"
     },
+    "sneed_nft": {
+      "main": "src/sneed_nft/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
+    },
     "sneed_guardian": {
       "main": "src/sneed_guardian/main.mo",
       "type": "motoko"

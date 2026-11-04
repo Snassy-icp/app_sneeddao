@@ -1,0 +1,144 @@
+// sneed_nft (spec/nft_launchpad.md §2.1, spec/diamond_club_icrc7.md): the public types. The ICRC-7
+// and ICRC-37 types are the standards' own; the rest is this canister's load, image and swap API.
+//
+// Standards: https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md
+//            https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md
+module {
+  public type Account = { owner : Principal; subaccount : ?Blob };
+  public type Value = { #Blob : Blob; #Text : Text; #Nat : Nat; #Int : Int; #Array : [Value]; #Map : [(Text, Value)] };
+
+  // ---- ICRC-7 ----
+  public type TransferArg = { from_subaccount : ?Blob; to : Account; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferError = {
+    #NonExistingTokenId; #InvalidRecipient; #Unauthorized; #TooOld; #CreatedInFuture : { ledger_time : Nat64 };
+    #Duplicate : { duplicate_of : Nat }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text };
+  };
+  public type TransferResult = { #Ok : Nat; #Err : TransferError };
+
+  // ---- ICRC-37 ----
+  public type ApprovalInfo = { spender : Account; from_subaccount : ?Blob; expires_at : ?Nat64; memo : ?Blob; created_at_time : Nat64 };
+  public type ApproveTokenArg = { token_id : Nat; approval_info : ApprovalInfo };
+  public type ApproveTokenError = { #InvalidSpender; #Unauthorized; #NonExistingTokenId; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type ApproveTokenResult = { #Ok : Nat; #Err : ApproveTokenError };
+  public type ApproveCollectionArg = { approval_info : ApprovalInfo };
+  public type ApproveCollectionError = { #InvalidSpender; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type ApproveCollectionResult = { #Ok : Nat; #Err : ApproveCollectionError };
+  public type RevokeTokenApprovalArg = { spender : ?Account; from_subaccount : ?Blob; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type RevokeTokenApprovalError = { #ApprovalDoesNotExist; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #NonExistingTokenId; #Unauthorized; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type RevokeTokenApprovalResult = { #Ok : Nat; #Err : RevokeTokenApprovalError };
+  public type RevokeCollectionApprovalArg = { spender : ?Account; from_subaccount : ?Blob; memo : ?Blob; created_at_time : ?Nat64 };
+  public type RevokeCollectionApprovalError = { #ApprovalDoesNotExist; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type RevokeCollectionApprovalResult = { #Ok : Nat; #Err : RevokeCollectionApprovalError };
+  public type IsApprovedArg = { spender : Account; from_subaccount : ?Blob; token_id : Nat };
+  public type TokenApproval = { token_id : Nat; approval_info : ApprovalInfo };
+  public type CollectionApproval = ApprovalInfo;
+  public type TransferFromArg = { spender_subaccount : ?Blob; from : Account; to : Account; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferFromError = { #InvalidRecipient; #Unauthorized; #NonExistingTokenId; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type TransferFromResult = { #Ok : Nat; #Err : TransferFromError };
+
+  // ---- minting: the shape of PanIndustrial icrc7-mo's set_nfts (v0.5.0, SetNFTItemRequest /
+  // SetNFTResult / SetNFTError), with the metadata as an ICRC-3 Value (a #Map) instead of a
+  // CandyShared. `owner` null mints to the collection's swap account (this canister's default
+  // account). `override` replaces an existing token's metadata (only before freeze_metadata). ----
+  public type SetNFTItemRequest = { token_id : Nat; metadata : Value; owner : ?Account; override : Bool; memo : ?Blob; created_at_time : ?Nat64 };
+  public type SetNFTError = { #NonExistingTokenId; #TokenExists; #GenericError : { error_code : Nat; message : Text }; #TooOld; #CreatedInFuture : { ledger_time : Nat64 } };
+  public type SetNFTResult = { #Ok : ?Nat; #Err : SetNFTError; #GenericError : { error_code : Nat; message : Text } };
+
+  /// Collection settings an admin may change until freeze_metadata (`null` = unchanged; for the
+  /// optional ones `?null` clears).
+  public type CollectionUpdate = { name : ?Text; symbol : ?Text; description : ??Text; logo : ??Text; supply_cap : ??Nat };
+
+  // ---- images ----
+  /// orig: the original (its SHA-256 is in the manifest); web and thumb: generated by the loader.
+  public type ImageSize = { #orig; #web; #thumb };
+  public type ImageTarget = { #card : { token_id : Nat; size : ImageSize }; #logo };
+  public type UploadBegin = { target : ImageTarget; size : Nat; content_type : Text };
+  public type ImageInfo = { target : ImageTarget; size : Nat; sha256 : Blob; content_type : Text; uploaded_at : Int; uploaded_by : Principal };
+  public type UploadInfo = { id : Nat; target : ImageTarget; size : Nat; received : Nat; content_type : Text; started_at : Int; by : Principal };
+
+  // ---- the swap (EXT -> ICRC-7) ----
+  public type SwapMethod = { #send; #proof };
+  public type Swap = {
+    ext_index : Nat32;
+    token_id : Nat;
+    recipient : Principal;
+    method : SwapMethod;
+    bearer : Text; // the EXT account identifier that held the card when it was swapped
+    proof : ?Text; // proof swaps: the payment ("<ledger>:<block>")
+    at : Int;
+    block : Nat; // the dcswap block
+  };
+  public type Delivered = { ext_index : Nat32; token_id : Nat; block : Nat }; // block: the 7xfer
+  public type ClaimOutcome = {
+    delivered : [Delivered];
+    already_swapped : [Nat32]; // held by the address but swapped before (nothing to do)
+    unavailable : [Nat32]; // held by the address but the ICRC-7 token is not in the swap account
+  };
+  public type ClaimResult = { #ok : ClaimOutcome; #err : Text };
+
+  /// An allow-listed ledger for proof by payment. #icrc3: blocks read with icrc3_get_blocks, the
+  /// sender is an ICRC-1 account. #icp: the ICP ledger's query_blocks, the sender is an account
+  /// identifier (which is exactly what EXT stores as the holder) and refunds use `transfer`.
+  public type LedgerKind = { #icrc3; #icp };
+  public type ProofLedger = { ledger : Principal; kind : LedgerKind };
+
+  public type Sender = { #account : Account; #account_id : Blob };
+  public type RefundState = {
+    #none; // the payment did not cover the ledger fee: nothing to give back
+    #pending; // not tried yet
+    #in_flight; // a call to the ledger is running
+    #done : { block : Nat };
+    #failed : Text; // retryable with retry_refund (same arguments, so the ledger deduplicates)
+    #needs_admin : Text; // the ledger refuses the same arguments (fee changed, too old): an admin checks
+  };
+  public type Proof = {
+    key : Text; // "<ledger>:<block>"
+    ledger : Principal;
+    block_index : Nat;
+    recipient : Principal;
+    sender : Sender;
+    amount : Nat; // paid
+    fee : Nat; // the ledger fee when the claim was made
+    refund_amount : Nat; // amount - fee (0: #none)
+    refund_created_at : Nat64; // created_at_time of every refund attempt (ledger deduplication)
+    refund : RefundState;
+    delivered : [Delivered];
+    at : Int;
+    by : Principal; // who called claim_by_proof
+  };
+  public type ProofResult = { #ok : Proof; #err : Text };
+
+  public type Status = {
+    name : Text;
+    symbol : Text;
+    total_supply : Nat;
+    supply_cap : ?Nat;
+    metadata_frozen : Bool;
+    minting_locked : Bool;
+    manifest_entries : Nat;
+    manifest_sha256 : ?Blob; // SHA-256 of the manifest (see image_manifest_hash)
+    images : Nat;
+    image_bytes : Nat;
+    region_bytes : Nat; // stable memory used by images, including wasted
+    wasted_bytes : Nat; // replaced, rejected or aborted uploads
+    uploads_in_progress : Nat;
+    swaps : Nat;
+    retired : Nat; // swapped by proof: the old card stays in the holder's wallet
+    swaps_paused : Bool;
+    ext_canister : Principal;
+    proof_ledgers : [ProofLedger];
+    pending_refunds : Nat;
+    log_length : Nat;
+  };
+
+  /// One GNSF for the admin actions that remain after the load (spec/dao_settings.md pattern).
+  public type DaoAction = {
+    #set_proof_ledger : ProofLedger;
+    #remove_proof_ledger : Principal;
+    #set_ext_canister : Principal;
+    #set_swaps_paused : Bool;
+    #add_admin : Principal;
+    #remove_admin : Principal;
+    #set_rate_limit : { action : Text; rule : ?{ capacity : Nat; per_minute : Nat } };
+  };
+};

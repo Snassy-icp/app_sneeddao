@@ -1,7 +1,7 @@
 /// Test double for an EXT NFT collection (the Toniq / Entrepot standard, e.g. the Sneed Diamond
 /// Club): the read methods Sneed Hub uses (extensions, bearer, tokens, metadata, getRegistry),
-/// transfer as the EXT reference implementation does it, and test helpers to mint, move a token
-/// to another account id, and make bearer or transfer fail.
+/// transfer as the EXT reference implementation does it, and test helpers to mint (one or many),
+/// move a token to another account id, and make bearer, getRegistry or transfer fail.
 /// Holders are account identifiers (hex); tokens are TokenIdentifiers of this canister.
 /// transfer: the owner is the account `from` names (a principal's default account, or an
 /// address); it must hold the token, and the caller's account (caller + `subaccount`) must be
@@ -23,6 +23,7 @@ persistent actor class MockExt() = this {
   var failing : Bool = false;
   var transferFailing : Bool = false;
   var transfers : Nat = 0; // transfers done
+  var registryFailing : Bool = false;
 
   /// The token index a TokenIdentifier of this canister names (null: not one of ours).
   func indexOf(tid : Text) : ?Nat {
@@ -40,6 +41,13 @@ persistent actor class MockExt() = this {
     metas := Array.append(metas, [metadata]);
     Nat32.fromNat(holders.size() - 1);
   };
+  /// `n` tokens for `holder` at once (a collection's worth for the swap tests).
+  public shared func mint_many(holder : Text, n : Nat) : async () {
+    holders := Array.append(holders, Array.tabulate<Text>(n, func _ = holder));
+    metas := Array.append(metas, Array.tabulate<?Blob>(n, func _ = null));
+  };
+  /// getRegistry traps while set (a collection that cannot be read).
+  public shared func set_registry_failing(f : Bool) : async () { registryFailing := f };
   public shared func set_bearer(index : Nat32, holder : Text) : async () {
     holders := Array.tabulate<Text>(holders.size(), func(i) = if (i == Nat32.toNat(index)) holder else holders[i]);
   };
@@ -86,6 +94,7 @@ persistent actor class MockExt() = this {
   };
 
   public query func getRegistry() : async [(Nat32, Text)] {
+    assert not registryFailing;
     Array.tabulate<(Nat32, Text)>(holders.size(), func(i) = (Nat32.fromNat(i), holders[i]));
   };
 };
