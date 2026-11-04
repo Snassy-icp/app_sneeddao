@@ -31,6 +31,7 @@ const CANISTERS = [
   ['mr_sneed', 'mr_sneed'],
   ['sneed_proxy', 'sneed_proxy'],
   ['sneed_attestations', 'sneed_attestations'],
+  ['sneed_nft', 'sneed_nft'],
 ];
 
 let pic;

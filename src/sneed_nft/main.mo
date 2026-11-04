@@ -32,6 +32,7 @@ import Hash "../icrc3/Hash";
 import T3 "../icrc3/Types";
 import MerkleTree "cert/MerkleTree";
 import Http "HttpCert";
+import ApiDoc "ApiDoc";
 import Proof "Proof";
 import T "Types";
 
@@ -111,7 +112,23 @@ shared (deployer) persistent actor class SneedNft() = this {
     ("claim", { capacity = 10; per_minute = 2 }), // claim_swap: one EXT registry read each
     ("proof", { capacity = 5; per_minute = 1 }), // claim_by_proof: ledger, registry and refund calls
     ("refund", { capacity = 10; per_minute = 2 }), // retry_refund
+    // all callers together (fresh principals cost nothing): claim_swap and claim_by_proof
+    ("claims_global", { capacity = 120; per_minute = 60 }),
+    // ICRC-7 / ICRC-37 updates, per caller and per item: each item is a log block
+    ("nft_update", { capacity = 200; per_minute = 60 }),
   ];
+  // the EXT registry, read at most once per REGISTRY_TTL_NS for claim_swap, one read at a time
+  transient let REGISTRY_TTL_NS : Int = 30_000_000_000;
+  transient let REGISTRY_CALL_NS : Int = 120_000_000_000; // a read older than this is not running any more
+  transient var registry_cache : ?(Int, [(Nat32, Text)]) = null;
+  transient var registry_reading_since : ?Int = null;
+  var registry_reads : Nat = 0;
+  // ICRC-7 deduplication: at most this many remembered transfers (oldest pruned first)
+  var dedup_cap : Nat = 20_000;
+  // a refund attempt still marked in flight after this long is over (bounded wait is 30 s)
+  transient let REFUND_STALE_NS : Int = 600_000_000_000;
+  // resend a refund only while the ledger still deduplicates it (24 h window), with a margin
+  transient let REFUND_RESEND_NS : Nat = 82_800_000_000_000; // 23 h
 
   // collection
   var name : Text = "";
@@ -129,7 +146,7 @@ shared (deployer) persistent actor class SneedNft() = this {
   var all_ids : [Nat] = []; // every token id, ascending
   let token_approvals = Map.new<Nat, [T.ApprovalInfo]>(); // the current owner's approvals per token
   let coll_approvals = Map.new<Text, [T.ApprovalInfo]>(); // owner account key -> its collection approvals
-  let dedup = Map.new<Blob, (Nat, Nat)>(); // hash of (method, caller, arg) -> (block, created_at_time)
+  let dedup = Map.new<Blob, (Nat, Nat, Nat)>(); // hash of (method, caller, arg) -> (block, created_at_time, inserted at), oldest first
 
   // images: bytes in one stable-memory region, appended; entries by key ("card/<n>/<size>", "logo")
   type Image = { target : T.ImageTarget; offset : Nat; size : Nat; sha256 : Blob; content_type : Text; uploaded_at : Int; uploaded_by : Principal };
@@ -452,17 +469,32 @@ shared (deployer) persistent actor class SneedNft() = this {
   };
   func dedupFind(k : Blob) : ?Nat {
     switch (Map.get(dedup, Map.bhash, k)) {
-      case (?(i, t)) if (t + TX_WINDOW_NS + DRIFT_NS >= nowNat()) ?i else null;
+      case (?(i, t, _)) if (t + TX_WINDOW_NS + DRIFT_NS >= nowNat()) ?i else null;
       case null null;
     };
   };
-  func dedupAdd(k : Blob, i : Nat, t : Nat64) {
-    if (Map.size(dedup) >= 50_000) {
-      let now = nowNat();
-      for ((key, (_, at)) in Map.toArray(dedup).vals()) if (at + TX_WINDOW_NS + DRIFT_NS < now) Map.delete(dedup, Map.bhash, key);
+  /// Drops the oldest entries that can no longer match (entries are in insertion order; one is
+  /// useless once its insertion is older than the window and twice the drift). At most `max`.
+  func dedupPrune(max : Nat) {
+    let now = nowNat();
+    var n = 0;
+    label prune while (n < max) {
+      switch (Map.peekFront(dedup)) {
+        case (?(_, (_, _, at))) if (at + TX_WINDOW_NS + 2 * DRIFT_NS < now) { ignore Map.popFront(dedup, Map.bhash); n += 1 } else break prune;
+        case null break prune;
+      };
     };
-    Map.set(dedup, Map.bhash, k, (i, Nat64.toNat(t)));
   };
+  /// Room for one more remembered transfer? (prunes a little first)
+  func dedupRoom() : Bool {
+    dedupPrune(100);
+    Map.size(dedup) < dedup_cap;
+  };
+  func dedupAdd(k : Blob, i : Nat, t : Nat64) {
+    Map.set(dedup, Map.bhash, k, (i, Nat64.toNat(t), nowNat()));
+  };
+  transient let RATE_LIMITED : Text = "Too many calls: try again in a minute";
+  transient let DEDUP_FULL : Text = "Too many recent transfers with created_at_time to deduplicate: send without created_at_time, or later";
 
   // ---------------------------------------------------------------------------------------------
   // ICRC-7
@@ -531,7 +563,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc7_transfer(args : [T.TransferArg]) : async [?T.TransferResult] {
     if (args.size() > MAX_UPDATE_BATCH) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_UPDATE_BATCH) # " transfers per call" }))];
     let out = Buffer.Buffer<?T.TransferResult>(args.size());
-    for (a in args.vals()) out.add(?transferOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?transferOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -544,6 +579,7 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (?t) {
         let k = dedupKey("icrc7_transfer", caller, to_candid (a));
         switch (dedupFind(k)) { case (?i) return #Err(#Duplicate({ duplicate_of = i })); case null {} };
+        if (not dedupRoom()) return #Err(#GenericError({ error_code = 12; message = DEDUP_FULL }));
         ?(k, t);
       };
       case null null;
@@ -616,7 +652,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc37_approve_tokens(args : [T.ApproveTokenArg]) : async [?T.ApproveTokenResult] {
     if (args.size() > MAX_UPDATE_BATCH) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_UPDATE_BATCH) # " approvals per call" }))];
     let out = Buffer.Buffer<?T.ApproveTokenResult>(args.size());
-    for (a in args.vals()) out.add(?approveTokenOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?approveTokenOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -645,7 +684,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc37_approve_collection(args : [T.ApproveCollectionArg]) : async [?T.ApproveCollectionResult] {
     if (args.size() > MAX_UPDATE_BATCH) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_UPDATE_BATCH) # " approvals per call" }))];
     let out = Buffer.Buffer<?T.ApproveCollectionResult>(args.size());
-    for (a in args.vals()) out.add(?approveCollectionOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?approveCollectionOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -673,7 +715,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc37_revoke_token_approvals(args : [T.RevokeTokenApprovalArg]) : async [?T.RevokeTokenApprovalResult] {
     if (args.size() > MAX_REVOKE) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_REVOKE) # " revocations per call" }))];
     let out = Buffer.Buffer<?T.RevokeTokenApprovalResult>(args.size());
-    for (a in args.vals()) out.add(?revokeTokenOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?revokeTokenOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -698,7 +743,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc37_revoke_collection_approvals(args : [T.RevokeCollectionApprovalArg]) : async [?T.RevokeCollectionApprovalResult] {
     if (args.size() > MAX_REVOKE) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_REVOKE) # " revocations per call" }))];
     let out = Buffer.Buffer<?T.RevokeCollectionApprovalResult>(args.size());
-    for (a in args.vals()) out.add(?revokeCollectionOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?revokeCollectionOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -720,7 +768,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func icrc37_transfer_from(args : [T.TransferFromArg]) : async [?T.TransferFromResult] {
     if (args.size() > MAX_UPDATE_BATCH) return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(MAX_UPDATE_BATCH) # " transfers per call" }))];
     let out = Buffer.Buffer<?T.TransferFromResult>(args.size());
-    for (a in args.vals()) out.add(?transferFromOne<system>(caller, a));
+    for (a in args.vals()) {
+      if (not rateTake(caller, "nft_update")) { out.add(?#Err(#GenericBatchError({ error_code = 13; message = RATE_LIMITED }))); return Buffer.toArray(out) };
+      out.add(?transferFromOne<system>(caller, a));
+    };
     Buffer.toArray(out);
   };
 
@@ -732,6 +783,7 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (?t) {
         let k = dedupKey("icrc37_transfer_from", caller, to_candid (a));
         switch (dedupFind(k)) { case (?i) return #Err(#Duplicate({ duplicate_of = i })); case null {} };
+        if (not dedupRoom()) return #Err(#GenericError({ error_code = 12; message = DEDUP_FULL }));
         ?(k, t);
       };
       case null null;
@@ -894,6 +946,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   public shared ({ caller }) func lock_minting() : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
     if (minting_locked) return #err("Minting is locked already");
+    // the swap delivers every token from the swap account: all of them must be there
+    for ((id, o) in Map.entries(owners)) {
+      if (not sameAccount(o, swapAccount())) return #err("Token " # Nat.toText(id) # " is not in the swap account: every minted token must be there before minting is locked");
+    };
     minting_locked := true;
     configBlock<system>(caller, "minting_locked", #Nat(totalSupply()));
     log_info(caller, cid(), "Minting locked at " # Nat.toText(totalSupply()) # " tokens");
@@ -987,7 +1043,11 @@ shared (deployer) persistent actor class SneedNft() = this {
     let key = imageKey(u.target);
     switch (Map.get(images, Map.thash, key)) {
       case (?old) {
-        cert_tree := MerkleTree.delete(cert_tree, imageLeaf(old));
+        // another size of the same card with the same bytes and type has the same leaf: keep it
+        let leaf = imageLeaf(old);
+        var shared_ = false;
+        for ((k, other) in Map.entries(images)) if (k != key and imageLeaf(other) == leaf) shared_ := true;
+        if (not shared_) cert_tree := MerkleTree.delete(cert_tree, leaf);
         wasted_bytes += old.size;
       };
       case null {};
@@ -1066,9 +1126,27 @@ shared (deployer) persistent actor class SneedNft() = this {
 
   type Ext = actor { getRegistry : shared query () -> async [(Nat32, Text)] };
 
-  func readRegistry() : async* { #ok : [(Nat32, Text)]; #err : Text } {
+  /// The EXT registry: the cached copy when it is at most REGISTRY_TTL_NS old and `fresh` is not
+  /// asked, else one read. At most one read runs at a time: a caller arriving during a read is
+  /// told to come back (no parallel reads of a 1,000-entry registry, whoever calls).
+  func readRegistry(fresh : Bool) : async* { #ok : [(Nat32, Text)]; #err : Text } {
+    let now = Time.now();
+    if (not fresh) switch (registry_cache) { case (?(at, r)) if (now - at <= REGISTRY_TTL_NS) return #ok(r); case null {} };
+    switch (registry_reading_since) {
+      case (?since) if (now - since < REGISTRY_CALL_NS) return #err("The EXT registry is being read for another claim: try again in a few seconds");
+      case null {};
+    };
+    registry_reading_since := ?now;
     let e : Ext = actor (Principal.toText(ext_canister));
-    try { #ok(await (with timeout = 60) e.getRegistry()) } catch (err) { #err("Could not read the EXT registry: " # Error.message(err)) };
+    let source = ext_canister;
+    let r = try { await (with timeout = 60) e.getRegistry() } catch (err) {
+      registry_reading_since := null;
+      return #err("Could not read the EXT registry: " # Error.message(err));
+    };
+    registry_reading_since := null;
+    registry_reads += 1;
+    if (source == ext_canister) registry_cache := ?(Time.now(), r);
+    #ok(r);
   };
 
   type Delivery = { #delivered : T.Delivered; #already; #unavailable };
@@ -1125,7 +1203,7 @@ shared (deployer) persistent actor class SneedNft() = this {
   };
 
   func swapOpen() : ?Text {
-    if (not minting_locked) return ?"The swap opens when the collection's load is done (minting locked)";
+    if (not minting_locked or not metadata_frozen) return ?"The swap opens when the collection's load is done (metadata frozen, minting locked)";
     if (swaps_paused) return ?"The swap is paused";
     null;
   };
@@ -1136,13 +1214,15 @@ shared (deployer) persistent actor class SneedNft() = this {
     if (Principal.isAnonymous(p) or p == self()) return #err("Not a valid recipient");
     switch (swapOpen()) { case (?e) return #err(e); case null {} };
     if (not rateTake(caller, "claim")) return #err("Too many claims: try again in a minute");
+    if (not rateTake(self(), "claims_global")) return #err("Too many claims right now: try again in a minute");
     let c = cid();
     let addr = swapAddress(p);
-    let registry = switch (await* readRegistry()) {
+    let registry = switch (await* readRegistry(false)) {
       case (#ok r) r;
       case (#err e) { log_error(caller, c, "claim_swap for " # Principal.toText(p) # ": " # e); return #err(e) };
     };
-    let r = deliverAll<system>(caller, c, registry, [addr], p, #send, null);
+    // also cards sent to p's proof address by mistake: that account is p's too
+    let r = deliverAll<system>(caller, c, registry, [addr, Ext.accountIdOf(self(), proofSub(p))], p, #send, null);
     log_info(caller, c, "claim_swap for " # Principal.toText(p) # " at " # addr # ": " # Nat.toText(r.delivered.size()) # " delivered, " # Nat.toText(r.already_swapped.size()) # " swapped before, " # Nat.toText(r.unavailable.size()) # " unavailable");
     #ok(r);
   };
@@ -1161,17 +1241,11 @@ shared (deployer) persistent actor class SneedNft() = this {
     d.sum();
   };
 
-  /// The EXT holders a payment's sender proves: an ICRC-1 sender (a key, see claim_by_proof) owns
-  /// every subaccount of its principal, so its default account and the subaccount it paid from;
-  /// an ICP sender is exactly its account identifier.
-  func bearersOf(s : T.Sender) : [Text] {
-    switch s {
-      case (#account a) {
-        let d = Ext.accountId(a.owner);
-        switch (a.subaccount) { case (?sub) { let x = Ext.accountIdOf(a.owner, sub); if (x == d) [d] else [d, x] }; case null [d] };
-      };
-      case (#account_id aid) [Hash.toHex(aid)];
-    };
+  /// The EXT holders a payment's sender proves: the sender is a key (see claim_by_proof), which
+  /// owns every subaccount of its principal, so its default account and the one it paid from.
+  func bearersOf(a : Account) : [Text] {
+    let d = Ext.accountId(a.owner);
+    switch (a.subaccount) { case (?sub) { let x = Ext.accountIdOf(a.owner, sub); if (x == d) [d] else [d, x] }; case null [d] };
   };
 
   /// Proof by payment (spec §3.3.1): `block_index` on `ledger` (allow-listed) must be a plain
@@ -1179,13 +1253,20 @@ shared (deployer) persistent actor class SneedNft() = this {
   /// bearer is the payment's sender is delivered to p and retired (the EXT card stays in the
   /// sender's wallet and is never swapped again), and the payment minus the ledger fee goes back
   /// to the sender. Anyone may call it for p.
-  public shared ({ caller }) func claim_by_proof(p : Principal, ledger : Principal, block_index : Nat) : async T.ProofResult {
+  ///
+  /// The sender must be a wallet's key (a self-authenticating principal), never a canister: a
+  /// canister pays for whoever it serves (an exchange, a marketplace, an escrow). An ICRC-3 block
+  /// names the sender's principal. The ICP ledger records only an account identifier, so for an
+  /// ICP payment `sender` gives the principal and subaccount it was made from: they must hash to
+  /// exactly that identifier (and the principal must be a key).
+  public shared ({ caller }) func claim_by_proof(p : Principal, ledger : Principal, block_index : Nat, sender : ?Account) : async T.ProofResult {
     if (Principal.isAnonymous(p) or p == self()) return #err("Not a valid recipient");
     switch (swapOpen()) { case (?e) return #err(e); case null {} };
     let ?pl = proofLedger(ledger) else return #err("This ledger is not accepted for proofs");
     let key = proofKey(ledger, block_index);
     if (Map.has(proofs, Map.thash, key)) return #err("This payment was used already");
     if (not rateTake(caller, "proof")) return #err("Too many proofs: try again in a minute");
+    if (not rateTake(self(), "claims_global")) return #err("Too many claims right now: try again in a minute");
     let c = cid();
     let to : Account = { owner = self(); subaccount = ?proofSub(p) };
     let toAid = Ext.accountIdOf(self(), proofSub(p));
@@ -1193,17 +1274,23 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (#ok x) x;
       case (#err e) { log_error(caller, c, "claim_by_proof " # key # " for " # Principal.toText(p) # ": " # e); return #err(e) };
     };
-    switch (pay.sender) {
-      case (#account a) {
-        if (a.owner == self()) return #err("A payment from this canister proves nothing");
-        // a canister's payments are made by its code for whoever it serves (an exchange, a
-        // marketplace, an escrow), not by the holder of a key: only a wallet's key proves anything
-        if (not selfAuthenticating(a.owner)) return #err("The payment must come from a wallet's own key (a self-authenticating principal), not from a canister");
+    // the paying account, with its principal: from the block, or (ICP) from `sender`, checked
+    let payer : Account = switch (pay.sender) {
+      case (#account a) a;
+      case (#account_id aid) {
+        let ?pre = sender else return #err("An ICP payment records only an account identifier: give the paying wallet's principal (and subaccount, if it paid from one) as sender");
+        let sub = switch (pre.subaccount) { case (?s) s; case null Blob.fromArray(Array.tabulate<Nat8>(32, func _ = 0)) };
+        if (sub.size() != 32 or Ext.accountIdOf(pre.owner, sub) != Hash.toHex(aid)) return #err("The sender given is not the account the payment came from");
+        { owner = pre.owner; subaccount = normSub(?sub) };
       };
-      case (#account_id _) {};
     };
+    if (payer.owner == self()) return #err("A payment from this canister proves nothing");
+    // a canister's payments are made by its code for whoever it serves (an exchange, a
+    // marketplace, an escrow), not by the holder of a key: only a wallet's key proves anything
+    if (not selfAuthenticating(payer.owner)) return #err("The payment must come from a wallet's own key (a self-authenticating principal), not from a canister");
     let fee = switch (await* Proof.fee(ledger)) { case (#ok f) f; case (#err e) { log_error(caller, c, "claim_by_proof " # key # ": " # e); return #err(e) } };
-    let registry = switch (await* readRegistry()) {
+    // a fresh read: the cards the payer holds right now (one read at a time, see readRegistry)
+    let registry = switch (await* readRegistry(true)) {
       case (#ok r) r;
       case (#err e) { log_error(caller, c, "claim_by_proof " # key # ": " # e); return #err(e) };
     };
@@ -1214,10 +1301,11 @@ shared (deployer) persistent actor class SneedNft() = this {
     let refund_amount : Nat = if (pay.amount > fee) pay.amount - fee else 0;
     let base : T.Proof = {
       key; ledger; block_index; recipient = p; sender = pay.sender; amount = pay.amount; fee; refund_amount;
-      refund_created_at = Nat64.fromNat(nowNat()); refund = if (refund_amount == 0) #none else #pending; delivered = []; at = Time.now(); by = caller;
+      refund_created_at = Nat64.fromNat(nowNat()); refund = if (refund_amount == 0) #none else #pending; refund_attempted_at = null;
+      delivered = []; at = Time.now(); by = caller;
     };
     Map.set(proofs, Map.thash, key, base);
-    let r = deliverAll<system>(caller, c, registry, bearersOf(pay.sender), p, #proof, ?base);
+    let r = deliverAll<system>(caller, c, registry, bearersOf(payer), p, #proof, ?base);
     let recorded = { base with delivered = r.delivered };
     Map.set(proofs, Map.thash, key, recorded);
     log_info(caller, c, "claim_by_proof " # key # " for " # Principal.toText(p) # " from " # debug_show (pay.sender) # ": " # Nat.toText(r.delivered.size()) # " delivered, " # Nat.toText(r.already_swapped.size()) # " swapped before; refund " # Nat.toText(refund_amount));
@@ -1247,12 +1335,22 @@ shared (deployer) persistent actor class SneedNft() = this {
   /// ledger deduplicates a retry of an attempt whose outcome was unknown.
   func refund<system>(caller : Principal, key : Text) : async* () {
     let ?pr = Map.get(proofs, Map.thash, key) else return;
-    switch (pr.refund) { case (#pending or #failed _) {}; case _ return };
+    switch (pr.refund) {
+      case (#pending or #failed _) {};
+      case (#in_flight) if (not staleInFlight(pr)) return; // an attempt whose continuation never ran
+      case _ return;
+    };
+    if (nowNat() > Nat64.toNat(pr.refund_created_at) + REFUND_RESEND_NS) {
+      // the ledger would no longer recognise an earlier attempt: resending could pay twice
+      Map.set(proofs, Map.thash, key, { pr with refund = #needs_admin("Too late to resend safely (the ledger's deduplication window is nearly over): check the ledger for an earlier refund before resetting it") });
+      log_error(caller, cid(), "Refund of " # key # " needs an admin: past the resend window");
+      return;
+    };
     let ?pl = proofLedger(pr.ledger) else {
       Map.set(proofs, Map.thash, key, { pr with refund = #needs_admin("The ledger is no longer allow-listed") });
       return;
     };
-    Map.set(proofs, Map.thash, key, { pr with refund = #in_flight });
+    Map.set(proofs, Map.thash, key, { pr with refund = #in_flight; refund_attempted_at = ?Time.now() });
     let c = cid();
     let outcome = await* Proof.refund(pl.kind, pr.ledger, proofSub(pr.recipient), pr.sender, pr.refund_amount, pr.fee, refundMemo(key), pr.refund_created_at);
     let ?now = Map.get(proofs, Map.thash, key) else return;
@@ -1274,13 +1372,18 @@ shared (deployer) persistent actor class SneedNft() = this {
     };
   };
 
-  /// Retries a failed refund (anyone; it only ever pays the original sender).
+  /// An attempt marked in flight long after the bounded call must have answered: the canister
+  /// trapped after the ledger call, so the outcome is unknown and the same transfer may be resent.
+  func staleInFlight(pr : T.Proof) : Bool = switch (pr.refund_attempted_at) { case (?at) Time.now() - at > REFUND_STALE_NS; case null true };
+
+  /// Retries a failed refund, or one stuck in flight (anyone; it only ever pays the original
+  /// sender, with the same transfer, which the ledger deduplicates).
   public shared ({ caller }) func retry_refund(ledger : Principal, block_index : Nat) : async T.ProofResult {
     let key = proofKey(ledger, block_index);
     let ?pr = Map.get(proofs, Map.thash, key) else return #err("No proof with this payment");
     switch (pr.refund) {
       case (#pending or #failed _) {};
-      case (#in_flight) return #err("A refund attempt is running");
+      case (#in_flight) if (not staleInFlight(pr)) return #err("A refund attempt is running");
       case _ return #err("Nothing to retry");
     };
     if (not rateTake(caller, "refund")) return #err("Too many retries: try again in a minute");
@@ -1300,7 +1403,7 @@ shared (deployer) persistent actor class SneedNft() = this {
     let ?again = Map.get(proofs, Map.thash, key) else return #err("No proof with this payment");
     switch (again.refund) { case (#needs_admin _) {}; case _ return #err("The refund changed meanwhile") };
     let refund_amount : Nat = if (again.amount > fee) again.amount - fee else 0;
-    Map.set(proofs, Map.thash, key, { again with fee; refund_amount; refund_created_at = Nat64.fromNat(nowNat()); refund = if (refund_amount == 0) #none else #pending });
+    Map.set(proofs, Map.thash, key, { again with fee; refund_amount; refund_created_at = Nat64.fromNat(nowNat()); refund = if (refund_amount == 0) #none else #pending; refund_attempted_at = null });
     log_info(caller, cid(), "Refund of " # key # " reset by an admin (fee " # Nat.toText(fee) # ")");
     if (refund_amount > 0) await* refund<system>(caller, key);
     switch (Map.get(proofs, Map.thash, key)) { case (?x) #ok(x); case null #err("No proof with this payment") };
@@ -1347,7 +1450,7 @@ shared (deployer) persistent actor class SneedNft() = this {
     ignore block<system>("sneednft_config", [("caller", pv(caller)), ("key", #Text("proof_ledger_removed")), ("value", pv(l))]);
     true;
   };
-  func setExtImpl<system>(caller : Principal, p : Principal) { ext_canister := p; configBlock<system>(caller, "ext_canister", pv(p)) };
+  func setExtImpl<system>(caller : Principal, p : Principal) { ext_canister := p; registry_cache := null; configBlock<system>(caller, "ext_canister", pv(p)) };
   func setPausedImpl<system>(caller : Principal, b : Bool) { swaps_paused := b; configBlock<system>(caller, "swaps_paused", #Nat(if b 1 else 0)) };
   func addAdminImpl<system>(caller : Principal, p : Principal) : Bool {
     if (Array.find<Principal>(admins, func(a) = a == p) != null) return false;
@@ -1361,6 +1464,17 @@ shared (deployer) persistent actor class SneedNft() = this {
     configBlock<system>(caller, "admin_removed", pv(p));
     true;
   };
+  func setDedupCapImpl<system>(caller : Principal, n : Nat) { dedup_cap := n; configBlock<system>(caller, "dedup_cap", #Nat(n)) };
+  func setIcrc3Impl<system>(caller : Principal, u : T3.SettingsUpdate) : { #Ok : T3.Settings; #Err : Text } {
+    switch (Icrc3Log.applySettings(icrc3, u)) {
+      case (#Err e) #Err(e);
+      case (#Ok changes) {
+        for ((k, old, new) in changes.vals()) ignore block<system>("sneednft_config", [("caller", pv(caller)), ("key", #Text("icrc3_" # k)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
+        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
+        #Ok(icrc3.settings);
+      };
+    };
+  };
   func setRateImpl<system>(caller : Principal, action : Text, rule : ?RateLimit.Rule) : { #ok; #err : Text } {
     switch (RateRules.set(rate_rules, RATE_DEFAULTS, action, rule)) {
       case (#err e) #err(e);
@@ -1373,40 +1487,62 @@ shared (deployer) persistent actor class SneedNft() = this {
     };
   };
 
+  /// After the load (minting locked) the settings that decide who receives cards, or that guard
+  /// the canister's cycles, change only by DAO proposal (dao_admin): an admin key could otherwise
+  /// list a fake ledger, point the swap at another EXT canister or add admins, and take the
+  /// unswapped cards. Pausing stays open to admins (an emergency brake), resuming does not.
+  func daoOnly(caller : Principal) : ?Text {
+    if (minting_locked and caller != governance) ?"After the load this changes only by DAO proposal (dao_admin)" else null;
+  };
+
   public shared ({ caller }) func admin_set_proof_ledger(l : T.ProofLedger) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     setProofLedgerImpl<system>(caller, l);
     #ok;
   };
   public shared ({ caller }) func admin_remove_proof_ledger(l : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     if (not removeProofLedgerImpl<system>(caller, l)) return #err("Not on the list");
     #ok;
   };
   public shared ({ caller }) func admin_set_ext_canister(p : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     if (Map.size(swaps) > 0) return #err("Cards have been swapped from the current EXT canister: it cannot change");
     setExtImpl<system>(caller, p);
     #ok;
   };
   public shared ({ caller }) func admin_set_swaps_paused(b : Bool) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    if (not b) switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     setPausedImpl<system>(caller, b);
     #ok;
   };
   public shared ({ caller }) func admin_add_admin(p : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     if (not addAdminImpl<system>(caller, p)) return #err("Already an admin");
     #ok;
   };
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     if (not removeAdminImpl<system>(caller, p)) return #err("Not an admin");
     #ok;
   };
   public shared ({ caller }) func admin_set_rate_limit(action : Text, rule : ?RateLimit.Rule) : async { #ok; #err : Text } {
     if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
     setRateImpl<system>(caller, action, rule);
+  };
+  /// How many recent ICRC-7 transfers with created_at_time are remembered for deduplication.
+  public shared ({ caller }) func admin_set_dedup_cap(n : Nat) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (daoOnly(caller)) { case (?e) return #err(e); case null {} };
+    setDedupCapImpl<system>(caller, n);
+    #ok;
   };
   /// Controllers only: the governance canister that may call dao_admin (staging has its own).
   public shared ({ caller }) func admin_set_governance(p : Principal) : async { #ok; #err : Text } {
@@ -1436,6 +1572,13 @@ shared (deployer) persistent actor class SneedNft() = this {
           case (#ok _) #ok("Rate limit of " # action # ": " # (switch rule { case (?r) Nat.toText(r.capacity) # " at once, " # Nat.toText(r.per_minute) # " a minute"; case null "the default" }));
         };
       };
+      case (#set_dedup_cap n) #ok("Remember at most " # Nat.toText(n) # " recent ICRC-7 transfers for deduplication");
+      case (#set_icrc3_settings u) {
+        switch (Icrc3Log.planSettings(icrc3, u)) {
+          case (#Err e) #err(e);
+          case (#Ok(_, changes)) #ok("ICRC-3 log settings: " # debug_show changes);
+        };
+      };
     };
   };
 
@@ -1451,6 +1594,8 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (#add_admin p) ignore addAdminImpl<system>(caller, p);
       case (#remove_admin p) ignore removeAdminImpl<system>(caller, p);
       case (#set_rate_limit { action; rule }) switch (setRateImpl<system>(caller, action, rule)) { case (#err e) throw Error.reject(e); case (#ok) {} };
+      case (#set_dedup_cap n) setDedupCapImpl<system>(caller, n);
+      case (#set_icrc3_settings u) switch (setIcrc3Impl<system>(caller, u)) { case (#Err e) throw Error.reject(e); case (#Ok _) {} };
     };
     log_info(caller, cid(), "dao_admin: " # rendering);
     rendering;
@@ -1463,6 +1608,10 @@ shared (deployer) persistent actor class SneedNft() = this {
   // Status and logs
   // ---------------------------------------------------------------------------------------------
 
+  // get_api_doc (ICP service discoverability): a short guide for agents and integrators, with the
+  // full reference at https://app.sneeddao.com/api/sneed_nft. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   public query func status() : async T.Status {
     var bytes = 0;
     for (i in Map.vals(images)) bytes += i.size;
@@ -1472,6 +1621,7 @@ shared (deployer) persistent actor class SneedNft() = this {
       region_bytes = region_used; wasted_bytes; uploads_in_progress = Map.size(uploads); swaps = Map.size(swaps); retired = retired_count;
       swaps_paused; ext_canister; proof_ledgers;
       pending_refunds = Array.filter<T.Proof>(Iter.toArray(Map.vals(proofs)), func(p) = switch (p.refund) { case (#none or #done _) false; case _ true }).size();
+      registry_reads; dedup_entries = Map.size(dedup);
       log_length = icrc3.log_length;
     };
   };
@@ -1497,14 +1647,8 @@ shared (deployer) persistent actor class SneedNft() = this {
   public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
   public shared ({ caller }) func admin_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
     if (not isAdmin(caller)) return #Err("Admins only");
-    switch (Icrc3Log.applySettings(icrc3, u)) {
-      case (#Err e) #Err(e);
-      case (#Ok changes) {
-        for ((k, old, new) in changes.vals()) ignore block<system>("sneednft_config", [("caller", pv(caller)), ("key", #Text("icrc3_" # k)), ("old_value", #Nat(old)), ("value", #Nat(new))]);
-        Icrc3Log.armIfNeeded<system>(icrc3, icrc3_rt);
-        #Ok(icrc3.settings);
-      };
-    };
+    switch (daoOnly(caller)) { case (?e) return #Err(e); case null {} };
+    setIcrc3Impl<system>(caller, u);
   };
   public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) return #Err("Admins only");
@@ -1610,6 +1754,7 @@ shared (deployer) persistent actor class SneedNft() = this {
     #admin_add_admin : Any;
     #admin_remove_admin : Any;
     #admin_set_rate_limit : Any;
+    #admin_set_dedup_cap : Any;
     #admin_set_governance : Any;
     #get_admins : Any;
     #get_governance : Any;
@@ -1618,6 +1763,7 @@ shared (deployer) persistent actor class SneedNft() = this {
     #dao_admin : Any;
     #validate_dao_admin : Any;
     #status : Any;
+    #get_api_doc : Any;
     #get_log : Any;
     #icrc3_get_blocks : Any;
     #icrc3_get_archives : Any;
@@ -1635,17 +1781,17 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (#icrc37_max_approvals_per_token_or_collection _ or #icrc37_max_revoke_approvals _ or #icrc37_is_approved _ or #icrc37_get_token_approvals _ or #icrc37_get_collection_approvals _) false;
       case (#image_manifest_hash _ or #get_image_manifest _ or #get_uploads _ or #get_image_info _ or #swap_address _ or #swap_subaccount _ or #proof_address _) false;
       case (#get_swap _ or #get_swaps _ or #list_swaps _ or #list_retired _ or #get_proof _ or #list_proofs _ or #pending_refunds _) false;
-      case (#get_admins _ or #get_governance _ or #get_proof_ledgers _ or #get_rate_limits _ or #validate_dao_admin _ or #status _ or #get_log _) false;
+      case (#get_admins _ or #get_governance _ or #get_proof_ledgers _ or #get_rate_limits _ or #validate_dao_admin _ or #status _ or #get_log _ or #get_api_doc _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc3_log_status _) false;
       // called by SNS governance, inter-canister (inspect never sees those calls)
       case (#dao_admin _) false;
       // ICRC-7 / ICRC-37 updates: holders, a bounded batch
-      case (#icrc7_transfer f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
-      case (#icrc37_approve_tokens f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
-      case (#icrc37_approve_collection f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
-      case (#icrc37_revoke_token_approvals f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
-      case (#icrc37_revoke_collection_approvals f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
-      case (#icrc37_transfer_from f) not Principal.isAnonymous(caller) and batchOk(arg, f().size());
+      case (#icrc7_transfer f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
+      case (#icrc37_approve_tokens f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
+      case (#icrc37_approve_collection f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
+      case (#icrc37_revoke_token_approvals f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
+      case (#icrc37_revoke_collection_approvals f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
+      case (#icrc37_transfer_from f) not Principal.isAnonymous(caller) and batchOk(arg, f().size()) and rateAllows(caller, "nft_update");
       // the load (admins)
       case (#icrcX_mint _) isAdmin(caller) and arg.size() <= MAX_MINT_BATCH * (MAX_META_BYTES + 256) + IngressGuard.SMALL_ARG;
       case (#image_upload_chunk _ or #image_upload _) isAdmin(caller) and arg.size() <= MAX_UPLOAD_CHUNK + IngressGuard.SMALL_ARG;
@@ -1653,12 +1799,12 @@ shared (deployer) persistent actor class SneedNft() = this {
       case (#set_collection _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(MAX_NAME + MAX_SYMBOL + MAX_DESCRIPTION + MAX_LOGO);
       case (#freeze_metadata _ or #lock_minting _ or #image_upload_begin _ or #image_upload_finish _ or #image_upload_abort _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // admin settings
-      case (#admin_reset_refund _ or #admin_set_proof_ledger _ or #admin_remove_proof_ledger _ or #admin_set_ext_canister _ or #admin_set_swaps_paused _ or #admin_add_admin _ or #admin_remove_admin _ or #admin_set_rate_limit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_reset_refund _ or #admin_set_proof_ledger _ or #admin_remove_proof_ledger _ or #admin_set_ext_canister _ or #admin_set_swaps_paused _ or #admin_add_admin _ or #admin_remove_admin _ or #admin_set_rate_limit _ or #admin_set_dedup_cap _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_rebuild_certification _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_governance _) Principal.isController(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // the swap: anyone signed in, rate-limited
-      case (#claim_swap _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "claim");
-      case (#claim_by_proof _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "proof");
+      case (#claim_swap _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "claim") and rateAllows(self(), "claims_global");
+      case (#claim_by_proof _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "proof") and rateAllows(self(), "claims_global");
       case (#retry_refund _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG and rateAllows(caller, "refund");
     };
   };

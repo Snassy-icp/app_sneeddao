@@ -561,6 +561,16 @@ test -s "$OUT/MockSmsBadReply.wasm"
 echo "== icrc7_demo"
 "$MOC" -c $PKGS -o "$OUT/Icrc7Demo.wasm" "$ROOT/src/icrc7_demo/main.mo" 2>&1 | grep -i "error" -A5 || true
 test -s "$OUT/Icrc7Demo.wasm"
+# sneed_nft before the security review fixes (839a3f6d, the first commit of PR #39), for the
+# fail-before runs of sneed-nft.test.js (SNEED_NFT_WASM=sneed_nft_839a3f6d)
+NFT_PREREVIEW_COMMIT=839a3f6d
+echo "== sneed_nft at $NFT_PREREVIEW_COMMIT (moc, EOP, sneed_nft_839a3f6d)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NFT_PREREVIEW_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_nft/main.mo" -o "$OUT/sneed_nft_839a3f6d.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_nft_839a3f6d.wasm"
 echo "== ledger suite wasms (from the SNS wasm canister, needs network; skipped when present)"
 if [ ! -s "$OUT/ledger.wasm.gz" ] || [ ! -s "$OUT/index.wasm.gz" ]; then
   node --import "$HERE/lib/loader-register.mjs" "$HERE/lib/fetch-ledger-suite.mjs" "$OUT" || echo "   (could not fetch; sneed_pad tests will be skipped)"

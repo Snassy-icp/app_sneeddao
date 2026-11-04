@@ -3,6 +3,8 @@
 //
 // Standards: https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md
 //            https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md
+import T3 "../icrc3/Types";
+
 module {
   public type Account = { owner : Principal; subaccount : ?Blob };
   public type Value = { #Blob : Blob; #Text : Text; #Nat : Nat; #Int : Int; #Array : [Value]; #Map : [(Text, Value)] };
@@ -102,6 +104,7 @@ module {
     refund_amount : Nat; // amount - fee (0: #none)
     refund_created_at : Nat64; // created_at_time of every refund attempt (ledger deduplication)
     refund : RefundState;
+    refund_attempted_at : ?Int; // when the last refund attempt started
     delivered : [Delivered];
     at : Int;
     by : Principal; // who called claim_by_proof
@@ -128,6 +131,8 @@ module {
     ext_canister : Principal;
     proof_ledgers : [ProofLedger];
     pending_refunds : Nat;
+    registry_reads : Nat; // EXT registry reads so far (claims share a cached copy)
+    dedup_entries : Nat; // remembered ICRC-7 transfers (deduplication)
     log_length : Nat;
   };
 
@@ -140,5 +145,7 @@ module {
     #add_admin : Principal;
     #remove_admin : Principal;
     #set_rate_limit : { action : Text; rule : ?{ capacity : Nat; per_minute : Nat } };
+    #set_dedup_cap : Nat;
+    #set_icrc3_settings : T3.SettingsUpdate;
   };
 };

@@ -4,7 +4,8 @@
 /// `archived_upto` through an archive callback), and icrc1_transfer (the refund) moves balances,
 /// deduplicates like the real ledger (same caller and arguments with created_at_time) and can be
 /// made to fail: an error, a trap (outcome unknown to the caller), or a trap *after* the transfer
-/// was recorded (the outcome the caller cannot see, then a retry the ledger must deduplicate).
+/// was recorded (the outcome the caller cannot see, then a retry the ledger must deduplicate), or
+/// an answer the caller cannot decode after recording it (the caller's continuation traps).
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
@@ -28,7 +29,7 @@ persistent actor class MockProofLedger() = this {
     blocks : [{ id : Nat; block : Value }];
     archived_blocks : [{ args : BlocksArgs; callback : shared query BlocksArgs -> async BlocksResult }];
   };
-  type Mode = { #ok; #error; #trap; #trap_after };
+  type Mode = { #ok; #error; #trap; #trap_after; #bad_reply };
 
   var blocks : [Value] = [];
   var archived_upto : Nat = 0;
@@ -101,7 +102,7 @@ persistent actor class MockProofLedger() = this {
   public query func icrc1_fee() : async Nat { fee };
   public query func icrc1_balance_of(a : Account) : async Nat { balance(a) };
 
-  public shared ({ caller }) func icrc1_transfer(args : TransferArgs) : async { #Ok : Nat; #Err : TransferError } {
+  public shared ({ caller }) func icrc1_transfer(args : TransferArgs) : async { #Ok : Nat; #Err : TransferError; #Weird : Text } {
     switch (mode) {
       case (#error) return #Err(#TemporarilyUnavailable);
       case (#trap) assert false;
@@ -128,6 +129,8 @@ persistent actor class MockProofLedger() = this {
       await wait();
       assert false;
     };
+    // the transfer is recorded, but the answer is one the caller cannot decode (it traps after its await)
+    if (mode == #bad_reply) return #Weird("not an ICRC-1 answer");
     #Ok(i);
   };
   public shared func wait() : async () {};

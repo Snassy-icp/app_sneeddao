@@ -34,6 +34,7 @@ import { archiveIdl, verifyLog, hashValue, sha256, btype, txField } from '../lib
 import { idlFactory as nftIdl } from '../build/sneed_nft.did.js';
 
 const E8S = 100_000_000n;
+const NFT_WASM = process.env.SNEED_NFT_WASM || 'sneed_nft';
 const ledgerGz = resolve(BUILD, 'ledger.wasm.gz');
 const haveLedger = existsSync(ledgerGz);
 const minter = user('minter');
@@ -61,7 +62,7 @@ const proofLedgerIdl = ({ IDL: I }) => I.Service({
   test_transfer_legacy: I.Func([Account, Account, I.Nat], [I.Nat], []),
   test_transfer_from: I.Func([Account, Account, Account, I.Nat], [I.Nat], []),
   test_approve: I.Func([Account, Account], [I.Nat], []),
-  set_mode: I.Func([I.Variant({ ok: I.Null, error: I.Null, trap: I.Null, trap_after: I.Null })], [], []),
+  set_mode: I.Func([I.Variant({ ok: I.Null, error: I.Null, trap: I.Null, trap_after: I.Null, bad_reply: I.Null })], [], []),
   set_fee: I.Func([I.Nat], [], []),
   set_archived_upto: I.Func([I.Nat], [], []),
   balance_of: I.Func([Account], [I.Nat], ['query']),
@@ -88,6 +89,12 @@ const icpIdl = ({ IDL: I }) => I.Service({
   test_transfer_from: I.Func([Account, Account, Account, I.Nat], [I.Nat], []),
   set_transfer_failing: I.Func([I.Bool], [], []),
   get_legacy_transfers: I.Func([], [I.Vec(I.Tuple(I.Principal, I.Record({ memo: I.Nat64, amount: Tokens, fee: Tokens, from_subaccount: I.Opt(I.Vec(I.Nat8)), to: I.Vec(I.Nat8), created_at_time: I.Opt(I.Record({ timestamp_nanos: I.Nat64 })) }), I.Nat))], ['query']),
+});
+const Status = IDL.Variant({ open: IDL.Null, executed: IDL.Text, failed: IDL.Text });
+const govIdl = ({ IDL: I }) => I.Service({
+  add_function: I.Func([I.Nat, I.Record({ target: I.Principal, target_method: I.Text, validator: I.Principal, validator_method: I.Text })], [], []),
+  pass: I.Func([I.Nat, I.Vec(I.Nat8)], [I.Variant({ ok: I.Tuple(I.Nat, Status), err: I.Text })], []),
+  call_raw: I.Func([I.Principal, I.Text, I.Vec(I.Nat8)], [I.Variant({ ok: I.Vec(I.Nat8), err: I.Text })], []),
 });
 const extMore = ({ IDL: I }) => I.Service({
   mint_many: I.Func([I.Text, I.Nat], [], []),
@@ -181,9 +188,25 @@ async function fullBody(nft, resp) {
   return Buffer.concat(parts);
 }
 
-let pic, rootKey, appSubnet, nftId, extId, nft, nftAs, ext, extX;
+let pic, rootKey, appSubnet, nftId, extId, nft, nftAs, ext, extX, gov, govId;
+/// A DAO decision: a proposal of the dao_admin GNSF, validated and executed by the mock governance.
+async function dao(action) {
+  const m = nftIdl({ IDL })._fields.find(([n]) => n === 'dao_admin')[1];
+  const r = await gov.pass(1n, IDL.encode(m.argTypes, [action]));
+  if ('err' in r) throw new Error(`proposal refused: ${r.err}`);
+  return r.ok[1];
+}
+/// status() as the tests read it: the newer counters optional, so a build from before them
+/// (SNEED_NFT_WASM=sneed_nft_839a3f6d) still answers.
+const statusIdl = ({ IDL: I }) => I.Service({ status: I.Func([], [I.Record({
+  images: I.Nat, region_bytes: I.Nat, wasted_bytes: I.Nat, uploads_in_progress: I.Nat, metadata_frozen: I.Bool, minting_locked: I.Bool,
+  pending_refunds: I.Nat, registry_reads: I.Opt(I.Nat), dedup_entries: I.Opt(I.Nat),
+})], ['query']) });
+const st = () => actorAs(pic, statusIdl, nftId, admin).status();
+/// Past the EXT registry cache (30 s): the next claim_swap reads the registry again.
+const fresh = async () => { await pic.advanceTime(31_000); await pic.tick(2); };
 const cards = new Map(); // token id -> { orig, web, thumb }
-const N = 12; // cards in this collection (token 12 has an original over the streaming chunk)
+const N = 16; // cards in this collection (the last one has an original over the streaming chunk)
 
 async function upload(actor, target, bytes, { contentType = 'image/jpeg', chunk = 1_000_000 } = {}) {
   const id = ok(await actor.image_upload_begin({ target, size: BigInt(bytes.length), content_type: contentType }));
@@ -205,14 +228,19 @@ describe('sneed_nft', () => {
   beforeAll(async () => {
     ({ pic, appSubnet, rootKey } = await createPic());
     extId = await install(pic, { name: 'MockExt', targetSubnetId: appSubnet });
-    nftId = await install(pic, { name: 'sneed_nft', targetSubnetId: appSubnet, cycles: 50n * T });
+    nftId = await install(pic, { name: NFT_WASM, targetSubnetId: appSubnet, cycles: 50n * T });
     nft = actorAs(pic, nftIdl, nftId, admin);
     nftAs = (p) => actorAs(pic, nftIdl, nftId, p);
     ext = actorAs(pic, extIdl, extId, admin);
     extX = actorAs(pic, extMore, extId, admin);
     ok(await nft.admin_set_ext_canister(extId));
-    // these tests script many claims from a few callers; one test below checks the limit itself
+    govId = await install(pic, { name: 'MockProxyGov', targetSubnetId: appSubnet });
+    gov = actorAs(pic, govIdl, govId, admin);
+    await gov.add_function(1n, { target: nftId, target_method: 'dao_admin', validator: nftId, validator_method: 'validate_dao_admin' });
+    ok(await nft.admin_set_governance(govId));
+    // these tests script many claims from a few callers; tests below check the limits themselves
     ok(await nft.admin_set_rate_limit('claim', [{ capacity: 0n, per_minute: 0n }]));
+    await nft.admin_set_rate_limit('claims_global', [{ capacity: 0n, per_minute: 0n }]); // (builds before the global limit refuse the name)
     for (let n = 1; n <= N; n++) cards.set(n, { orig: image(n === N ? 2_600_000 : 3_000 + n), web: image(900 + n), thumb: image(300 + n) });
   }, 180_000);
   afterAll(async () => { await pic?.tearDown(); });
@@ -253,8 +281,8 @@ describe('sneed_nft', () => {
       expect(m.image).toEqual({ Text: `https://${nftId.toText()}.icp0.io/card/3.jpg` });
       expect(m.image_sha256).toEqual({ Text: hex(sha256(cards.get(3).orig)) });
       expect(m.name).toEqual({ Text: 'Sneed Diamond Club #3' });
-      // tokens outside the manifest (for the ICRC-7 tests), straight to alice
-      const r2 = await nft.icrcX_mint([101, 102, 103, 104].map((n) => mintReq(n, [account(alice)])));
+      // tokens outside the manifest (for the ICRC-7 tests; alice gets them by the swap)
+      const r2 = await nft.icrcX_mint([101, 102, 103, 104].map((n) => mintReq(n)));
       expect(r2.every((x) => 'Ok' in x)).toBe(true);
       expect((await metaOf(101)).image).toBeUndefined();
       // refusals
@@ -263,18 +291,18 @@ describe('sneed_nft', () => {
       const big = { ...mintReq(200), metadata: { Map: [['blob', { Blob: new Uint8Array(9_000) }]] } };
       expect(js((await nft.icrcX_mint([big]))[0])).toMatch(/larger than 8192/);
       expect(await nft.icrc7_tokens([], [])).toEqual([...[...cards.keys()].map(BigInt), 101n, 102n, 103n, 104n]);
-      expect(await nft.icrc7_tokens([10n], [3n])).toEqual([11n, 12n, 101n]);
+      expect(await nft.icrc7_tokens([10n], [3n])).toEqual([11n, 12n, 13n]);
       // metadata changes before the freeze (override), logged as 7update_token
-      const upd = { ...mintReq(101, [account(alice)]), override: true, metadata: { Map: [['name', { Text: 'renamed' }]] } };
+      const upd = { ...mintReq(101), override: true, metadata: { Map: [['name', { Text: 'renamed' }]] } };
       expect('Ok' in (await nft.icrcX_mint([upd]))[0]).toBe(true);
       expect((await metaOf(101)).name).toEqual({ Text: 'renamed' });
     });
 
     it('stores images in chunks, checks originals against the manifest, refuses a mismatch', async () => {
       // a wrong original: refused, its bytes released (the region tail is reused)
-      const before = await nft.status();
+      const before = await st();
       expect(errOf(await upload(nft, card(1), image(4_000)))).toMatch(/SHA-256 mismatch/);
-      expect((await nft.status()).region_bytes).toBe(before.region_bytes);
+      expect((await st()).region_bytes).toBe(before.region_bytes);
       expect((await nft.get_image_info([card(1)]))[0]).toEqual([]);
       // chunk order and completeness
       const id = ok(await nft.image_upload_begin({ target: card(1), size: 10n, content_type: 'image/jpeg' }));
@@ -294,7 +322,7 @@ describe('sneed_nft', () => {
         expect(hex(ok(await upload(nft, card(n, 'thumb'), c.thumb)).sha256)).toBe(hex(sha256(c.thumb)));
       }
       ok(await upload(nft, { logo: null }, cards.get(N).thumb));
-      const s = await nft.status();
+      const s = await st();
       expect(s.images).toBe(BigInt(3 * N + 1));
       expect(s.uploads_in_progress).toBe(0n);
     });
@@ -341,7 +369,22 @@ describe('sneed_nft', () => {
       await verifyHttp(r, r.body, nftId, rootKey, '/card/4.jpg?size=web');
       await expect(verifyHttp(r, old.body, nftId, rootKey, '/card/4.jpg?size=web')).rejects.toThrow(/response leaf/);
       cards.get(4).web = web2;
-      expect((await nft.status()).wasted_bytes).toBeGreaterThan(0n);
+      expect((await st()).wasted_bytes).toBeGreaterThan(0n);
+    });
+
+    it('L4: replacing one size keeps the certification of another size with the same bytes', async () => {
+      const same = image(700);
+      ok(await upload(nft, card(5, 'web'), same));
+      ok(await upload(nft, card(5, 'thumb'), same)); // same bytes, same type: the same certified leaf
+      const web = image(800);
+      ok(await upload(nft, card(5, 'web'), web)); // replacing the web size must not uncertify the thumbnail
+      const r = await get(nft, '/card/5.jpg?size=thumb');
+      expect(Buffer.from(r.body).equals(same)).toBe(true);
+      await verifyHttp(r, r.body, nftId, rootKey, '/card/5.jpg?size=thumb');
+      const w = await get(nft, '/card/5.jpg?size=web');
+      await verifyHttp(w, w.body, nftId, rootKey, '/card/5.jpg?size=web');
+      cards.get(5).web = web;
+      cards.get(5).thumb = same;
     });
 
     it('refuses the swap before the load is done', async () => {
@@ -357,7 +400,7 @@ describe('sneed_nft', () => {
       expect(errOf(await nft.freeze_metadata())).toMatch(/frozen already/);
       expect(errOf(await nft.set_collection({ name: ['x'], symbol: [], description: [], logo: [], supply_cap: [] }))).toMatch(/frozen/);
       expect(errOf(await nft.image_upload_begin({ target: card(5, 'thumb'), size: 10n, content_type: 'image/jpeg' }))).toMatch(/frozen/);
-      const upd = { ...mintReq(102, [account(alice)]), override: true };
+      const upd = { ...mintReq(102), override: true };
       expect(js((await nft.icrcX_mint([upd]))[0])).toMatch(/frozen/);
       // frozen images are served with immutable cache headers, still certified
       const r = await get(nft, '/card/1.jpg');
@@ -368,13 +411,19 @@ describe('sneed_nft', () => {
       expect(errOf(await nft.lock_minting())).toMatch(/locked already/);
       expect(js((await nft.icrcX_mint([mintReq(300)]))[0])).toMatch(/Minting is locked/);
       expect(await nft.icrc7_supply_cap()).toEqual([BigInt(N + 4)]);
-      const s = await nft.status();
+      const s = await st();
       expect(s.metadata_frozen).toBe(true);
       expect(s.minting_locked).toBe(true);
     });
   });
 
   describe('ICRC-7 and ICRC-37', () => {
+    beforeAll(async () => {
+      // the EXT collection: index n is card n + 1; 0..11 at judy's account, 100..103 swapped to alice
+      await extX.mint_many(extAccountId(judy), 104);
+      for (let i = 100; i < 104; i++) await extX.set_bearer(i, extAccountId(nftId, swapSub(alice)));
+      expect(ok(await nftAs(alice).claim_swap(alice)).delivered.map((d) => d.token_id)).toEqual([101n, 102n, 103n, 104n]);
+    });
     it('transfers: owner only, not to itself or the collection canister, memo cap, deduplication', async () => {
       expect(await nftAs(bob).icrc7_transfer([{ from_subaccount: [], to: account(bob), token_id: 101n, memo: [], created_at_time: [] }])).toEqual([[{ Err: { Unauthorized: null } }]]);
       expect(await nftAs(alice).icrc7_transfer([{ from_subaccount: [], to: account(alice), token_id: 101n, memo: [], created_at_time: [] }])).toEqual([[{ Err: { InvalidRecipient: null } }]]);
@@ -439,10 +488,10 @@ describe('sneed_nft', () => {
     });
 
     it('delivers the cards held by the swap address, once; anyone may call it', async () => {
-      // EXT index n holds card n+1: 0..11 for cards 1..12, all held by a whale at first
-      await extX.mint_many(extAccountId(judy), N);
+      // EXT index n holds card n+1: 0..11 for cards 1..12, all held by judy at first
       await extX.set_bearer(0, addr(bob));
       await extX.set_bearer(1, addr(bob));
+      await fresh();
       const r = ok(await nftAs(carol).claim_swap(bob));
       expect(r.delivered.map((d) => [d.ext_index, d.token_id])).toEqual([[0, 1n], [1, 2n]]);
       expect(await ownerOf(1)).toEqual(account(bob));
@@ -464,6 +513,7 @@ describe('sneed_nft', () => {
       expect(await ownerOf(3)).toEqual({ owner: nftId, subaccount: [] });
       // a card moved to dave's swap address goes to dave, not to whoever claims
       await extX.set_bearer(2, addr(dave));
+      await fresh();
       expect(ok(await nftAs(carol).claim_swap(carol)).delivered).toEqual([]);
       expect(ok(await nftAs(carol).claim_swap(dave)).delivered.map((d) => d.token_id)).toEqual([3n]);
     });
@@ -471,43 +521,50 @@ describe('sneed_nft', () => {
     it('racing claims deliver each card once', async () => {
       await extX.set_bearer(3, addr(erin));
       await extX.set_bearer(4, addr(erin));
+      await fresh();
       const m = nftIdl({ IDL })._fields.find(([n]) => n === 'claim_swap')[1];
       const submit = (sender) => pic.submitCall({ canisterId: nftId, method: 'claim_swap', arg: IDL.encode(m.argTypes, [erin]), sender });
       const c1 = await submit(carol);
       const c2 = await submit(dave);
       const r1 = IDL.decode(m.retTypes, await pic.awaitCall(c1))[0];
       const r2 = IDL.decode(m.retTypes, await pic.awaitCall(c2))[0];
-      const delivered = [...r1.ok.delivered, ...r2.ok.delivered].map((d) => d.token_id).sort();
-      expect(delivered).toEqual([4n, 5n]);
-      expect([...r1.ok.already_swapped, ...r2.ok.already_swapped].sort()).toEqual([3, 4]);
+      // the second call finds the registry being read and is told to come back (one read at a
+      // time), or, if the first read is done, finds the cards swapped already
+      const okd = [r1, r2].filter((r) => 'ok' in r).map((r) => r.ok);
+      for (const r of [r1, r2]) if ('err' in r) expect(r.err).toMatch(/being read/);
+      expect(okd.flatMap((r) => r.delivered).map((d) => d.token_id).sort()).toEqual([4n, 5n]);
+      if (okd.length === 2) expect(okd.flatMap((r) => [...r.already_swapped]).sort()).toEqual([3, 4]);
       expect(await nft.icrc7_tokens_of(account(erin), [], [])).toEqual([4n, 5n]);
     });
 
     it('an unreadable registry changes nothing; a card without its token is reported', async () => {
       await extX.set_bearer(5, addr(frank));
+      await fresh();
       await extX.set_registry_failing(true);
       expect(errOf(await nftAs(carol).claim_swap(frank))).toMatch(/Could not read the EXT registry/);
       await extX.set_registry_failing(false);
       expect(await ownerOf(6)).toEqual({ owner: nftId, subaccount: [] });
       expect(ok(await nftAs(carol).claim_swap(frank)).delivered.map((d) => d.token_id)).toEqual([6n]);
       // an EXT index past the minted cards: reported, nothing moves
-      await extX.mint_many(addr(frank), 1); // index 12 -> token 13 does not exist
+      await extX.mint_many(addr(frank), 1); // index 104 -> token 105 does not exist
+      await fresh();
       const r = ok(await nftAs(carol).claim_swap(frank));
-      expect([...r.unavailable]).toEqual([12]);
+      expect([...r.unavailable]).toEqual([104]);
       expect(r.delivered).toEqual([]);
     });
 
     it('pause and rate limit', async () => {
-      ok(await nft.admin_set_swaps_paused(true));
+      ok(await nft.admin_set_swaps_paused(true)); // an admin may pull the brake
       expect(errOf(await nftAs(carol).claim_swap(frank))).toMatch(/paused/);
-      ok(await nft.admin_set_swaps_paused(false));
-      ok(await nft.admin_set_rate_limit('claim', [{ capacity: 2n, per_minute: 1n }]));
+      expect(errOf(await nft.admin_set_swaps_paused(false))).toMatch(/DAO proposal/); // but not release it
+      expect(await dao({ set_swaps_paused: false })).toHaveProperty('executed');
+      expect(await dao({ set_rate_limit: { action: 'claim', rule: [{ capacity: 2n, per_minute: 1n }] } })).toHaveProperty('executed');
       const caller = user('ratelimited');
       ok(await nftAs(caller).claim_swap(frank));
       ok(await nftAs(caller).claim_swap(frank));
       await refusedAtIngress(nftAs(caller).claim_swap(frank)); // inspect peeks at the empty bucket
       ok(await nft.claim_swap(frank)); // admins are not limited
-      ok(await nft.admin_set_rate_limit('claim', [{ capacity: 0n, per_minute: 0n }]));
+      await dao({ set_rate_limit: { action: 'claim', rule: [{ capacity: 0n, per_minute: 0n }] } });
     });
   });
 
@@ -531,11 +588,11 @@ describe('sneed_nft', () => {
       icpId = await install(pic, { name: 'MockIcpLedger', targetSubnetId: appSubnet });
       icp = actorAs(pic, icpIdl, icpId, admin);
       icpAs = (p) => actorAs(pic, icpIdl, icpId, p);
-      ok(await nft.admin_set_proof_ledger({ ledger: mockId, kind: { icrc3: null } }));
-      ok(await nft.admin_set_proof_ledger({ ledger: icpId, kind: { icp: null } }));
-      if (haveLedger) ok(await nft.admin_set_proof_ledger({ ledger: tokId, kind: { icrc3: null } }));
-      ok(await nft.admin_set_rate_limit('proof', [{ capacity: 0n, per_minute: 0n }]));
-      ok(await nft.admin_set_rate_limit('refund', [{ capacity: 0n, per_minute: 0n }]));
+      // after the load, by DAO proposal only
+      for (const l of [{ ledger: mockId, kind: { icrc3: null } }, { ledger: icpId, kind: { icp: null } }, ...(haveLedger ? [{ ledger: tokId, kind: { icrc3: null } }] : [])]) {
+        expect(await dao({ set_proof_ledger: l })).toHaveProperty('executed');
+      }
+      for (const action of ['proof', 'refund']) await dao({ set_rate_limit: { action, rule: [{ capacity: 0n, per_minute: 0n }] } });
       // the cards not used by the swap tests (EXT indexes 6..11) go to an uninvolved holder
       for (let i = 6; i < N; i++) await extX.set_bearer(i, extAccountId(minter));
     });
@@ -547,7 +604,7 @@ describe('sneed_nft', () => {
       await extX.set_bearer(8, extAccountId(hank)); // card 9: someone else's
       const before = await tok.icrc1_balance_of(account(gina, sub));
       const i = unwrap(await tokAs(gina).icrc1_transfer({ from_subaccount: [sub], to: proofTo(ivy), amount: 50_000n, fee: [], memo: [], created_at_time: [] }));
-      const pr = ok(await nftAs(carol).claim_by_proof(ivy, tokId, i));
+      const pr = ok(await nftAs(carol).claim_by_proof(ivy, tokId, i, []));
       expect(pr.delivered.map((d) => d.token_id)).toEqual([7n, 8n]);
       expect(pr.refund).toEqual({ done: { block: expect.any(BigInt) } });
       expect(pr.refund_amount).toBe(40_000n);
@@ -558,39 +615,40 @@ describe('sneed_nft', () => {
       expect((await nft.list_retired([], [])).map((s) => s.ext_index)).toEqual([6, 7]);
       expect((await nft.get_swap(6))[0].proof).toEqual([`${tokId.toText()}:${i}`]);
       // reused
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, i))).toMatch(/used already/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, i, []))).toMatch(/used already/);
       // a retired card sent to a swap address later is not swapped again
       await extX.set_bearer(6, addr(judy));
+      await fresh();
       expect([...ok(await nftAs(carol).claim_swap(judy)).already_swapped]).toEqual([6]);
       // a transfer made with an approval proves nothing about the holder's key
       unwrap(await tokAs(hank).icrc2_approve({ from_subaccount: [], spender: account(carol), amount: E8S, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
       const j = unwrap(await tokAs(carol).icrc2_transfer_from({ spender_subaccount: [], from: account(hank), to: proofTo(carol), amount: 50_000n, fee: [], memo: [], created_at_time: [] }));
-      expect(errOf(await nftAs(carol).claim_by_proof(carol, tokId, j))).toMatch(/approval/);
+      expect(errOf(await nftAs(carol).claim_by_proof(carol, tokId, j, []))).toMatch(/approval/);
       expect(await ownerOf(9)).toEqual({ owner: nftId, subaccount: [] });
       // a payment to someone else's proof address does not prove anything for ivy
       const k = unwrap(await tokAs(hank).icrc1_transfer({ from_subaccount: [], to: proofTo(judy), amount: 50_000n, fee: [], memo: [], created_at_time: [] }));
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, k))).toMatch(/not sent to this recipient's proof address/);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, 999_999n))).toMatch(/no block/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, k, []))).toMatch(/not sent to this recipient's proof address/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, tokId, 999_999n, []))).toMatch(/no block/);
     });
     const addr = (p) => extAccountId(nftId, swapSub(p));
 
     it('ledgers off the list, approvals and non-transfers are refused', async () => {
       const other = await install(pic, { name: 'MockProofLedger', targetSubnetId: appSubnet });
       const i = await actorAs(pic, proofLedgerIdl, other, admin).test_transfer(account(hank), proofTo(ivy), 50_000n);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, other, i))).toMatch(/not accepted/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, other, i, []))).toMatch(/not accepted/);
       const a = await mock.test_approve(account(hank), account(carol));
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, a))).toMatch(/not a transfer/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, a, []))).toMatch(/not a transfer/);
       const f = await mock.test_transfer_from(account(hank), proofTo(ivy), account(carol), 50_000n);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, f))).toMatch(/approval/);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, 4242n))).toMatch(/no block/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, f, []))).toMatch(/approval/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, 4242n, []))).toMatch(/no block/);
       // a payment from this canister itself
       const s = await mock.test_transfer(account(nftId, swapSub(ivy)), proofTo(ivy), 50_000n);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, s))).toMatch(/proves nothing/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, s, []))).toMatch(/proves nothing/);
       // a payment a canister made (an exchange, a marketplace, an escrow paying for its users)
       // proves nothing about the cards that canister holds
       await extX.set_bearer(8, extAccountId(extId)); // card 9 held by a canister
       const k = await mock.test_transfer(account(extId), proofTo(ivy), 50_000n);
-      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, k))).toMatch(/wallet's own key/);
+      expect(errOf(await nftAs(carol).claim_by_proof(ivy, mockId, k, []))).toMatch(/wallet's own key/);
       expect(await ownerOf(9)).toEqual({ owner: nftId, subaccount: [] });
       await extX.set_bearer(8, extAccountId(minter));
     });
@@ -599,7 +657,7 @@ describe('sneed_nft', () => {
       await extX.set_bearer(9, extAccountId(judy, new Uint8Array(32).fill(3)));
       const i = await mock.test_transfer_legacy(account(judy, new Uint8Array(32).fill(3)), proofTo(judy), 5_000n);
       await mock.set_archived_upto(i + 1n);
-      const pr = ok(await nftAs(carol).claim_by_proof(judy, mockId, i));
+      const pr = ok(await nftAs(carol).claim_by_proof(judy, mockId, i, []));
       expect(pr.delivered.map((d) => d.token_id)).toEqual([10n]);
       expect(pr.refund).toEqual({ none: null });
       await mock.set_archived_upto(0n);
@@ -609,10 +667,10 @@ describe('sneed_nft', () => {
       // the ledger answers an error: nothing paid, retryable
       await mock.set_mode({ error: null });
       const i = await mock.test_transfer(account(erin), proofTo(erin), 1_000_000n);
-      const pr = ok(await nftAs(carol).claim_by_proof(erin, mockId, i));
+      const pr = ok(await nftAs(carol).claim_by_proof(erin, mockId, i, []));
       expect(Object.keys(pr.refund)).toEqual(['failed']);
       expect((await nft.pending_refunds()).map((p) => p.key)).toContain(`${mockId.toText()}:${i}`);
-      expect((await nft.status()).pending_refunds).toBeGreaterThan(0n);
+      expect((await st()).pending_refunds).toBeGreaterThan(0n);
       await mock.set_mode({ ok: null });
       const done = ok(await nftAs(dave).retry_refund(mockId, i));
       expect(Object.keys(done.refund)).toEqual(['done']);
@@ -621,7 +679,7 @@ describe('sneed_nft', () => {
       // the ledger records the refund but the reply is lost: the retry is deduplicated
       await mock.set_mode({ trap_after: null });
       const j = await mock.test_transfer(account(frank), proofTo(frank), 1_000_000n);
-      const pr2 = ok(await nftAs(carol).claim_by_proof(frank, mockId, j));
+      const pr2 = ok(await nftAs(carol).claim_by_proof(frank, mockId, j, []));
       expect(pr2.refund.failed).toMatch(/Outcome unknown/);
       await mock.set_mode({ ok: null });
       const done2 = ok(await nftAs(carol).retry_refund(mockId, j));
@@ -632,7 +690,7 @@ describe('sneed_nft', () => {
       // the ledger traps before recording anything: retry pays once
       await mock.set_mode({ trap: null });
       const k = await mock.test_transfer(account(gina), proofTo(gina), 1_000_000n);
-      expect(Object.keys(ok(await nftAs(carol).claim_by_proof(gina, mockId, k)).refund)).toEqual(['failed']);
+      expect(Object.keys(ok(await nftAs(carol).claim_by_proof(gina, mockId, k, [])).refund)).toEqual(['failed']);
       await mock.set_mode({ ok: null });
       expect(Object.keys(ok(await nftAs(carol).retry_refund(mockId, k)).refund)).toEqual(['done']);
       expect(await mock.balance_of(account(gina))).toBe(990_000n);
@@ -641,7 +699,7 @@ describe('sneed_nft', () => {
     it('a changed ledger fee needs an admin, who resets the refund after checking the ledger', async () => {
       await mock.set_mode({ error: null });
       const i = await mock.test_transfer(account(hank), proofTo(hank), 1_000_000n);
-      expect(Object.keys(ok(await nftAs(carol).claim_by_proof(hank, mockId, i)).refund)).toEqual(['failed']);
+      expect(Object.keys(ok(await nftAs(carol).claim_by_proof(hank, mockId, i, [])).refund)).toEqual(['failed']);
       await mock.set_mode({ ok: null });
       await mock.set_fee(20_000n);
       expect(ok(await nftAs(carol).retry_refund(mockId, i)).refund.needs_admin).toMatch(/fee changed/);
@@ -655,11 +713,17 @@ describe('sneed_nft', () => {
       await mock.set_fee(10_000n);
     });
 
-    it('ICP: the sender is an account identifier; its cards are delivered and the refund goes back to it', async () => {
+    it('ICP: the payer is named (principal, subaccount), must hash to the account identifier and be a wallet key; the refund goes back to it', async () => {
       const sub = new Uint8Array(32).fill(9);
       await extX.set_bearer(10, extAccountId(hank, sub)); // card 11
       const i = unwrap(await icpAs(hank).icrc1_transfer({ from_subaccount: [sub], to: proofTo(judy), amount: 100_000n, fee: [], memo: [], created_at_time: [] }));
-      const pr = ok(await nftAs(carol).claim_by_proof(judy, icpId, i));
+      // the ledger records only an account identifier: without the payer's principal, refused
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, i, []))).toMatch(/give the paying wallet's principal/);
+      // a principal and subaccount that do not hash to the payment's account identifier
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, i, [account(hank)]))).toMatch(/not the account the payment came from/);
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, i, [account(carol, sub)]))).toMatch(/not the account the payment came from/);
+      expect(await ownerOf(11)).toEqual({ owner: nftId, subaccount: [] });
+      const pr = ok(await nftAs(carol).claim_by_proof(judy, icpId, i, [account(hank, sub)]));
       expect(pr.sender).toEqual({ account_id: expect.any(Uint8Array) });
       expect(hex(pr.sender.account_id)).toBe(extAccountId(hank, sub));
       expect(pr.delivered.map((d) => d.token_id)).toEqual([11n]);
@@ -671,21 +735,124 @@ describe('sneed_nft', () => {
       expect(hex(args.from_subaccount[0])).toBe(hex(proofSub(judy)));
       // a transfer made by an approved spender is refused
       const j = await icp.test_transfer_from(account(hank), proofTo(judy), account(carol), 100_000n);
-      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, j))).toMatch(/approval/);
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, j, [account(hank)]))).toMatch(/approval/);
+      // a canister's ICP payment proves nothing about the cards it holds, even named truthfully
+      await extX.set_bearer(8, extAccountId(govId)); // card 9 held by a canister
+      const raw = await gov.call_raw(icpId, 'icrc1_transfer', IDL.encode([TransferArg], [{ from_subaccount: [], to: proofTo(judy), amount: 100_000n, fee: [], memo: [], created_at_time: [] }]));
+      const k = IDL.decode([IDL.Variant({ Ok: IDL.Nat, Err: IDL.Reserved })], new Uint8Array(raw.ok))[0].Ok;
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, k, [account(govId)]))).toMatch(/wallet's own key/);
+      expect(errOf(await nftAs(carol).claim_by_proof(judy, icpId, k, []))).toMatch(/give the paying wallet's principal/);
+      expect(await ownerOf(9)).toEqual({ owner: nftId, subaccount: [] });
+      await extX.set_bearer(8, extAccountId(minter));
     });
 
     it('racing proofs with the same payment deliver and refund once', async () => {
       await extX.set_bearer(11, extAccountId(dave)); // card 12
       const i = await mock.test_transfer(account(dave), proofTo(dave), 1_000_000n);
       const m = nftIdl({ IDL })._fields.find(([n]) => n === 'claim_by_proof')[1];
-      const submit = (sender) => pic.submitCall({ canisterId: nftId, method: 'claim_by_proof', arg: IDL.encode(m.argTypes, [dave, mockId, i]), sender });
+      const submit = (sender) => pic.submitCall({ canisterId: nftId, method: 'claim_by_proof', arg: IDL.encode(m.argTypes, [dave, mockId, i, []]), sender });
       const c1 = await submit(carol);
       const c2 = await submit(erin);
       const rs = [IDL.decode(m.retTypes, await pic.awaitCall(c1))[0], IDL.decode(m.retTypes, await pic.awaitCall(c2))[0]];
       expect(rs.filter((r) => 'ok' in r).length).toBe(1);
-      expect(rs.find((r) => 'err' in r).err).toMatch(/used already/);
+      expect(rs.find((r) => 'err' in r).err).toMatch(/used already|being read/);
       expect(await ownerOf(12)).toEqual(account(dave));
       expect((await mock.get_refunds()).filter(([, a]) => a.to.owner.toText() === dave.toText()).length).toBe(1);
+    });
+
+    it('M3: a refund whose continuation trapped after the ledger call is resent once the call must be over, paid once; too late, it waits for an admin', async () => {
+      // the ledger records the refund but answers what the canister cannot decode: it traps after its await
+      await mock.set_mode({ bad_reply: null });
+      const i = await mock.test_transfer(account(ivy), proofTo(ivy), 1_000_000n);
+      await expect(nftAs(carol).claim_by_proof(ivy, mockId, i, [])).rejects.toThrow();
+      expect(Object.keys((await nft.get_proof(mockId, i))[0].refund)).toEqual(['in_flight']);
+      await mock.set_mode({ ok: null });
+      expect(errOf(await nftAs(carol).retry_refund(mockId, i))).toMatch(/running/); // not yet: it could still be running
+      await pic.advanceTime(11 * 60_000);
+      await pic.tick(2);
+      const done = ok(await nftAs(carol).retry_refund(mockId, i)); // the same transfer: the ledger answers Duplicate
+      const refunds = (await mock.get_refunds()).filter(([, a]) => a.to.owner.toText() === ivy.toText());
+      expect(refunds.length).toBe(1);
+      expect(done.refund).toEqual({ done: { block: refunds[0][2] } });
+      expect(await mock.balance_of(account(ivy))).toBe(990_000n);
+      // stuck past the ledger's deduplication window: resending could pay twice, so an admin decides
+      await mock.set_mode({ bad_reply: null });
+      const j = await mock.test_transfer(account(judy), proofTo(judy), 1_000_000n);
+      await expect(nftAs(carol).claim_by_proof(judy, mockId, j, [])).rejects.toThrow();
+      await mock.set_mode({ ok: null });
+      await pic.advanceTime(23.5 * 3600_000);
+      await pic.tick(2);
+      expect(ok(await nftAs(carol).retry_refund(mockId, j)).refund.needs_admin).toMatch(/Too late/);
+      expect((await mock.get_refunds()).filter(([, a]) => a.to.owner.toText() === judy.toText()).length).toBe(1);
+    });
+  });
+
+  describe('security review fixes', () => {
+    const addr = (p) => extAccountId(nftId, swapSub(p));
+
+    it('H2: after the load, proof ledgers, the EXT canister, admins, limits and log settings change only by DAO proposal', async () => {
+      const fake = await install(pic, { name: 'MockProofLedger', targetSubnetId: appSubnet });
+      expect(errOf(await nft.admin_set_proof_ledger({ ledger: fake, kind: { icrc3: null } }))).toMatch(/DAO proposal/);
+      expect((await nft.get_proof_ledgers()).map((l) => l.ledger.toText())).not.toContain(fake.toText());
+      expect(errOf(await nft.admin_add_admin(carol))).toMatch(/DAO proposal/);
+      expect(await nft.get_admins()).not.toContainEqual(carol);
+      expect(errOf(await nft.admin_set_ext_canister(fake))).toMatch(/DAO proposal/);
+      expect(errOf(await nft.admin_set_rate_limit('claims_global', [{ capacity: 0n, per_minute: 0n }]))).toMatch(/DAO proposal/);
+      expect(errOf(await nft.admin_set_icrc3_settings({ max_live_blocks: [5n], spill_batch_size: [], archive_max_blocks: [], archive_initial_cycles: [], archive_top_up_threshold: [], archive_top_up_amount: [] }))).toMatch(/DAO proposal/);
+      // the DAO can
+      expect(await dao({ set_proof_ledger: { ledger: fake, kind: { icrc3: null } } })).toHaveProperty('executed');
+      expect((await nft.get_proof_ledgers()).map((l) => l.ledger.toText())).toContain(fake.toText());
+      expect(await dao({ remove_proof_ledger: fake })).toHaveProperty('executed');
+      expect(await dao({ add_admin: carol })).toHaveProperty('executed');
+      expect(await nft.get_admins()).toContainEqual(carol);
+      expect(await dao({ remove_admin: carol })).toHaveProperty('executed');
+    });
+
+    it('M1: claims share one EXT registry read per 30 s; all callers together are rate-limited', async () => {
+      await fresh();
+      const before = (await st()).registry_reads[0];
+      for (const name of ['m1a', 'm1b', 'm1c', 'm1d']) ok(await nftAs(user(name)).claim_swap(user(name)));
+      expect((await st()).registry_reads[0]).toBe(before + 1n);
+      await fresh();
+      ok(await nftAs(user('m1e')).claim_swap(bob));
+      expect((await st()).registry_reads[0]).toBe(before + 2n);
+      // fresh principals cost nothing: a limit for all callers together
+      await dao({ set_rate_limit: { action: 'claims_global', rule: [{ capacity: 3n, per_minute: 1n }] } });
+      const rs = [];
+      for (let k = 0; k < 5; k++) rs.push(await nftAs(user(`m1fresh${k}`)).claim_swap(bob).catch(() => 'refused'));
+      expect(rs.filter((r) => r !== 'refused' && 'ok' in r).length).toBe(3);
+      await dao({ set_rate_limit: { action: 'claims_global', rule: [{ capacity: 0n, per_minute: 0n }] } });
+    });
+
+    it('M2: ICRC-7 / ICRC-37 updates are rate-limited per caller; deduplication memory is capped and pruned oldest first', async () => {
+      await dao({ set_rate_limit: { action: 'nft_update', rule: [{ capacity: 3n, per_minute: 1n }] } });
+      const t = await nowNs();
+      const approve = () => nftAs(dave).icrc37_approve_tokens([{ token_id: 102n, approval_info: { spender: account(carol), from_subaccount: [], expires_at: [], memo: [], created_at_time: t } }]).catch(() => 'refused');
+      const rs = [];
+      for (let k = 0; k < 4; k++) rs.push(await approve());
+      expect(rs.slice(0, 3).every((r) => 'Ok' in r[0][0])).toBe(true);
+      expect(rs[3]).toBe('refused'); // the ingress guard sees the empty bucket
+      await dao({ set_rate_limit: { action: 'nft_update', rule: [] } });
+      // room for one more remembered transfer
+      const entries = (await st()).dedup_entries[0];
+      await dao({ set_dedup_cap: entries + 1n });
+      const xfer = (from, to, created) => nftAs(from).icrc7_transfer([{ from_subaccount: [], to: account(to), token_id: 101n, memo: [], created_at_time: created }]);
+      expect('Ok' in (await xfer(bob, carol, [await nowNs()]))[0][0]).toBe(true);
+      expect(js(await xfer(carol, bob, [await nowNs()]))).toMatch(/Too many recent transfers/);
+      expect('Ok' in (await xfer(carol, bob, []))[0][0]).toBe(true); // without created_at_time: no deduplication
+      // a day later the old entries are pruned (oldest first) and there is room again
+      await pic.advanceTime(25 * 3600_000);
+      await pic.tick(2);
+      expect('Ok' in (await xfer(bob, carol, [await nowNs()]))[0][0]).toBe(true);
+      expect((await st()).dedup_entries[0]).toBe(1n);
+      await dao({ set_dedup_cap: 20_000n });
+    });
+
+    it('L2: cards sent to the proof address by mistake are delivered by claim_swap', async () => {
+      await extX.set_bearer(12, extAccountId(nftId, proofSub(erin))); // card 13
+      await fresh();
+      expect(ok(await nftAs(carol).claim_swap(erin)).delivered.map((d) => d.token_id)).toEqual([13n]);
+      expect(await ownerOf(13)).toEqual(account(erin));
     });
   });
 
@@ -740,13 +907,15 @@ describe('sneed_nft', () => {
     it('DAO admin: the validator renders, only governance may call', async () => {
       expect(await nft.validate_dao_admin({ set_swaps_paused: true })).toEqual({ Ok: 'Pause the swap' });
       expect(await nft.validate_dao_admin({ remove_proof_ledger: alice })).toEqual({ Err: `${alice.toText()} is not on the list` });
-      expect((await nft.get_governance()).toText()).toBe('fi3zi-fyaaa-aaaaq-aachq-cai');
+      expect((await nft.get_governance()).toText()).toBe(govId.toText()); // set by the controller (mainnet default: Sneed governance fi3zi-…)
     });
 
     it('idle: burns only its storage (no heartbeat, no recurring timer)', async () => {
       await pic.tick(3);
       const st = await pic.canisterStatus({ canisterId: nftId, sender: admin });
       const storage = BigInt(st.idleCyclesBurnedPerDay) / 24n; // memory and stable memory, per hour
+      // the time jumps of the tests above are billed lazily: settle them with an hour first
+      for (let i = 0; i < 60; i++) { await pic.advanceTime(60_000); await pic.tick(1); }
       const b0 = BigInt(await pic.getCyclesBalance(nftId));
       for (let i = 0; i < 60; i++) { await pic.advanceTime(60_000); await pic.tick(1); }
       const burn = b0 - BigInt(await pic.getCyclesBalance(nftId));
@@ -755,6 +924,35 @@ describe('sneed_nft', () => {
     });
   });
 
+});
+
+// L3: minting locks only with every token in the swap account; the swap opens only after both
+// the freeze and the lock. Fresh instances (a token outside the swap account cannot come back).
+describe('sneed_nft: lock and swap gates', () => {
+  let pic4, sub;
+  beforeAll(async () => { ({ pic: pic4, appSubnet: sub } = await createPic()); }, 180_000);
+  afterAll(async () => { await pic4?.tearDown(); });
+  const fresh4 = async () => {
+    const id = await install(pic4, { name: NFT_WASM, targetSubnetId: sub, cycles: 20n * T });
+    const a = actorAs(pic4, nftIdl, id, admin);
+    ok(await a.set_collection({ name: ['Sneed Diamond Club'], symbol: ['SDC'], description: [], logo: [], supply_cap: [] }));
+    return a;
+  };
+
+  it('L3: lock_minting refuses while a token is outside the swap account', async () => {
+    const a = await fresh4();
+    expect((await a.icrcX_mint([mintReq(1), mintReq(2, [account(alice)])])).every((r) => 'Ok' in r)).toBe(true);
+    expect(errOf(await a.lock_minting())).toMatch(/Token 2 is not in the swap account/);
+    expect((await a.status()).minting_locked).toBe(false);
+  });
+
+  it('L3: the swap stays closed until the metadata is frozen too', async () => {
+    const a = await fresh4();
+    expect('Ok' in (await a.icrcX_mint([mintReq(1)]))[0]).toBe(true);
+    ok(await a.lock_minting());
+    expect(errOf(await a.claim_swap(bob))).toMatch(/metadata frozen/);
+    expect(errOf(await a.claim_by_proof(bob, alice, 0n, []))).toMatch(/metadata frozen/);
+  });
 });
 
 // PocketIC's HTTP gateway runs the same response verification as the gateways of icp0.io (a
@@ -772,7 +970,7 @@ describe('sneed_nft through the HTTP gateway (verified as on icp0.io)', () => {
   beforeAll(async () => {
     let sub;
     ({ pic: pic3, appSubnet: sub } = await createPic());
-    id = await install(pic3, { name: 'sneed_nft', targetSubnetId: sub, cycles: 50n * T });
+    id = await install(pic3, { name: NFT_WASM, targetSubnetId: sub, cycles: 50n * T });
     // a canister that answers HTTP without certification: the control
     avatarsId = await install(pic3, { name: 'sneed_avatars', targetSubnetId: sub, cycles: 20n * T });
     const a = actorAs(pic3, nftIdl, id, admin);
@@ -843,7 +1041,7 @@ describe('sneed_nft: a full 1,000-card collection', () => {
     let sub;
     ({ pic: pic2, appSubnet: sub } = await createPic());
     const extId2 = await install(pic2, { name: 'MockExt', targetSubnetId: sub });
-    id = await install(pic2, { name: 'sneed_nft', targetSubnetId: sub, cycles: 50n * T });
+    id = await install(pic2, { name: NFT_WASM, targetSubnetId: sub, cycles: 50n * T });
     a = actorAs(pic2, nftIdl, id, admin);
     x = actorAs(pic2, extMore, extId2, admin);
     ok(await a.admin_set_ext_canister(extId2));
