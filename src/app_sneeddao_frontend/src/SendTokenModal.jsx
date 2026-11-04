@@ -15,6 +15,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import { reportIfAuthExpired } from './utils/authExpiry';
 import PrincipalInput from './components/PrincipalInput';
+import { showSendReceipt } from './components/SendReceipt';
 import QrScanButton from './components/QrScanButton';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -295,7 +296,7 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
       feeCount: plan.fees,
       feeNote: plan.fees > 1 ? `fees (${plan.fees} steps: ${plan.steps.map((st) => st.kind).join(', then ')})` : 'fee',
       subaccountForTransfer: [],
-      pocketPath: { from: fromPocket, to, toLabel, steps: plan.steps.length },
+      pocketPath: { from: fromPocket, to, toLabel, steps: plan.steps.length, stepKinds: plan.steps.map((st) => st.kind) },
     });
     setShowReviewScreen(true);
   };
@@ -441,15 +442,28 @@ function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toP
     try {
       setIsLoading(true);
       setErrorText('');
+      const receipt = {
+        amountText: reviewData.amount,
+        symbol: token.symbol,
+        recipient: reviewData.pocketPath?.toLabel || reviewData.extendedAddress || reviewData.accountId || reviewData.principal || '',
+        ledger: ledgerId,
+      };
       if (reviewData.pocketPath) {
-        await pk.transfer(reviewData.pocketPath.from, reviewData.pocketPath.to, ledgerId, reviewData.amountBigInt);
+        const results = await pk.transfer(reviewData.pocketPath.from, reviewData.pocketPath.to, ledgerId, reviewData.amountBigInt);
         onPocketTransferDone?.(token);
         onClose();
+        // A 'send' step is an icrc1_transfer from one of the user's accounts: its result is the block.
+        // Host withdrawals and deposits answer in their own terms, so they get no link.
+        const blocks = (reviewData.pocketPath.stepKinds || [])
+          .map((kind, i) => (kind === 'send' && typeof results?.[i] === 'bigint' ? { index: results[i] } : null))
+          .filter(Boolean);
+        showSendReceipt({ ...receipt, blocks, moved: Boolean(reviewData.pocketPath.toLabel) });
         return;
       }
       // Pass accountId as 5th param for ICP account ID transfers
-      await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer, reviewData.accountId && !reviewData.principal ? reviewData.accountId : undefined);
+      const sent = await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer, reviewData.accountId && !reviewData.principal ? reviewData.accountId : undefined);
       onClose();
+      showSendReceipt({ ...receipt, blocks: sent?.blocks || [] });
     } catch (error) {
       console.error('Error sending tokens:', error);
       setErrorText(reportIfAuthExpired(error)

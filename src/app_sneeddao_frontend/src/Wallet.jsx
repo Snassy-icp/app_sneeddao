@@ -3598,7 +3598,7 @@ function Wallet() {
                 console.log('ICP legacy transfer result: block index', result.Ok?.toString());
                 await fetchBalancesAndLocks(ledgerCanisterId);
                 console.log('=== Wallet.handleSendToken SUCCESS (account ID) ===');
-                return;
+                return { blocks: [{ index: result.Ok }] };
             }
             
             const send_amounts = calc_send_amounts(token, bigintAmount);
@@ -3612,6 +3612,10 @@ function Wallet() {
                 console.log('ERROR: Total send amount is zero or negative');
                 throw new Error('Invalid send amounts calculated');
             }
+
+            // The ledger blocks the send made, for the receipt (one per transfer).
+            const twoParts = send_amounts.send_from_backend > 0n && send_amounts.send_from_frontend > 0n;
+            const blocks = [];
 
             if (send_amounts.send_from_backend > 0) {
                 console.log('Sending from backend:', send_amounts.send_from_backend.toString());
@@ -3640,6 +3644,7 @@ function Wallet() {
                 if (result && 'Err' in result) {
                     throw new Error(`Transfer from your Sneed Lock balance failed: ${resultJson}`);
                 }
+                if (result && 'Ok' in result) blocks.push({ index: result.Ok, note: twoParts ? 'from your Sneed Lock balance' : null });
             }
 
             if (send_amounts.send_from_frontend > 0) {
@@ -3679,12 +3684,14 @@ function Wallet() {
                         ? `The Sneed Lock part of the send went through, but the wallet part failed: ${resultJson}`
                         : `Transfer failed: ${resultJson}`);
                 }
+                if (result && 'Ok' in result) blocks.push({ index: result.Ok, note: twoParts ? 'from your wallet' : null });
             }
 
             console.log('Refreshing token balances...');
             await fetchBalancesAndLocks(ledgerCanisterId);
             console.log('=== Wallet.handleSendToken SUCCESS ===');
-            
+            return { blocks };
+
         } catch (error) {
             console.error('=== Wallet.handleSendToken ERROR ===');
             console.error('Error details:', error);
