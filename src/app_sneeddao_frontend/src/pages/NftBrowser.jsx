@@ -51,6 +51,7 @@ function NftBrowser() {
     const [done, setDone] = useState(false);
     const [loading, setLoading] = useState(false);
     const [onlyMine, setOnlyMine] = useState(false);
+    const [jump, setJump] = useState('');
     const [error, setError] = useState('');
     const saved = useMemo(() => { const ext = getExtCollections().map((c) => c.canisterId); return [...ext, ...getSavedNftCollections().filter((x) => !ext.includes(x))]; }, [collection]);
     const recent = useMemo(() => readRecent().filter((x) => !saved.includes(x)), [saved, collection]);
@@ -155,6 +156,11 @@ function NftBrowser() {
                             <span>{ids.length} token{ids.length === 1 ? '' : 's'} listed{done ? '' : ' so far'}</span>
                             {me && <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> only mine ({mineCount})</label>}
                             {loading && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><FaSpinner className="health-spin" /> loading…</span>}
+                            {/* jump straight to one token's page by its id (the #number on each tile) */}
+                            <form onSubmit={(e) => { e.preventDefault(); const t = jump.trim().replace(/^#/, ''); if (/^\d+$/.test(t)) navigate(nftItemUrl(collection, BigInt(t))); }} style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                                <input value={jump} onChange={(e) => setJump(e.target.value)} inputMode="numeric" placeholder="Go to #" aria-label="Token id" style={{ width: 90, background: theme.colors.secondaryBg, color: theme.colors.primaryText, border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: '6px 8px', fontSize: '0.85rem' }} />
+                                <button type="submit" disabled={!/^#?\d+$/.test(jump.trim())} style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.primaryText, padding: '6px 10px', cursor: 'pointer', fontSize: '0.85rem', opacity: /^#?\d+$/.test(jump.trim()) ? 1 : 0.5 }}>Go</button>
+                            </form>
                         </div>
                         {error && <div style={{ color: theme.colors.error, marginBottom: 8 }}>{error}</div>}
                         {!loading && ids.length === 0 && !error && <div style={{ color: theme.colors.mutedText, padding: '2rem', textAlign: 'center' }}>No tokens listed{info ? ' in this collection' : ''}.</div>}
