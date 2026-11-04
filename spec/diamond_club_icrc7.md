@@ -25,8 +25,14 @@ Status: draft for the user's decisions (marked **Q**). Nothing is built yet.
   `thumb`.
 - 314 distinct holder accounts. One account (`9840813037ed…`) holds 476 cards; the next largest
   hold 30, 24 and 21 (2026-11-04).
-- The EXT interface has `approve(ApproveRequest)`, `allowance`, `bearer`, and
-  `transfer(TransferRequest)` with a `from` user, so a spender with an allowance can move a card.
+- Extensions: `@ext/common`, `@ext/allowance`, `@ext/nonfungible`. The swap does not need the
+  allowance (§3.3).
+- **The minter is Sneed DAO governance** (`getMinter` = `fi3zi-fyaaa-aaaaq-aachq-cai`). The
+  interface has `replaceMetadata`, `addMetadataUrlMany`, `getStorageMetadataUrl` and
+  `getMedataStorageType` (empty). If those are minter-gated, a DAO proposal could point every
+  EXT card's `url`/`thumb` at the new canister (§3.6). Not verified: Yuku's source is not public.
+- Not every wallet can still send EXT: the owner's Plug mobile send to his Sneed wallet did not
+  arrive (2026-11-04).
 - Sneed Hub reads it through `src/app_sneeddao_frontend/src/utils/ExtUtils.js`.
 
 ## 3. Design
@@ -64,21 +70,32 @@ first means the launchpad gets a canister that already holds a real collection.
 
 ### 3.3 The swap
 
-One card at a time or in batches, from Sneed Hub:
+One-way (EXT → ICRC-7), by **swap address**, so any wallet that can send an EXT NFT to an account
+ID works. No approve and no wallet connection are needed.
 
-1. The holder calls EXT `approve` for the card, with the collection canister as spender.
-2. The holder calls `swap(vec ext_index)` on the collection canister.
-3. For each card, the canister checks `bearer` is the caller's account, moves the EXT card to itself
-   with EXT `transfer` (`from` = the caller), then transfers ICRC-7 token `index + 1` from its swap
-   account to the caller. Each swap is logged (`dcswap`: caller, EXT index, ICRC-7 id).
-4. A per-card lock prevents two swaps of the same card at once. If the EXT transfer fails, nothing
-   changes; if the ICRC-7 transfer fails after the EXT card arrived, the card is recorded as owed
-   and `retry_swap` (callable by the holder or anyone) delivers it.
+1. **Swap address.** For a recipient principal `p`, the swap address is the EXT account identifier
+   of (collection canister, subaccount `swap_sub(p)`), where `swap_sub(p)` is a fixed, documented
+   derivation (e.g. `sha256("sdc-swap" ‖ p)`). A query `swap_address(p)` returns it; Sneed Hub
+   shows the caller's own with a copy button and a QR code.
+2. **Send.** The holder sends old cards to their swap address from any wallet (Plug, Stoic, …).
+3. **Claim.** `claim_swap(p)`, callable by anyone (Sneed Hub calls it for the user), scans the
+   cards whose `bearer` is `p`'s swap address and, for each one not yet swapped, transfers ICRC-7
+   token `index + 1` from the swap account to `p`. Each swap is logged (`dcswap`: recipient, EXT
+   index, ICRC-7 id). The bearer check reads the EXT canister, so the claim cannot be faked.
+4. A per-card lock prevents double delivery. A failed ICRC-7 transfer leaves the card unswapped,
+   and the next claim delivers it.
 
+- Sending to the swap address is final: the card goes to `p`, whoever sent it. Sneed Hub says so,
+  and shows the principal it is for (no anonymity options).
 - EXT cards held by the canister are never moved again: in effect they are retired.
-- Cards held by an account identifier only (no principal), or listed on Yuku, cannot swap until the
-  holder moves them to a principal-based account and delists. Sneed Hub explains this.
+- Cards listed on Yuku must be delisted first.
+- **Stuck wallets.** Ownership can only be proved with the wallet's key, so there is no claim
+  without it. The key lives in the seed phrase: a holder whose wallet app can no longer send
+  imports the seed into another install of the same wallet (e.g. the Plug browser extension) and
+  sends from there. A short guide explains this; nobody is ever asked for a seed phrase.
 - **No deadline:** the swap stays open as long as unswapped cards exist.
+- **Discovery:** `claim_swap` scans the EXT registry (`getRegistry`, one call), so its cost is
+  bounded; it is rate-limited per caller.
 
 ### 3.4 Control
 
@@ -96,20 +113,28 @@ One card at a time or in batches, from Sneed Hub:
   account display (no anonymity options). Batch swap for holders with many cards.
 - Until a card is swapped, Sneed Hub shows the EXT card with the image from the new canister (same
   card number), so blank cards are fixed for everyone from day one.
+- A **Swap** page: the user's swap address, the old cards it holds, the cards delivered, a Claim
+  button, and the stuck-wallet guide.
 
-## 4. Questions for the user
+### 3.6 Fixing the old cards' images everywhere (if possible)
 
-1. **The 476-card account** (`9840813037ed…`): is it the DAO treasury, a marketplace escrow, or a
-   member? If it is the DAO's, those cards can swap in one batch by proposal.
-2. **One-way or two-way?** One-way (EXT → ICRC-7) is simpler and retires EXT. Two-way keeps Yuku
-   trading possible. Suggest: one-way.
-3. **Royalty:** Yuku pays 3% to the treasury today. Keep a royalty on Sneedex resales (needs a
-   Sneedex change)?
-4. **Discord role:** the Diamond Club role on the public server is granted by a bot that checks EXT
-   holdings. Who runs it, and can it read ICRC-7? Otherwise swapped holders lose the role.
-5. **Image sizes:** keep the 2000 px originals on-chain (~666 MB), or only web and thumbnail
-   (~120 MB)? Suggest: keep the originals; the art exists nowhere else.
-6. **Symbol and logo:** symbol `SDC`? Logo: card #1000 (the plain emblem card)?
+The DAO is the EXT minter (§2). If `replaceMetadata` / `addMetadataUrlMany` are minter-gated, a
+GNSF on the EXT canister lets a proposal repoint each card's `url` and `thumb` to the new
+canister. Images would then show on Yuku and in every wallet, even for cards never swapped.
+Check first with a single-card test proposal; the swap does not depend on this.
+
+## 4. Decisions (owner, 2026-11-04)
+
+1. **The 476-card account** (`9840813037ed…`) is not the default account of DAO governance or
+   root. It is bongwolke's or the DAO's (held on its behalf); either way those cards can be sent to
+   the DAO's swap address later. *Open: confirm.*
+2. **One-way** (EXT → ICRC-7), by swap address.
+3. **No royalty** for now.
+4. **Discord role:** the current bot is not ours and is broken. A new ICRC-7-aware role bot is
+   planned separately.
+5. **Keep the originals** on-chain (~0.8 GB in all, about $4 a year).
+6. **Symbol `SDC`**, logo card #1000.
+7. *Open:* investigate §3.6 (DAO as EXT minter repointing images).
 
 ## 5. Build order
 
