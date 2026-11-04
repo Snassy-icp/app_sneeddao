@@ -1,6 +1,6 @@
 # Sneed NFT collection canister API (sneed_nft)
 
-**Status: in the source, not deployed yet.** The first collection on it is the Sneed Diamond Club (1,000 cards), moving from the EXT canister `gjv36-laaaa-aaaah-adyza-cai` to ICRC-7 with every image stored in the canister. Design: [spec/diamond_club_icrc7.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/diamond_club_icrc7.md), [spec/nft_launchpad.md §2.1](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/nft_launchpad.md).
+**Status: live on mainnet at `v7b6c-niaaa-aaaac-bgiiq-cai` (loaded 2026-11-04; the swap opens once the metadata is frozen and minting is locked).** The first collection on it is the Sneed Diamond Club (1,000 cards), moving from the EXT canister `gjv36-laaaa-aaaah-adyza-cai` to ICRC-7 with every image stored in the canister. Design: [spec/diamond_club_icrc7.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/diamond_club_icrc7.md), [spec/nft_launchpad.md §2.1](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/nft_launchpad.md).
 
 ## 1. Mental model
 

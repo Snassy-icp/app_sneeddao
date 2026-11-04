@@ -7,7 +7,7 @@ import NftCollectionCard from '../NftCollectionCard';
 import SendNftModal from '../SendNftModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import AddNftCollectionModal from '../AddNftCollectionModal';
-import { getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, getNftName, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
+import { getSavedNftCollections, addNftCollection, removeNftCollection, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, getNftName, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 import { getExtCollections, addExtCollection, removeExtCollection, loadExtCollection, transferExt } from '../utils/ExtUtils';
 import './Nft.css';
@@ -151,9 +151,8 @@ const Nft = () => {
             return;
         }
         // Add to saved collections
-        const updatedIds = [...new Set([...icrc7CollectionIds, canisterId])];
-        setIcrc7CollectionIds(updatedIds);
-        localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
+        addNftCollection(canisterId);
+        setIcrc7CollectionIds(getSavedNftCollections());
         
         // The saved-ids effect reloads the list; appending here as well showed the collection twice.
     };
@@ -182,9 +181,8 @@ const Nft = () => {
                     return;
                 }
                 // Remove from saved IDs
-                const updatedIds = icrc7CollectionIds.filter(id => id !== collection.canisterId);
-                setIcrc7CollectionIds(updatedIds);
-                localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
+                removeNftCollection(collection.canisterId);
+                setIcrc7CollectionIds(getSavedNftCollections());
             },
         });
     };

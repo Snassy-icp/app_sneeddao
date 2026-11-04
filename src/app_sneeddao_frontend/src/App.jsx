@@ -138,6 +138,7 @@ import TokenStudio from './pages/TokenStudio';
 import Position from './pages/Position';
 import Positions from './pages/Positions';
 import NftBrowser from './pages/NftBrowser';
+import DiamondClub from './pages/DiamondClub';
 import RllLedger from './pages/RllLedger';
 import Revenue from './pages/Revenue';
 import Donate from './pages/Donate';
@@ -266,6 +267,7 @@ function App() {
                     <Route path="/convert" element={<Convert />} />
                     <Route path="/feedback" element={<Feedback />} />
                     <Route path="/mr-sneed" element={<MrSneed />} />
+                    <Route path="/diamond-club" element={<DiamondClub />} />
                     <Route path="/lore" element={<Lore />} />
                     <Route path="/guardian" element={<ComingSoonPage title="Sneed custody"><Guardian /></ComingSoonPage>} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />

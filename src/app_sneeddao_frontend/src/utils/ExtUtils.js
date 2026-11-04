@@ -13,8 +13,13 @@ import { sha224 } from '@noble/hashes/sha256';
 
 /// EXT collections every wallet knows about, before the user adds any.
 export const KNOWN_EXT_COLLECTIONS = [
-    { canisterId: 'gjv36-laaaa-aaaah-adyza-cai', name: 'Sneed Diamond Club', symbol: 'SDC', standard: 'EXT', supply: 1000 },
+    // The Diamond Club's own image host (cf-assets.yuku.app) is gone; the same art, card n = index + 1,
+    // is served by its ICRC-7 successor (sneed_nft), and the swap page moves the cards there.
+    { canisterId: 'gjv36-laaaa-aaaah-adyza-cai', name: 'Sneed Diamond Club', symbol: 'SDC', standard: 'EXT', supply: 1000,
+        imageHost: 'https://v7b6c-niaaa-aaaac-bgiiq-cai.icp0.io', swapPage: '/diamond-club' },
 ];
+/// The page that swaps a known EXT collection's cards to ICRC-7, or null.
+export const extSwapPage = (canisterId) => KNOWN_EXT_COLLECTIONS.find((c) => c.canisterId === canisterId)?.swapPage || null;
 export const EXT_COLLECTIONS_STORAGE_KEY = 'ext_nft_collections';
 
 // ---- Candid (the standard EXT interface, only the methods used here) ----
@@ -177,6 +182,8 @@ export function parseExtMetadata(canisterId, index, metadata) {
             }
         } catch { /* not JSON: binary metadata, nothing to read */ }
     }
+    const host = KNOWN_EXT_COLLECTIONS.find((c) => c.canisterId === canisterId)?.imageHost;
+    if (host) { out.image = `${host}/card/${Number(index) + 1}.jpg?size=web`; out.thumb = `${host}/card/${Number(index) + 1}.jpg?size=thumb`; }
     out.fallbackImage = extImageUrl(canisterId, index);
     out.fallbackThumb = extImageUrl(canisterId, index, true);
     return out;

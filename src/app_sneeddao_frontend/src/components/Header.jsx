@@ -234,7 +234,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/', '/hub', '/sns', '/proposals', '/icp_proposals', '/icp_proposal', '/neurons', '/transactions', '/positions', '/position', '/managelp', '/nfts', '/nft_item', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/users', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
         if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
         if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/notifications', '/wallet', '/nft', '/canister', '/apps', '/active_proposals'].includes(path) || path.startsWith('/notifications/')) return 'Sneed Me';
-        if (['/dao', '/dao_info', '/health', '/rll_info', '/rll_ledger', '/revenue', '/guardian', '/rll', '/products', '/partners', '/donate', '/feedback', '/mr-sneed', '/lore', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
+        if (['/dao', '/dao_info', '/health', '/rll_info', '/rll_ledger', '/revenue', '/guardian', '/rll', '/products', '/partners', '/donate', '/feedback', '/mr-sneed', '/diamond-club', '/lore', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my', '/swap'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/sneedapp'].includes(path) || path.startsWith('/sneedapp/')) return 'Sneedapp';
@@ -376,7 +376,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Liquid Staking');
         } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/notifications', '/wallet', '/nft', '/canister', '/apps', '/active_proposals'].includes(path) || path.startsWith('/notifications/')) {
             setActiveSection('Sneed Me');
-        } else if (['/dao', '/dao_info', '/health', '/rll_info', '/rll_ledger', '/revenue', '/guardian', '/rll', '/products', '/partners', '/donate', '/feedback', '/mr-sneed', '/lore', '/projects', '/disclaimer'].includes(path)) {
+        } else if (['/dao', '/dao_info', '/health', '/rll_info', '/rll_ledger', '/revenue', '/guardian', '/rll', '/products', '/partners', '/donate', '/feedback', '/mr-sneed', '/diamond-club', '/lore', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('Sneed DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) {
             setActiveSection('Sneed Lock');
@@ -603,6 +603,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Thank-you wall', path: '/donate' },
                 { name: 'Feedback', path: '/feedback' },
                 { name: 'Mr Sneed', path: '/mr-sneed' },
+                { name: 'Diamond Club', path: '/diamond-club' },
                 { name: 'Lore', path: '/lore' },
                 { name: 'Discord', href: 'https://discord.gg/4bzUtDc5q8' },
                 { name: 'X', href: 'https://x.com/icsneed' },

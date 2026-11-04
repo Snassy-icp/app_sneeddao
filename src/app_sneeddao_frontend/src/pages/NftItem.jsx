@@ -11,7 +11,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
-import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
+import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, addNftCollection } from '../utils/NftUtils';
 import NftModel from '../components/NftModel';
 import CharacterPanel, { hasCharacterLinks, CarriedBy, SoulboundNote } from '../components/CharacterPanel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
@@ -96,7 +96,7 @@ function NftItem() {
     const media = token ? getNftMedia(token) : null;
     const raw = token ? formatNftMetadata(token.metadata) : [];
     const inWallet = useMemo(() => (isExt ? isSavedExtCollection(collection) : getSavedNftCollections().includes(collection)), [collection, isExt]);
-    const addToWallet = () => { if (isExt) { addExtCollection(collection, info?.name); return; } try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } };
+    const addToWallet = () => { if (isExt) { addExtCollection(collection, info?.name); return; } addNftCollection(collection); };
 
     const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem' };
     const label = { fontSize: '0.72rem', fontWeight: 600, color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 };
