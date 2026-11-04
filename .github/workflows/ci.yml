@@ -24,8 +24,39 @@ env:
   DFX_WARNING: -mainnet_plaintext_identity
 
 jobs:
+  # Pull requests that only touch docs (spec/ or *.md files) skip the three jobs below. A job
+  # skipped by `if` counts as passed for required checks, so such PRs can merge at once.
+  changes:
+    name: Code changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          echo "$changed"
+          if [ -n "$changed" ] && ! echo "$changed" | grep -vqE '^spec/|\.md$'; then
+            echo "Docs only: skipping the build and test jobs"
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   canisters:
     name: Canister tests (PocketIC)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     # build about 12 min and suite about 21 min on a 20-core dev machine; a 4-core runner is slower
     timeout-minutes: 90
@@ -66,6 +97,8 @@ jobs:
 
   frontend:
     name: Frontend check and build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -106,6 +139,8 @@ jobs:
 
   hashes:
     name: Release Wasm hashes
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
