@@ -98,7 +98,7 @@ cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.
 cp .dfx/local/canisters/sneed_guardian/service.did.js "$OUT/sneed_guardian.did.js"
 
 # every other canister under test: a check build with the release toolchain (no canister id needed)
-for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_pad sneed_icp_staking_bot sneed_trading_bot sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles mr_sneed sneed_notifications sneed_mon sneed_proxy sneed_drive sneed_attestations; do
+for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_pad sneed_icp_staking_bot sneed_trading_bot sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles mr_sneed sneed_notifications sneed_mon sneed_proxy sneed_drive sneed_attestations sneed_nft; do
   echo "== $c (dfx +$DFX_VERSION build --check)"
   dfx +"$DFX_VERSION" build --check "$c" 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke\|does not cover\|#Err\|#Ok" | tail -1
   cp ".dfx/local/canisters/$c/$c.wasm" "$OUT/$c.wasm"
@@ -469,7 +469,7 @@ done
 rm -rf "$PREV_SRC"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap MockHang \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
-         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget MockCkBtcMinter MockCkEthMinter MockAttSnsGov MockAttOhShii MockAttAssets MockAttTarget MockAttTargetV2 Icrc3Demo; do
+         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget MockCkBtcMinter MockCkEthMinter MockAttSnsGov MockAttOhShii MockAttAssets MockAttTarget MockAttTargetV2 MockProofLedger Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true
@@ -561,6 +561,16 @@ test -s "$OUT/MockSmsBadReply.wasm"
 echo "== icrc7_demo"
 "$MOC" -c $PKGS -o "$OUT/Icrc7Demo.wasm" "$ROOT/src/icrc7_demo/main.mo" 2>&1 | grep -i "error" -A5 || true
 test -s "$OUT/Icrc7Demo.wasm"
+# sneed_nft before the security review fixes (839a3f6d, the first commit of PR #39), for the
+# fail-before runs of sneed-nft.test.js (SNEED_NFT_WASM=sneed_nft_839a3f6d)
+NFT_PREREVIEW_COMMIT=839a3f6d
+echo "== sneed_nft at $NFT_PREREVIEW_COMMIT (moc, EOP, sneed_nft_839a3f6d)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NFT_PREREVIEW_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_nft/main.mo" -o "$OUT/sneed_nft_839a3f6d.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_nft_839a3f6d.wasm"
 echo "== ledger suite wasms (from the SNS wasm canister, needs network; skipped when present)"
 if [ ! -s "$OUT/ledger.wasm.gz" ] || [ ! -s "$OUT/index.wasm.gz" ]; then
   node --import "$HERE/lib/loader-register.mjs" "$HERE/lib/fetch-ledger-suite.mjs" "$OUT" || echo "   (could not fetch; sneed_pad tests will be skipped)"

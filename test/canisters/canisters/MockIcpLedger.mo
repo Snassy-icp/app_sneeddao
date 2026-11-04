@@ -77,6 +77,27 @@ persistent actor class MockIcpLedger() = this {
 
   public query func account_identifier(a : Account) : async Blob { accountId(a) };
 
+  // the legacy `transfer` (to an account identifier), deduplicated like the real ledger, and the
+  // fee: for sneed_nft's refunds of ICP proofs. `transfer_failing` makes it answer an error.
+  type IcpTransferArgs = { memo : Nat64; amount : Tokens; fee : Tokens; from_subaccount : ?Blob; to : Blob; created_at_time : ?TimeStamp };
+  type IcpTransferError = {
+    #BadFee : { expected_fee : Tokens }; #InsufficientFunds : { balance : Tokens }; #TxTooOld : { allowed_window_nanos : Nat64 };
+    #TxCreatedInFuture; #TxDuplicate : { duplicate_of : Nat64 };
+  };
+  var transfer_failing : Bool = false;
+  var transfers_seen : [(Principal, IcpTransferArgs, Nat)] = [];
+  public query func icrc1_fee() : async Nat { 10_000 };
+  public shared func set_transfer_failing(f : Bool) : async () { transfer_failing := f };
+  public query func get_legacy_transfers() : async [(Principal, IcpTransferArgs, Nat)] { transfers_seen };
+  public shared ({ caller }) func transfer(args : IcpTransferArgs) : async { #Ok : Nat64; #Err : IcpTransferError } {
+    if (transfer_failing) return #Err(#InsufficientFunds({ balance = { e8s = 0 } }));
+    if (args.fee.e8s != 10_000) return #Err(#BadFee({ expected_fee = { e8s = 10_000 } }));
+    for ((c, a, i) in transfers_seen.vals()) if (c == caller and a == args) return #Err(#TxDuplicate({ duplicate_of = Nat64.fromNat(i) }));
+    let i = push(#Transfer { from = accountId({ owner = caller; subaccount = args.from_subaccount }); to = args.to; amount = args.amount; fee = args.fee; spender = null });
+    transfers_seen := Array.append(transfers_seen, [(caller, args, i)]);
+    #Ok(Nat64.fromNat(i));
+  };
+
   public shared ({ caller }) func icrc1_transfer(args : TransferArg) : async TransferResult {
     #Ok(push(#Transfer { from = accountId({ owner = caller; subaccount = args.from_subaccount }); to = accountId(args.to); amount = { e8s = Nat64.fromNat(args.amount) }; fee = { e8s = 10_000 }; spender = null }));
   };

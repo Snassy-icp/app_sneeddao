@@ -130,6 +130,16 @@ export const apiDocs = [
         color: '#0ea5e9',
         hidden: true,
     },
+    // Not deployed yet: reachable at /api/sneed_nft (its ICRC-3 block_types_url points there), not listed as a card.
+    {
+        slug: 'sneed_nft',
+        icon: FaServer,
+        title: 'Sneed NFT collection (Diamond Club)',
+        canisterId: '',
+        description: 'The Sneed Diamond Club on ICRC-7: images stored and served by the canister, certified; the swap from the EXT collection by send or by proof of payment; an ICRC-3 log.',
+        color: '#06b6d4',
+        hidden: true,
+    },
     // The naming canisters each have a short page pointing into the Sneed Names doc, so links such as
     // the block_types_url the canisters publish (/api/sneed_pid_names#block-types) resolve. Not listed as cards.
     ...[
