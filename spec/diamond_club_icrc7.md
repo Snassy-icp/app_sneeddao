@@ -93,9 +93,32 @@ ID works. No approve and no wallet connection are needed.
   without it. The key lives in the seed phrase: a holder whose wallet app can no longer send
   imports the seed into another install of the same wallet (e.g. the Plug browser extension) and
   sends from there. A short guide explains this; nobody is ever asked for a seed phrase.
+- **Proof by payment** (for wallets that can no longer send NFTs): see §3.3.1.
 - **No deadline:** the swap stays open as long as unswapped cards exist.
 - **Discovery:** `claim_swap` scans the EXT registry (`getRegistry`, one call), so its cost is
   bounded; it is rate-limited per caller.
+
+#### 3.3.1 Proof by payment
+
+For a wallet that can still send fungible tokens but not EXT NFTs (e.g. the owner's Plug mobile):
+
+1. Sneed Hub shows the user's **proof address**: the collection canister's account with subaccount
+   `proof_sub(p)` (e.g. `sha256("sdc-proof" ‖ p)`), for recipient principal `p`.
+2. From the stuck wallet (principal `P`), the user sends any small amount of an **allow-listed**
+   token (ICP, SNEED, ckBTC; the list is set by proposal) to that address.
+3. `claim_by_proof(ledger, block_index)` (anyone may call it for `p`): the canister reads the block
+   from that ledger itself and checks it is a transfer from `P` to `p`'s proof address that has
+   not been used before. It then takes every old card whose `bearer` is `P`'s account identifier
+   (default subaccount, or the transfer's `from` subaccount) and is not yet swapped, delivers
+   ICRC-7 `index + 1` to `p`, marks the EXT card **retired**, and refunds the payment to `P` minus
+   the ledger fee. Logged as `dcswap` with `method = proof`.
+
+- **Only trusted ledgers:** the proof is only as honest as the ledger, and anyone can deploy a fake
+  ledger that reports transfers that never happened.
+- **The old card stays in the stuck wallet** (only its key can move it). It can never be swapped
+  again. To protect buyers, retired cards are listed publicly (query + Swap page), and, if §3.6
+  works, their EXT metadata is changed to "SWAPPED – retired".
+- Sending the card (§3.3) remains the preferred door: the old card is then locked in the canister.
 
 ### 3.4 Control
 
@@ -135,6 +158,7 @@ Check first with a single-card test proposal; the swap does not depend on this.
 5. **Keep the originals** on-chain (~0.8 GB in all, about $4 a year).
 6. **Symbol `SDC`**, logo card #1000.
 7. *Open:* investigate §3.6 (DAO as EXT minter repointing images).
+8. **Proof by payment** (§3.3.1): the owner's idea, for wallets that cannot send NFTs.
 
 ## 5. Build order
 
