@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import PrincipalInput from './components/PrincipalInput';
 import { useTheme } from './contexts/ThemeContext';
 import NftCard from './NftCard';
+import { Link } from 'react-router-dom';
+import { extSwapPage } from './utils/ExtUtils';
 import './NftCollectionCard.css';
 
 const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefreshing, isAdmin = false, onMint, myPrincipal, onApproveToken, onRevokeToken, onApproveCollection, onRevokeCollection }) => {
@@ -318,6 +320,13 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                                     {collApprove.error && <div style={{ color: '#ef4444', fontSize: '0.8rem' }}>{collApprove.error}</div>}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* The old EXT version of a collection that moved to ICRC-7 */}
+                    {collection.standard === 'EXT' && extSwapPage(collection.canisterId) && (
+                        <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 10, border: `1px solid ${theme.colors.success}55`, background: `${theme.colors.success}14`, color: theme.colors.primaryText, fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            These are the old EXT cards. The collection has moved to ICRC-7, with every image stored on-chain: swap your cards 1:1 (same card numbers) on the <Link to={extSwapPage(collection.canisterId)} style={{ color: theme.colors.accent, fontWeight: 600 }}>swap page</Link>.
                         </div>
                     )}
 

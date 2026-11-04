@@ -244,10 +244,31 @@ export function formatNftMetadata(metadata) {
  */
 export const NFT_COLLECTIONS_STORAGE_KEY = 'nft_collections';
 
-/// The collection canister ids the user added to the NFT wallet (kept in this browser).
-export function getSavedNftCollections() {
-    try { const v = JSON.parse(localStorage.getItem(NFT_COLLECTIONS_STORAGE_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; }
+const NFT_COLLECTIONS_HIDDEN_KEY = 'nft_collections_hidden';
+/// ICRC-7 collections every wallet shows before the user adds any (removing one hides it).
+export const KNOWN_NFT_COLLECTIONS = [
+    { canisterId: 'v7b6c-niaaa-aaaac-bgiiq-cai', name: 'Sneed Diamond Club', symbol: 'SDC' },
+];
+const readIds = (key) => {
+    try { const v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; }
     catch { return []; }
+};
+const writeIds = (key, ids) => { try { localStorage.setItem(key, JSON.stringify([...new Set(ids)])); } catch { /* storage blocked */ } };
+
+/// The collection canister ids in the NFT wallet: the built-in ones (unless hidden), then the ones the user added (kept in this browser).
+export function getSavedNftCollections() {
+    const hidden = new Set(readIds(NFT_COLLECTIONS_HIDDEN_KEY));
+    return [...new Set([...KNOWN_NFT_COLLECTIONS.map((c) => c.canisterId).filter((id) => !hidden.has(id)), ...readIds(NFT_COLLECTIONS_STORAGE_KEY)])];
+}
+/// Adds a collection to the NFT wallet (and un-hides a built-in one).
+export function addNftCollection(canisterId) {
+    writeIds(NFT_COLLECTIONS_STORAGE_KEY, [...readIds(NFT_COLLECTIONS_STORAGE_KEY), canisterId]);
+    writeIds(NFT_COLLECTIONS_HIDDEN_KEY, readIds(NFT_COLLECTIONS_HIDDEN_KEY).filter((id) => id !== canisterId));
+}
+/// Removes a collection from the NFT wallet (a built-in one stays hidden).
+export function removeNftCollection(canisterId) {
+    writeIds(NFT_COLLECTIONS_STORAGE_KEY, readIds(NFT_COLLECTIONS_STORAGE_KEY).filter((id) => id !== canisterId));
+    if (KNOWN_NFT_COLLECTIONS.some((c) => c.canisterId === canisterId)) writeIds(NFT_COLLECTIONS_HIDDEN_KEY, [...readIds(NFT_COLLECTIONS_HIDDEN_KEY), canisterId]);
 }
 
 /// `onProgress({ stage, name?, symbol?, logo?, found?, total? })` reports the loading steps so a page can show them as they happen.

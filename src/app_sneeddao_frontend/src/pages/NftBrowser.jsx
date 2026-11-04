@@ -9,7 +9,7 @@ import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { anonymousNftAgent, fetchCollectionTokenIds, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, getNftImage, getNftName } from '../utils/NftUtils';
+import { anonymousNftAgent, fetchCollectionTokenIds, getSavedNftCollections, addNftCollection, getNftImage, getNftName } from '../utils/NftUtils';
 import { loadCollectionInfoCached, loadTokensCached, nftItemUrl, useNftTokens, collectionStandardCached } from '../components/NftAssetView';
 import { getExtCollections, addExtCollection, fetchRegistry, accountId } from '../utils/ExtUtils';
 import { customStyles } from '../health/TreeView.jsx';
@@ -98,7 +98,7 @@ function NftBrowser() {
 
     const open = (id) => { const t = (id || '').trim(); if (!t) return; navigate(`/nfts?collection=${t}`); };
     const isSaved = saved.includes(collection);
-    const addToWallet = () => { if (info?.standard === 'EXT') { addExtCollection(collection, info.name); navigate('/nft'); return; } try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } navigate('/nft'); };
+    const addToWallet = () => { if (info?.standard === 'EXT') { addExtCollection(collection, info.name); navigate('/nft'); return; } addNftCollection(collection); navigate('/nft'); };
 
     const shown = ids.filter((id) => !onlyMine || isMine(tokens.get(id.toString())));
     const mineCount = me ? ids.filter((id) => isMine(tokens.get(id.toString()))).length : 0;

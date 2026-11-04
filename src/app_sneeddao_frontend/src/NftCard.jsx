@@ -5,6 +5,7 @@ import NftModel from './components/NftModel';
 import { boundTo, SoulboundBadge } from './components/Soulbound';
 import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks, getNftMedia } from './utils/NftUtils';
 import PrincipalInput from './components/PrincipalInput';
+import { extSwapPage } from './utils/ExtUtils';
 import './NftCard.css';
 
 const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke, collectionId, standard }) => {
@@ -160,6 +161,11 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                         <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}${isExt ? '&standard=EXT' : ''}`} onClick={(e) => e.stopPropagation()} title="Create a Sneedex offer with this NFT pre-filled"
                             style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>Sell on Sneedex</Link>
                     </div>
+                )}
+                {/* An old EXT card whose collection moved to ICRC-7 (the Diamond Club): the swap page */}
+                {isExt && extSwapPage(collectionId) && (
+                    <Link to={extSwapPage(collectionId)} onClick={(e) => e.stopPropagation()} title="Move this card to the collection's ICRC-7 version: same card number"
+                        style={{ display: 'block', textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', marginTop: '6px', marginBottom: isExpanded ? '12px' : '0', border: `1px solid ${theme.colors.success}`, color: theme.colors.success, textDecoration: 'none', fontWeight: 600 }}>Swap to ICRC-7</Link>
                 )}
                 
                 {/* Expanded content */}
