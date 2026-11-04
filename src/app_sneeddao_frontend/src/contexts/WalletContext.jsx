@@ -3114,7 +3114,7 @@ export const WalletProvider = ({ children }) => {
             }
 
             refreshWallet();
-            return;
+            return { blocks: [{ index: result.Ok }] };
         }
 
         const sendAmounts = calcSendAmounts(token, bigintAmount);
@@ -3122,6 +3122,10 @@ export const WalletProvider = ({ children }) => {
         if (sendAmounts.send_from_backend + sendAmounts.send_from_frontend <= 0n) {
             throw new Error('Invalid send amounts calculated');
         }
+
+        // The ledger blocks the send made, for the receipt (one per transfer).
+        const twoParts = sendAmounts.send_from_backend > 0n && sendAmounts.send_from_frontend > 0n;
+        const blocks = [];
 
         // Send from backend if needed
         if (sendAmounts.send_from_backend > 0n) {
@@ -3137,6 +3141,7 @@ export const WalletProvider = ({ children }) => {
             if (backendResult && 'Err' in backendResult) {
                 throw new Error(`Transfer from your Sneed Lock balance failed: ${JSON.stringify(backendResult.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
             }
+            if (backendResult && 'Ok' in backendResult) blocks.push({ index: backendResult.Ok, note: twoParts ? 'from your Sneed Lock balance' : null });
         }
 
         // Send from frontend if needed
@@ -3162,10 +3167,12 @@ export const WalletProvider = ({ children }) => {
                     ? `The Sneed Lock part of the send went through, but the wallet part failed: ${detail}`
                     : `Transfer failed: ${detail}`);
             }
+            if (frontendResult && 'Ok' in frontendResult) blocks.push({ index: frontendResult.Ok, note: twoParts ? 'from your wallet' : null });
         }
 
         // Refresh wallet after send
         refreshWallet();
+        return { blocks };
     }, [identity, calcSendAmounts, refreshWallet]);
 
     return (

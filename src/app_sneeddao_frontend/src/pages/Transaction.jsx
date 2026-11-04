@@ -14,6 +14,7 @@ import { formatAmount, subaccountToHex } from '../utils/StringUtils';
 import { resolveTokenLogo } from '../utils/TokenUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { Principal } from '@dfinity/principal';
+import { fetchIcpTransaction, ICP_LEDGER_ID } from '../utils/icpBlocks';
 import { FaExchangeAlt, FaSearch, FaChevronLeft, FaChevronRight, FaArrowRight, FaArrowDown, FaCoins, FaFire, FaCheckCircle, FaClock, FaCopy, FaExternalLinkAlt } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -105,6 +106,14 @@ function Transaction() {
             const cleanId = currentId.replace(/[^0-9]/g, '');
             if (!cleanId) {
                 throw new Error('Invalid transaction ID');
+            }
+
+            // The ICP ledger has no get_transactions: read its block log instead.
+            if (ledgerCanisterId.toText() === ICP_LEDGER_ID) {
+                const icpTx = await fetchIcpTransaction(cleanId);
+                if (!icpTx) throw new Error('Transaction not found');
+                setTransaction(icpTx);
+                return;
             }
 
             // Use the ledger canister ID that was determined (either from URL param or SNS)
@@ -424,6 +433,8 @@ function Transaction() {
     };
 
     const renderAccountCard = (account, label, isFrom = false) => {
+        if (Array.isArray(account)) account = account[0]; // an opt field (spender)
+        if (account?.accountId) return renderAccountIdCard(account.accountId, label, isFrom);
         if (!account || !account.owner) return null;
         try {
             return (
@@ -480,6 +491,34 @@ function Transaction() {
             return null;
         }
     };
+
+    /// An ICP ledger account, named by its account identifier.
+    const renderAccountIdCard = (accountId, label, isFrom) => (
+        <div className="tx-slide-in" style={{
+            background: theme.colors.primaryBg,
+            borderRadius: '12px',
+            padding: '1rem 1.25rem',
+            border: `1px solid ${theme.colors.border}`,
+            flex: '1 1 250px'
+        }}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.75rem',
+                color: isFrom ? theme.colors.error : theme.colors.success,
+                fontSize: '0.85rem',
+                fontWeight: '600'
+            }}>
+                {isFrom ? <FaArrowRight size={12} /> : <FaArrowDown size={12} />}
+                {label}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                <span style={{ color: theme.colors.secondaryText }}>Account ID: </span>
+                {accountId}
+            </div>
+        </div>
+    );
 
     // Loading state
     if (loading && !transaction) {
