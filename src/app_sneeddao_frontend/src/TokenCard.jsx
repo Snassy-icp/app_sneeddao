@@ -168,7 +168,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return (token.available_backend || 0n) > 0n;
     });
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-    const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'neurons', 'info'
+    const [activeTab, setActiveTab] = useState((defaultLocksExpanded || hideAvailable) ? 'locks' : 'balance'); // 'balance', 'locks', 'neurons', 'info'
     const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
     // Swap modal state
@@ -1980,8 +1980,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 marginBottom: activeTab ? '15px' : '0',
                 flexWrap: 'wrap'
             }}>
-                {/* Balance Tab */}
-                <button
+                {/* Balance Tab: the wallet balance, so not on lock pages (hideAvailable), where it would be empty */}
+                {!hideAvailable && <button
                     onClick={() => setActiveTab(activeTab === 'balance' ? null : 'balance')}
                     style={{
                         display: 'flex',
@@ -2000,7 +2000,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 >
                     <FaDollarSign size={12} />
                     Balance
-                </button>
+                </button>}
 
                 {/* Locks Tab */}
                 <button
