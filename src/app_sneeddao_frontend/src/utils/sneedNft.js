@@ -22,6 +22,9 @@ export const SNEED_NFT_ID = envId ? realCanisterId(envId) : null;
 export const SNEED_NFT_MAINNET = 'v7b6c-niaaa-aaaac-bgiiq-cai';
 export const DC_EXT_ID = 'gjv36-laaaa-aaaah-adyza-cai';
 export const SNEED_LEDGER = 'hvgxa-wqaaa-aaaaq-aacia-cai';
+export const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+/// The index canisters the page reads payments from (SNEED: the Sneed SNS index; ICP: the NNS ICP index).
+export const INDEX_OF = { [SNEED_LEDGER]: 'h3e2i-naaaa-aaaaq-aacja-cai', [ICP_LEDGER]: 'qhbym-qaaaa-aaaaa-aaafq-cai' };
 export const DC_SUPPLY = 1000;
 export const SWAP_PAGE = '/diamond-club';
 /// The canister reads the EXT registry at most once per 30 s for all callers.
@@ -170,4 +173,74 @@ export function refundState(proof) {
         case 'needs_admin': return { label: `Refund needs an admin: ${r.needs_admin}`, tone: 'warning', retry: false };
         default: return { label: k || 'unknown', tone: 'muted', retry: false };
     }
+}
+
+// ---- Finding proof payments (the ledgers' index canisters) ----
+
+// Candid of the two index kinds, only the fields used (records decode with fewer fields).
+const indexNgIdl = ({ IDL }) => {
+    const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
+    const Transfer = IDL.Record({ from: Account, to: Account, amount: IDL.Nat, spender: IDL.Opt(Account) });
+    const Transaction = IDL.Record({ kind: IDL.Text, transfer: IDL.Opt(Transfer), timestamp: IDL.Nat64 });
+    return IDL.Service({
+        get_account_transactions: IDL.Func(
+            [IDL.Record({ account: Account, start: IDL.Opt(IDL.Nat), max_results: IDL.Nat })],
+            [IDL.Variant({ Ok: IDL.Record({ transactions: IDL.Vec(IDL.Record({ id: IDL.Nat, transaction: Transaction })) }), Err: IDL.Record({ message: IDL.Text }) })],
+            ['query']),
+    });
+};
+const icpIndexIdl = ({ IDL }) => {
+    const Tokens = IDL.Record({ e8s: IDL.Nat64 });
+    const TimeStamp = IDL.Record({ timestamp_nanos: IDL.Nat64 });
+    const Operation = IDL.Variant({
+        Approve: IDL.Record({}), Burn: IDL.Record({}), Mint: IDL.Record({}),
+        Transfer: IDL.Record({ from: IDL.Text, to: IDL.Text, amount: Tokens, spender: IDL.Opt(IDL.Text) }),
+        TransferFrom: IDL.Record({}),
+    });
+    const Transaction = IDL.Record({ operation: Operation, timestamp: IDL.Opt(TimeStamp), created_at_time: IDL.Opt(TimeStamp) });
+    return IDL.Service({
+        get_account_identifier_transactions: IDL.Func(
+            [IDL.Record({ account_identifier: IDL.Text, start: IDL.Opt(IDL.Nat64), max_results: IDL.Nat64 })],
+            [IDL.Variant({ Ok: IDL.Record({ transactions: IDL.Vec(IDL.Record({ id: IDL.Nat64, transaction: Transaction })) }), Err: IDL.Record({ message: IDL.Text }) })],
+            ['query']),
+    });
+};
+
+const sameBytes = (a, b) => toHex(a || []) === toHex(b || []);
+const isDefaultSub = (s) => !s || !s.length || s[0].every((x) => x === 0);
+
+/// Transfers into the proof address on one proof ledger, newest first (the last 50):
+/// [{ ledger, kind, block, atMs, amount, fromPrincipal?, fromSubaccount?, fromAccountId, spender }].
+/// `proofAddress` is proof_address(p)'s result.
+export async function findPayments(ledger, kind, proofAddress) {
+    const index = INDEX_OF[ledger];
+    if (!index) throw new Error(`No index canister known for ledger ${ledger}`);
+    const agent = await agentFor(null);
+    const out = [];
+    if (kind === 'icp') {
+        const ix = Actor.createActor(icpIndexIdl, { agent, canisterId: index });
+        const r = await ix.get_account_identifier_transactions({ account_identifier: proofAddress.account_id, start: [], max_results: 50n });
+        if ('Err' in r) throw new Error(r.Err.message);
+        for (const { id, transaction: t } of r.Ok.transactions) {
+            const x = t.operation.Transfer;
+            if (!x || x.to.toLowerCase() !== proofAddress.account_id.toLowerCase()) continue;
+            const ts = t.timestamp[0] || t.created_at_time[0];
+            out.push({ ledger, kind, block: id, atMs: ts ? Number(ts.timestamp_nanos / 1_000_000n) : null, amount: x.amount.e8s, fromAccountId: x.from.toLowerCase(), spender: x.spender[0] || null });
+        }
+    } else {
+        const ix = Actor.createActor(indexNgIdl, { agent, canisterId: index });
+        const r = await ix.get_account_transactions({ account: proofAddress.account, start: [], max_results: 50n });
+        if ('Err' in r) throw new Error(r.Err.message);
+        const own = proofAddress.account;
+        for (const { id, transaction: t } of r.Ok.transactions) {
+            const x = t.transfer[0];
+            if (!x || x.to.owner.toText() !== own.owner.toText() || !sameBytes(x.to.subaccount[0], own.subaccount[0])) continue;
+            out.push({
+                ledger, kind, block: id, atMs: Number(t.timestamp / 1_000_000n), amount: x.amount,
+                fromPrincipal: x.from.owner.toText(), fromSubaccount: isDefaultSub(x.from.subaccount) ? null : toHex(x.from.subaccount[0]),
+                fromAccountId: null, spender: x.spender[0] ? x.spender[0].owner.toText() : null,
+            });
+        }
+    }
+    return out.sort((a, b) => (b.atMs || 0) - (a.atMs || 0));
 }
