@@ -441,7 +441,7 @@ const IcpHotkeyNeurons = ({
                             <li>First, you need to have an NNS neuron (staked ICP)</li>
                             <li>Add your principal from this application as a hotkey to your neuron</li>
                             <li style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                Your current principal is:
+                                Your current principal is:{' '}
                                 <code style={{
                                     background: `${accentPrimary}20`,
                                     color: accentPrimary,
