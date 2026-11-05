@@ -577,7 +577,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Voting', path: '/active_proposals' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Notifications', path: '/notifications' },
-                { name: 'Notification inbox', path: '/notifications/inbox' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },

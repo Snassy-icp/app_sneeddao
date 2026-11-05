@@ -1,10 +1,10 @@
-// /notifications/inbox: every notification Sneed Notifications sent you (get_my_history), as a
+// The Inbox tab of /notifications: every notification Sneed Notifications sent you (get_my_history), as a
 // phone-style list of cards. Tapping one opens /notifications/:id with the full message.
 // Which ones you opened is remembered on this device (utils/notificationInbox.js).
+// /notifications/inbox (older links, the header menu of old builds) redirects to that tab.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FaInbox, FaCog, FaCheckDouble, FaSync } from 'react-icons/fa';
-import Header from '../components/Header';
+import { Link, Navigate } from 'react-router-dom';
+import { FaInbox, FaCheckDouble, FaSync } from 'react-icons/fa';
 import NotificationCard from '../components/NotificationCard';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,7 +15,14 @@ import { useAppRefresh } from '../hooks/useAppRefresh';
 const accent = '#f59e0b';
 const PAGE = 25;
 
+export const INBOX_URL = '/notifications?tab=inbox';
+
 export default function NotificationInbox() {
+    return <Navigate to={INBOX_URL} replace />;
+}
+
+/// The inbox itself, drawn inside the Notifications page.
+export function InboxPanel({ onOpenSettings }) {
     const { theme, isDark } = useTheme();
     const c = theme.colors;
     const { identity, isAuthenticated, login } = useAuth();
@@ -88,7 +95,7 @@ export default function NotificationInbox() {
                         <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
                             <FaInbox size={30} color={c.mutedText} />
                             <p style={{ ...muted, margin: '10px 0 0' }}>{items.length === 0 ? 'No notifications yet. When an app you allowed sends you one, it shows up here.' : filter === 'unread' ? "You're all caught up." : 'Nothing from this app.'}</p>
-                            {items.length === 0 && <Link to="/notifications" style={{ ...muted, color: accent }}>Choose which apps may notify you</Link>}
+                            {items.length === 0 && <button type="button" onClick={onOpenSettings} style={{ ...muted, color: accent, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Choose which apps may notify you</button>}
                         </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -111,19 +118,16 @@ export default function NotificationInbox() {
     })();
 
     return (
-        <>
-            <Header />
-            <div style={{ maxWidth: 640, margin: '0 auto', padding: '1.25rem 16px 3rem', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '0.9rem' }}>
-                    <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0, color: c.primaryText, fontSize: '1.5rem', flex: 1, minWidth: 180 }}><FaInbox color={accent} /> Inbox</h1>
-                    {isAuthenticated && items?.length > 0 && unreadCount > 0 && (
+        <div style={{ maxWidth: 640, margin: '0 auto', boxSizing: 'border-box' }}>
+            {isAuthenticated && notificationsEnabled && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '0.6rem' }}>
+                    {items?.length > 0 && unreadCount > 0 && (
                         <button type="button" style={iconBtn} onClick={() => setSeen(markSeen(principal, items.map((n) => n.id)))}><FaCheckDouble /> Mark all read</button>
                     )}
-                    {isAuthenticated && <button type="button" style={iconBtn} disabled={loading} onClick={load} aria-label="Refresh"><FaSync /></button>}
-                    <Link to="/notifications" style={iconBtn}><FaCog /> Settings</Link>
+                    <button type="button" style={iconBtn} disabled={loading} onClick={load} aria-label="Refresh"><FaSync /></button>
                 </div>
-                {body}
-            </div>
-        </>
+            )}
+            {body}
+        </div>
     );
 }

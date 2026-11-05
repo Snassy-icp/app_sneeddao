@@ -2690,7 +2690,7 @@ export default function Me() {
                                     </Link>
                                 )}
                                 {notificationsEnabled && (
-                                    <Link to="/notifications/inbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', margin: '0 0 12px', borderRadius: 12, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, textDecoration: 'none' }}>
+                                    <Link to="/notifications?tab=inbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', margin: '0 0 12px', borderRadius: 12, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, textDecoration: 'none' }}>
                                         <FaBell size={16} color="#f59e0b" />
                                         <span style={{ flex: 1 }}><strong>Notification inbox</strong><span style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText }}>Everything apps sent you, with the full messages</span></span>
                                         <span style={{ color: theme.colors.mutedText }}>→</span>
