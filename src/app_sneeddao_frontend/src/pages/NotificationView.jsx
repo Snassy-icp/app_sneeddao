@@ -86,7 +86,7 @@ export default function NotificationView() {
             <div style={{ ...wallpaper, padding: '2rem 1rem', textAlign: 'center' }}>
                 <FaInbox size={28} color={c.mutedText} />
                 <p style={{ ...muted, margin: '10px 0' }}>This notification wasn't found for the account you're logged in with. Notifications are kept for 30 days; it may also have been sent to another of your accounts.</p>
-                <Link to="/notifications/inbox" style={{ color: accent }}>Open the inbox</Link>
+                <Link to="/notifications?tab=inbox" style={{ color: accent }}>Open the inbox</Link>
             </div>
         );
         const action = primaryAction(n);
@@ -101,7 +101,7 @@ export default function NotificationView() {
                             {action && (action.target.internal
                                 ? <Link to={action.target.to} style={primaryBtn}>{action.label}</Link>
                                 : <a href={action.target.href} target="_blank" rel="noopener noreferrer" style={primaryBtn}>{action.label} <FaExternalLinkAlt size={12} /></a>)}
-                            <Link to="/notifications/inbox" style={ghostBtn}><FaInbox /> All notifications</Link>
+                            <Link to="/notifications?tab=inbox" style={ghostBtn}><FaInbox /> All notifications</Link>
                         </div>
                     </NotificationCard>
                 </div>
@@ -137,7 +137,7 @@ export default function NotificationView() {
         <>
             <Header />
             <div style={{ maxWidth: 640, margin: '0 auto', padding: '1rem 16px 3rem', boxSizing: 'border-box' }}>
-                <Link to="/notifications/inbox" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: c.secondaryText, textDecoration: 'none', fontSize: '0.88rem', marginBottom: 12 }}><FaArrowLeft size={12} /> Inbox</Link>
+                <Link to="/notifications?tab=inbox" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: c.secondaryText, textDecoration: 'none', fontSize: '0.88rem', marginBottom: 12 }}><FaArrowLeft size={12} /> Inbox</Link>
                 {content}
             </div>
         </>

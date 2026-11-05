@@ -1,4 +1,4 @@
-// The notification inbox (/notifications/inbox, /notifications/:id): what sneed_notifications
+// The notification inbox (/notifications?tab=inbox, /notifications/:id): what sneed_notifications
 // sent you, read back with get_my_history. The canister keeps no read state, so which ones you
 // have opened is kept on this device (localStorage, per principal).
 import { notificationsActor, levelOf } from './NotificationsService';

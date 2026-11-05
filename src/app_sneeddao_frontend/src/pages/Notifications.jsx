@@ -1,10 +1,10 @@
-// /notifications: the notification centre (sneed_notifications, spec/sneed_notifications.md).
-// Which apps may notify you, how each level reaches you, quiet hours, channels, your balance for
-// paid channels (top up, withdraw), and what you were sent; and Sneed Monitor
-// (components/SneedMonitorSection.jsx).
+// /notifications: the notification centre (sneed_notifications, spec/sneed_notifications.md), in two tabs.
+// Inbox (?tab=inbox, the default): what you were sent (pages/NotificationInbox.jsx).
+// Settings (?tab=settings): which apps may notify you, how each level reaches you, quiet hours, channels,
+// your balance for paid channels (top up, withdraw), and Sneed Monitor (components/SneedMonitorSection.jsx).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FaBell, FaCheckCircle, FaChevronDown, FaChevronRight, FaMoon, FaWallet, FaHistory, FaPlug, FaInbox } from 'react-icons/fa';
+import { Link, useSearchParams } from 'react-router-dom';
+import { FaBell, FaCheckCircle, FaChevronDown, FaChevronRight, FaMoon, FaWallet, FaPlug, FaInbox, FaCog } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -17,6 +17,7 @@ import { isStandaloneApp, isIOS } from '../utils/pairing';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import SneedMonitorSection from '../components/SneedMonitorSection';
 import { useAppRefresh } from '../hooks/useAppRefresh';
+import { InboxPanel } from './NotificationInbox';
 
 const accent = '#f59e0b';
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -28,6 +29,10 @@ export default function Notifications() {
     const { theme } = useTheme();
     const c = theme.colors;
     const { identity, isAuthenticated, login } = useAuth();
+    // the tab is in the URL; links to a settings section (#message-balance) or with a code (?code=) open Settings
+    const [params, setParams] = useSearchParams();
+    const tab = params.get('tab') || (window.location.hash || params.get('code') ? 'settings' : 'inbox');
+    const setTab = (t) => setParams((p) => { const n = new URLSearchParams(p); n.set('tab', t); n.delete('code'); return n; }, { replace: true });
     const { formatValue } = useDenomination();
     const [icpUsd, setIcpUsd] = useState(null);
     const [prepaid, setPrepaid] = useState(null); // get_my_prepaid(): fee, pending and past withdrawals (null on an older canister)
@@ -38,7 +43,6 @@ export default function Notifications() {
     const [apps, setApps] = useState([]); // [[App, Permission]]
     const [requests, setRequests] = useState([]);
     const [allApps, setAllApps] = useState([]);
-    const [history, setHistory] = useState([]);
     const [draft, setDraft] = useState(null); // edited Settings
     const [open, setOpen] = useState(null); // app id expanded
     const [msg, setMsg] = useState(null); // { ok|err, text }
@@ -54,8 +58,8 @@ export default function Notifications() {
     const actor = useMemo(() => (identity && notificationsEnabled ? notificationsActor(identity) : null), [identity]);
     const load = useCallback(async () => {
         if (!actor) return;
-        const [s, a, r, h, all] = await Promise.all([actor.get_my_settings(), actor.get_my_apps(), actor.get_my_requests(), actor.get_my_history(30n), actor.list_apps(1n, 100n)]);
-        setData(s); setApps(a); setRequests(r); setHistory(h); setDraft(s.settings); setAllApps(all);
+        const [s, a, r, all] = await Promise.all([actor.get_my_settings(), actor.get_my_apps(), actor.get_my_requests(), actor.list_apps(1n, 100n)]);
+        setData(s); setApps(a); setRequests(r); setDraft(s.settings); setAllApps(all);
         const kinds = {};
         for (const k of ['discord', 'push']) kinds[k] = !!(await relayKeys(identity, k).catch(() => null));
         setLive(kinds);
@@ -111,9 +115,18 @@ export default function Notifications() {
         <>
             <Header />
             <div style={{ maxWidth: 820, margin: '0 auto', padding: '1.25rem 16px 3rem' }}>
-                <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 0.4rem', color: c.primaryText, fontSize: '1.6rem' }}><FaBell color={accent} /> Notifications</h1>
-                <p style={{ ...muted, margin: '0 0 1.25rem', fontSize: '0.9rem' }}>Decide which apps may notify you, about what, and where. Nothing reaches you from an app you haven't allowed. {isAuthenticated && notificationsEnabled && <Link to="/notifications/inbox" style={{ color: accent, fontWeight: 600, textDecoration: 'none' }}>Your inbox →</Link>}</p>
-                {body}
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 0.75rem', color: c.primaryText, fontSize: '1.6rem' }}><FaBell color={accent} /> Notifications</h1>
+                <div role="tablist" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${c.border}`, marginBottom: '1rem' }}>
+                    {[['inbox', <FaInbox key="i" />, 'Inbox'], ['settings', <FaCog key="s" />, 'Settings']].map(([k, icon, label]) => (
+                        <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === k ? accent : 'transparent'}`, marginBottom: -1, color: tab === k ? c.primaryText : c.mutedText, fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer' }}>{icon} {label}</button>
+                    ))}
+                </div>
+                {tab === 'inbox' ? <InboxPanel onOpenSettings={() => setTab('settings')} /> : (
+                    <>
+                        <p style={{ ...muted, margin: '0 0 1.25rem', fontSize: '0.9rem' }}>Decide which apps may notify you, about what, and where. Nothing reaches you from an app you haven't allowed.</p>
+                        {body}
+                    </>
+                )}
             </div>
         </>
     );
@@ -386,29 +399,6 @@ export default function Notifications() {
                         <span style={{ ...muted, flexBasis: '100%', fontSize: '0.78rem' }}>Sent once, free, to Sneed SMS and your urgent channels; again after a top-up. 0 turns it off.</span>
                     </div>
                 )}
-            </div>
-
-            <div style={card}>
-                <h2 style={h2}><FaHistory color={accent} /> Recent <Link to="/notifications/inbox" style={{ marginLeft: 'auto', fontSize: '0.82rem', fontWeight: 600, color: accent, textDecoration: 'none' }}>See all →</Link></h2>
-                {history.length === 0 && <p style={muted}>Nothing yet.</p>}
-                {history.map((n) => (
-                    <div key={String(n.id)} style={{ borderTop: `1px solid ${c.border}`, padding: '8px 0', fontSize: '0.86rem' }}>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                            <Link to={`/notifications/${n.id}`} style={{ color: c.primaryText, fontWeight: 700, textDecoration: 'none' }}>{n.title}</Link>
-                            <span style={muted}>{n.app_name} · {levelOf(n.level)} · {new Date(Number(n.created_at / 1_000_000n)).toLocaleString()}</span>
-                        </div>
-                        {n.body && <div style={{ color: c.secondaryText, marginTop: 2, whiteSpace: 'pre-wrap' }}>{n.body.length > 300 ? `${n.body.slice(0, 300)}…` : n.body}</div>}
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                            {n.deliveries.map((d, i) => {
-                                const s = Object.keys(d.state)[0];
-                                const color = s === 'delivered' ? '#10b981' : s === 'failed' ? (c.error || '#ef4444') : s === 'suppressed' ? c.mutedText : accent;
-                                const why = d.state[s]?.reason ? `: ${d.state[s].reason}` : '';
-                                return <span key={i} style={{ fontSize: '0.72rem', border: `1px solid ${color}`, color, borderRadius: 999, padding: '1px 8px' }}>{kindLabel(kindOf(d.kind))} · {s}{why}</span>;
-                            })}
-                            {n.deliveries.length === 0 && <span style={muted}>not delivered (muted or no channel)</span>}
-                        </div>
-                    </div>
-                ))}
             </div>
         </>
     );
