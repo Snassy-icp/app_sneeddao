@@ -9,6 +9,7 @@
     "prebuild": "dfx generate && node scripts/fix-declaration-imports.mjs && node scripts/build-api-docs.mjs",
     "build": "tsc && vite build",
     "check": "node scripts/check.mjs",
+    "test:textentry": "node --test scripts/textEntry.test.mjs",
     "test:topup": "node --test scripts/cyclesTopUp.test.mjs",
     "test:tx": "node --test scripts/icrcTx.test.mjs",
     "test:jsxspace": "node --test scripts/jsxSpace.test.mjs",

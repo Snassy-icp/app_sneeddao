@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { searchPrincipals, PrincipalPickerPanel } from './PrincipalInput';
 import { mentionMarkdown } from '../utils/mentions';
+import { noZoomStyle } from '../utils/textEntry';
 
 const TRIGGER = /(?:^|[\s(])@([^\s@[\]()]{0,32})$/;
 
@@ -69,7 +70,7 @@ export default function MentionTextarea({ value, onChange, onKeyDown, style, tex
                 {...rest}
                 ref={setRef}
                 value={value}
-                style={style}
+                style={noZoomStyle(style)} // iOS zooms into smaller text on focus and the page jumps while typing
                 onChange={(e) => { onChange?.(e); track(e.target); }}
                 onKeyDown={keyDown}
                 onKeyUp={(e) => { rest.onKeyUp?.(e); if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) track(e.target); }}

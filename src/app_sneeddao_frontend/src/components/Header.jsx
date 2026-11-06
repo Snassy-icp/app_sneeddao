@@ -39,6 +39,7 @@ import { useBotLogNotification } from '../hooks/useBotLogNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
 import BotHealthDialog from './BotHealthDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
+import { isTextEntry } from '../utils/textEntry';
 
 // SNS root -> its nervous system parameters, for the VP bar: every page renders its own Header, so
 // without this the bar went away on each navigation until they were fetched again
@@ -488,6 +489,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             ticking = true;
             requestAnimationFrame(() => {
                 const currentScrollY = window.scrollY;
+                // While a text field has focus the scrolls come from the browser keeping the caret
+                // in view (keyboard, dictation, a tap into the next field). Folding a row away then
+                // moves the field under the caret, the browser scrolls again, and the page jumps.
+                if (isTextEntry(document.activeElement)) {
+                    lastScrollY.current = currentScrollY;
+                    ticking = false;
+                    return;
+                }
                 const scrollDelta = currentScrollY - lastScrollY.current;
                 const now = Date.now();
                 const timeSinceLastToggle = now - lastToggleTime.current;
