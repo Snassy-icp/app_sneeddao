@@ -9,6 +9,8 @@ import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
 import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import useProposalTitles from '../hooks/useProposalTitles';
+import { proposalIdFromThreadTitle } from '../utils/proposalTitles';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
@@ -1951,6 +1953,24 @@ function Feed() {
         }
     };
 
+    // Proposal threads (in an SNS forum's Proposals topic, titled "<forum> Proposal #<id>"): the
+    // proposal behind a feed item's thread, so its title can stand next to the number. Titles come
+    // in list_proposals windows per SNS governance and are cached for the session (useProposalTitles).
+    const optText = (v) => (Array.isArray(v) ? v[0] : v) || null;
+    const feedProposalRef = (item) => {
+        if (item._isAuction || optText(item.topic_title) !== 'Proposals') return null;
+        const isThread = extractVariant(item.item_type) === 'thread';
+        const proposalId = proposalIdFromThreadTitle(optText(isThread ? item.title : item.thread_title));
+        if (proposalId === null) return null;
+        const governanceId = getSnsInfo(optText(item.sns_root_canister_id))?.canisters?.governance;
+        return governanceId ? { governanceId, proposalId } : null;
+    };
+    const proposalTitleOf = useProposalTitles(feedItems.map(feedProposalRef));
+    const feedProposalTitle = (item) => {
+        const ref = feedProposalRef(item);
+        return ref ? proposalTitleOf(ref.governanceId, ref.proposalId) : undefined;
+    };
+
     // Render feed item
     const renderFeedItem = (item, index) => {
         const typeDisplayText = getTypeDisplayText(item.item_type);
@@ -1975,7 +1995,10 @@ function Feed() {
 
         // Get navigation URL and display title
         const navigationUrl = getItemNavigationUrl(item);
-        const displayTitle = getDisplayTitle(item);
+        const proposalTitle = feedProposalTitle(item);
+        const isThreadItem = extractVariant(item.item_type) === 'thread';
+        // A proposal thread's own item reads "<forum> Proposal #888 · <proposal title>"
+        const displayTitle = getDisplayTitle(item) + (proposalTitle && isThreadItem ? ` · ${proposalTitle}` : '');
 
         // Handle item navigation
         const handleItemClick = () => {
@@ -2570,10 +2593,18 @@ function Feed() {
                             <Link 
                                 to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
                                     className="feed-context-tag"
-                                style={getStyles(theme).contextLink}
+                                style={proposalTitle && !isThreadItem
+                                    ? { ...getStyles(theme).contextLink, maxWidth: '100%', minWidth: 0 }
+                                    : getStyles(theme).contextLink}
+                                title={proposalTitle && !isThreadItem ? `${optText(item.thread_title)}: ${proposalTitle}` : undefined}
                             >
-                                    <FaStream size={10} />
-                                    {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
+                                    <FaStream size={10} style={{ flexShrink: 0 }} />
+                                    {proposalTitle && !isThreadItem ? (
+                                        // A post in a proposal thread: "#888 · <proposal title>", ellipsis when narrow
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                            #{feedProposalRef(item).proposalId}{' · '}{proposalTitle}
+                                        </span>
+                                    ) : (Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title)}
                             </Link>
                         )}
                     </div>

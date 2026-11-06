@@ -12,9 +12,10 @@ import MarkdownBody from '../components/MarkdownBody';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
-import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { getPostsByThread } from '../utils/BackendUtils';
+import useProposalTitles from '../hooks/useProposalTitles';
+import { proposalIdFromThreadTitle } from '../utils/proposalTitles';
 import { HttpAgent } from '@dfinity/agent';
 import { FaComments, FaChevronRight, FaPlus, FaRegClock, FaSort, FaList, FaChevronLeft, FaGavel, FaRegLightbulb, FaFire, FaPoll, FaArrowRight, FaUser } from 'react-icons/fa';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
@@ -165,7 +166,19 @@ function Topic() {
     const [pollEndTime, setPollEndTime] = useState(defaultDateTime.timeStr);
     const [allowVoteChanges, setAllowVoteChanges] = useState(true);
     
-    const [threadProposals, setThreadProposals] = useState(new Map());
+    // Proposal threads (in the Proposals topic, titled "<forum> Proposal #<id>"): their proposals'
+    // titles, from the governance canister of the forum's SNS in list_proposals windows (see
+    // hooks/useProposalTitles), so the list can be scanned by topic
+    const isProposalsTopic = topic?.title === 'Proposals';
+    const topicSnsRoot = forumInfo?.sns_root_canister_id?.[0]?.toText?.() || currentSnsRoot;
+    const topicGovernanceId = useMemo(
+        () => isProposalsTopic ? (getSnsById(topicSnsRoot)?.canisters?.governance || null) : null,
+        [isProposalsTopic, topicSnsRoot]
+    );
+    const proposalIdOfThread = (thread) => isProposalsTopic ? proposalIdFromThreadTitle(thread.title) : null;
+    const proposalTitleOf = useProposalTitles(
+        topicGovernanceId ? threads.map(t => ({ governanceId: topicGovernanceId, proposalId: proposalIdOfThread(t) })) : []
+    );
     
     const forumActor = useMemo(() => {
         return identity ? createActor(canisterId, {
@@ -249,66 +262,6 @@ function Topic() {
             console.warn('Failed to fetch user thread reads:', error);
         }
     }, [forumActor, identity, topicId]);
-
-    const fetchProposalDataForThreads = useCallback(async (threads) => {
-        if (!forumActor || !identity || !currentSnsRoot || !threads.length) return;
-        if (topic?.title !== "Proposals") return;
-
-        const batchSize = 5;
-        const newProposalData = new Map();
-        
-        for (let i = 0; i < threads.length; i += batchSize) {
-            const batch = threads.slice(i, i + batchSize);
-            
-            await Promise.allSettled(batch.map(async (thread) => {
-                try {
-                    const proposalLink = await forumActor.get_thread_proposal_id(Number(thread.id));
-                    
-                    if (proposalLink && Array.isArray(proposalLink) && proposalLink.length > 0) {
-                        const tuple = proposalLink[0];
-                        if (Array.isArray(tuple) && tuple.length === 2) {
-                            const [snsRootIndex, proposalId] = tuple;
-                            const proposalIdNum = Number(proposalId);
-                            
-                            try {
-                                const selectedSns = getSnsById(currentSnsRoot);
-                                if (selectedSns) {
-                                    const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
-                                        agentOptions: { identity },
-                                    });
-
-                                    const response = await snsGovActor.get_proposal({
-                                        proposal_id: [{ id: BigInt(proposalIdNum) }]
-                                    });
-
-                                    if (response?.result?.[0]?.Proposal) {
-                                        newProposalData.set(thread.id.toString(), {
-                                            proposalId: proposalIdNum,
-                                            proposalData: response.result[0].Proposal
-                                        });
-                                    }
-                                }
-                            } catch (govError) {
-                                console.warn(`Failed to fetch proposal ${proposalIdNum} for thread ${thread.id}:`, govError);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.warn(`Failed to check proposal link for thread ${thread.id}:`, error);
-                }
-            }));
-        }
-        
-        if (newProposalData.size > 0) {
-            setThreadProposals(prev => {
-                const updated = new Map(prev);
-                newProposalData.forEach((value, key) => {
-                    updated.set(key, value);
-                });
-                return updated;
-            });
-        }
-    }, [forumActor, identity, currentSnsRoot, topic?.title]);
 
     const fetchThreadPostCounts = useCallback(async (threads) => {
         if (!forumActor || !threads.length) return;
@@ -471,7 +424,6 @@ function Topic() {
             setThreads(paginatedThreads);
             
             fetchThreadPostCounts(paginatedThreads);
-            fetchProposalDataForThreads(paginatedThreads);
             fetchUserThreadReads();
             
         } catch (err) {
@@ -1203,7 +1155,9 @@ function Topic() {
                                 {threads.map((thread, index) => {
                                     const isHovered = hoveredThread === thread.id;
                                     const hasUnread = hasUnreadPosts(thread);
-                                    const proposalInfo = threadProposals.get(thread.id.toString());
+                                    const proposalId = proposalIdOfThread(thread);
+                                    const proposalTitle = proposalId !== null ? proposalTitleOf(topicGovernanceId, proposalId) : undefined;
+                                    const threadTitle = (Array.isArray(thread.title) ? thread.title[0] : thread.title) || `Thread #${thread.id}`;
                                     
                                     // Get post count
                                     const backendPostCount = thread.total_posts_count && thread.total_posts_count.length > 0 
@@ -1324,16 +1278,41 @@ function Topic() {
                                                             flex: 1,
                                                             minWidth: 0
                                                         }}>
-                                                            <h3 style={{
-                                                                color: isHovered ? theme.colors.primaryText : theme.colors.primaryText,
-                                                                fontSize: '1.05rem',
-                                                                fontWeight: '600',
-                                                                margin: 0,
-                                                                lineHeight: '1.4',
-                                                                transition: 'color 0.2s ease'
-                                                            }}>
-                                                                {thread.title || `Thread #${thread.id}`}
-                                                            </h3>
+                                                            {proposalTitle ? (
+                                                                // A proposal thread: "#888 · <proposal title>", on one line
+                                                                // (ellipsis when narrow), the whole of it on hover
+                                                                <h3
+                                                                    title={`${threadTitle}: ${proposalTitle}`}
+                                                                    style={{
+                                                                        color: theme.colors.primaryText,
+                                                                        fontSize: '1.05rem',
+                                                                        fontWeight: '600',
+                                                                        margin: 0,
+                                                                        lineHeight: '1.4',
+                                                                        transition: 'color 0.2s ease',
+                                                                        flex: '0 1 auto',
+                                                                        minWidth: 0,
+                                                                        maxWidth: '100%',
+                                                                        overflow: 'hidden',
+                                                                        textOverflow: 'ellipsis',
+                                                                        whiteSpace: 'nowrap'
+                                                                    }}
+                                                                >
+                                                                    <span style={{ color: forumPrimary }}>#{proposalId}</span>
+                                                                    {' · '}{proposalTitle}
+                                                                </h3>
+                                                            ) : (
+                                                                <h3 style={{
+                                                                    color: isHovered ? theme.colors.primaryText : theme.colors.primaryText,
+                                                                    fontSize: '1.05rem',
+                                                                    fontWeight: '600',
+                                                                    margin: 0,
+                                                                    lineHeight: '1.4',
+                                                                    transition: 'color 0.2s ease'
+                                                                }}>
+                                                                    {threadTitle}
+                                                                </h3>
+                                                            )}
                                                             {hasUnread && (
                                                                 <span style={{
                                                                     background: `linear-gradient(135deg, ${theme.colors.error} 0%, #dc2626 100%)`,
@@ -1396,7 +1375,7 @@ function Topic() {
                                                     </div>
                                                     
                                                     {/* Proposal Link */}
-                                                    {proposalInfo && (
+                                                    {proposalId !== null && topicGovernanceId && (
                                                         <div 
                                                             style={{
                                                                 padding: '8px 12px',
@@ -1422,16 +1401,14 @@ function Topic() {
                                                         >
                                                             <span style={{ fontSize: '0.9rem' }}>📋</span>
                                                             <a 
-                                                                href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${selectedSnsRoot || ''}`}
+                                                                href={`/proposal?proposalid=${proposalId}&sns=${topicSnsRoot || ''}`}
                                                                 style={{
                                                                     color: forumPrimary,
                                                                     textDecoration: 'none',
                                                                     fontWeight: '500'
                                                                 }}
                                                             >
-                                                                {proposalInfo.proposalData?.proposal?.[0]?.title 
-                                                                    ? `Proposal #${proposalInfo.proposalId}: ${proposalInfo.proposalData.proposal[0].title}`
-                                                                    : `Proposal #${proposalInfo.proposalId}`}
+                                                                {`View proposal #${proposalId}`}
                                                             </a>
                                                         </div>
                                                     )}
