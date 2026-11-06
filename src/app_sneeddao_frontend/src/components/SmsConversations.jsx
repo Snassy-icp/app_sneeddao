@@ -25,8 +25,8 @@ const css = `
 .sms-conv-back { display: none !important; }
 @media (max-width: 760px) {
     .sms-conv-layout { grid-template-columns: minmax(0, 1fr); }
-    .sms-conv-layout.has-open .sms-conv-list { display: none; }
-    .sms-conv-layout:not(.has-open) .sms-conv-thread { display: none; }
+    .sms-conv-layout.has-open .sms-conv-list { display: none !important; } /* !important: the panes set display inline */
+    .sms-conv-layout:not(.has-open) .sms-conv-thread { display: none !important; }
     .sms-conv-back { display: inline-flex !important; }
     .sms-conv-pane { height: calc(100vh - 140px); height: calc(100dvh - 140px); min-height: 360px; }
 }
