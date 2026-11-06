@@ -528,57 +528,66 @@ function SneedexOffers() {
         return null;
     }, [snsList]);
     
-    // Fetch token prices for USD display
+    // Which offers the state toggles (Active, Sold, Expired) show. An Active offer whose time has run out counts as
+    // expired here, even before the canister's timer records it.
+    const matchesStateToggles = useCallback((offer) => {
+        const effectiveShowActive = showActiveOffers || (!showActiveOffers && !showSoldOffers && !showExpiredOffers);
+        const ranOut = 'Active' in offer.state && isOfferPastExpiration(offer.expiration?.[0]);
+        return (
+            (effectiveShowActive && 'Active' in offer.state && !ranOut) ||
+            (showSoldOffers && ('Completed' in offer.state || 'Claimed' in offer.state)) ||
+            (showExpiredOffers && (ranOut || 'Expired' in offer.state || 'Cancelled' in offer.state || 'Reclaimed' in offer.state))
+        );
+    }, [showActiveOffers, showSoldOffers, showExpiredOffers]);
+
+    // Fetch token prices for USD display: only for the tokens of the offers the state toggles show, each ledger once
+    // per page visit, a few at a time (every price is an ICPSwap getPool plus a pool metadata query).
+    const pricedLedgersRef = React.useRef(new Set());
     useEffect(() => {
+        if (offers.length === 0 || snsList.length === 0) return undefined;
+        let cancelled = false;
+        let todo = [];
         const fetchPrices = async () => {
             try {
-                // Get ICP price first
                 const icp = await priceService.getICPUSDPrice();
-                setIcpPrice(icp);
-                
-                // Collect unique ledger IDs from offers
-                const ledgerIds = new Set();
-                offers.forEach(offer => {
-                    // Add payment token
-                    const paymentLedger = offer.price_token_ledger.toString();
-                    ledgerIds.add(paymentLedger);
-                    
-                    // Add asset tokens
-                    offer.assets.forEach(assetEntry => {
-                        const details = getAssetDetails(assetEntry);
-                        if (details.type === 'ICRC1Token') {
-                            ledgerIds.add(details.ledger_id);
-                        } else if (details.type === 'SNSNeuron') {
-                            // Add SNS ledger for neuron assets
-                            const snsLedger = getSnsLedgerFromGovernanceForPrices(details.governance_id);
-                            if (snsLedger) {
-                                ledgerIds.add(snsLedger);
-                            }
-                        }
-                    });
+                if (!cancelled) setIcpPrice(icp);
+            } catch (e) {
+                // Silently ignore ICP price fetch errors
+            }
+            // Collect the ledgers of the shown offers that were not priced yet
+            const ledgerIds = new Set();
+            offers.filter(matchesStateToggles).forEach(offer => {
+                ledgerIds.add(offer.price_token_ledger.toString()); // payment token
+                offer.assets.forEach(assetEntry => {
+                    const details = getAssetDetails(assetEntry);
+                    if (details.type === 'ICRC1Token') {
+                        ledgerIds.add(details.ledger_id);
+                    } else if (details.type === 'SNSNeuron') {
+                        const snsLedger = getSnsLedgerFromGovernanceForPrices(details.governance_id); // SNS ledger for neuron assets
+                        if (snsLedger) ledgerIds.add(snsLedger);
+                    }
                 });
-                
-                // Fetch prices for each ledger (silently ignore failures - token may not have pool)
-                const prices = {};
-                for (const ledgerId of ledgerIds) {
+            });
+            todo = [...ledgerIds].filter((id) => !pricedLedgersRef.current.has(id));
+            todo.forEach((id) => pricedLedgersRef.current.add(id));
+            // Four lookups at a time; failures are ignored (a token may have no ICPSwap pool). When the effect runs
+            // again, the lookups already started still deliver their price, and the rest go back to the next run.
+            const worker = async () => {
+                while (!cancelled && todo.length > 0) {
+                    const id = todo.shift();
                     try {
-                        const tokenInfo = getTokenInfo(ledgerId);
-                        const price = await priceService.getTokenUSDPrice(ledgerId, tokenInfo.decimals);
-                        prices[ledgerId] = price;
+                        const price = await priceService.getTokenUSDPrice(id, getTokenInfo(id).decimals);
+                        setTokenPrices((prev) => ({ ...prev, [id]: price }));
                     } catch (e) {
                         // Silently ignore - token may not have an ICPSwap pool
                     }
                 }
-                setTokenPrices(prices);
-            } catch (e) {
-                // Silently ignore ICP price fetch errors
-            }
+            };
+            await Promise.all(Array.from({ length: 4 }, worker));
         };
-        
-        if (offers.length > 0 && snsList.length > 0) {
-            fetchPrices();
-        }
-    }, [offers, snsList, getTokenInfo, getSnsLedgerFromGovernanceForPrices]);
+        fetchPrices();
+        return () => { cancelled = true; todo.forEach((id) => pricedLedgersRef.current.delete(id)); };
+    }, [offers, snsList, getTokenInfo, getSnsLedgerFromGovernanceForPrices, matchesStateToggles]);
     
     // Fetch SNS logos, symbols, neuron info, token logos, and neuron manager info when offers change
     useEffect(() => {
@@ -723,15 +732,7 @@ function SneedexOffers() {
 
     const filteredOffers = offers.filter(offer => {
         // Filter by state toggles (Active, Sold, Expired)
-        const effectiveShowActive = showActiveOffers || (!showActiveOffers && !showSoldOffers && !showExpiredOffers);
-        // An Active offer whose time has run out counts as expired here, even before the canister's timer records it
-        const ranOut = 'Active' in offer.state && isOfferPastExpiration(offer.expiration?.[0]);
-        const stateMatch = (
-            (effectiveShowActive && 'Active' in offer.state && !ranOut) ||
-            (showSoldOffers && ('Completed' in offer.state || 'Claimed' in offer.state)) ||
-            (showExpiredOffers && (ranOut || 'Expired' in offer.state || 'Cancelled' in offer.state || 'Reclaimed' in offer.state))
-        );
-        if (!stateMatch) return false;
+        if (!matchesStateToggles(offer)) return false;
         
         if (assetCats.length > 0) {
             const hasType = offer.assets.some(a => assetCats.includes(assetCategoryOf(getAssetType(a.asset), getAssetDetails(a))));
