@@ -12,10 +12,12 @@ import { useSmsInbox } from '../contexts/SmsContext';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
+import SmsConversations from '../components/SmsConversations';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
-import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers } from 'react-icons/fa';
+import { appConfirm } from '../utils/appDialog';
+import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaComments } from 'react-icons/fa';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
@@ -99,12 +101,36 @@ const customStyles = `
 .sms-tab:hover {
     transform: translateY(-1px);
 }
+
+@media (max-width: 600px) {
+    .sms-main { padding: 1.25rem 1rem !important; }
+}
 `;
 
 // Accent colors for this page
 const smsPrimary = '#3b82f6'; // Blue
 const smsSecondary = '#1d4ed8'; // Darker blue
 const smsAccent = '#60a5fa'; // Light blue
+
+// the view (tab) shown: ?view=… first, else the one last chosen on this device
+const VIEWS = ['received', 'sent', 'all', 'conversations'];
+const VIEW_KEY = 'sneed_sms_view';
+const initialView = (searchParams) => {
+    const v = searchParams.get('view');
+    if (VIEWS.includes(v)) return v;
+    try { const saved = localStorage.getItem(VIEW_KEY); if (VIEWS.includes(saved)) return saved; } catch (_) { /* no storage */ }
+    return 'received';
+};
+
+/// The text of a send_message error.
+const smsErrorText = (err) => {
+    if (err?.RateLimited) return `Rate Limited: ${err.RateLimited}`;
+    if (err?.InvalidInput) return `Invalid Input: ${err.InvalidInput}`;
+    if (err?.Unauthorized) return `Unauthorized: ${err.Unauthorized}`;
+    if (err?.NotFound) return `Not Found: ${err.NotFound}`;
+    if (err?.AlreadyExists) return `Already Exists: ${err.AlreadyExists}`;
+    return 'Failed to send message';
+};
 
 const SMS = () => {
     const { theme } = useTheme();
@@ -117,7 +143,22 @@ const SMS = () => {
     // the shared, cached inbox (contexts/SmsContext.jsx): shown at once, then only new messages fetched
     const sms = useSmsInbox({ active: true });
     const [error, setError] = useState(null);
-    const [selectedTab, setSelectedTab] = useState('received'); // 'received', 'sent', 'all'
+    const [selectedTab, setSelectedTabState] = useState(() => initialView(searchParams)); // 'received', 'sent', 'all', 'conversations'
+    const setSelectedTab = (view) => {
+        setSelectedTabState(view);
+        try { localStorage.setItem(VIEW_KEY, view); } catch (_) { /* no storage */ }
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (view === 'received') next.delete('view'); else next.set('view', view);
+            return next;
+        }, { replace: true });
+    };
+    // drops the one-shot params (reply, recipient), keeps the view
+    const clearActionParams = () => setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('reply'); next.delete('recipient');
+        return next;
+    }, { replace: true });
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [mountedAt] = useState(() => Date.now());
     const [showComposeModal, setShowComposeModal] = useState(false);
@@ -193,11 +234,13 @@ const SMS = () => {
         const t = sentList?.items || [];
         if (selectedTab === 'received') return r;
         if (selectedTab === 'sent') return t;
+        // 'all' and 'conversations': both lists
         const seen = new Set();
         return [...r, ...t]
             .filter((m) => { const k = m.id.toString(); if (seen.has(k)) return false; seen.add(k); return true; })
             .sort((a, b) => (a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : (a.created_at < b.created_at ? 1 : -1)));
     }, [selectedTab, receivedList, sentList]);
+    const bothKinds = selectedTab === 'all' || selectedTab === 'conversations';
     const tabLoaded = selectedTab === 'received' ? receivedList?.loaded
         : selectedTab === 'sent' ? sentList?.loaded
         : (receivedList?.loaded && sentList?.loaded);
@@ -214,7 +257,7 @@ const SMS = () => {
 
     const loadOlder = async () => {
         setLoadingOlder(true);
-        try { await sms?.loadOlder(selectedTab); } catch (e) { setError('Failed to load older messages'); } finally { setLoadingOlder(false); }
+        try { await sms?.loadOlder(bothKinds ? 'all' : selectedTab); } catch (e) { setError('Failed to load older messages'); } finally { setLoadingOlder(false); }
     };
 
     useEffect(() => {
@@ -267,7 +310,8 @@ const SMS = () => {
     useEffect(() => {
         if (!sms?.lastSeenFresh || capturedOldMessagesTimestamp !== null) return;
         setCapturedOldMessagesTimestamp(sms.lastSeen ?? 0n);
-        if (sms.unreadCount > 0) setSelectedTab('received');
+        // new messages: show the inbox (the Conversations view shows them itself)
+        if (sms.unreadCount > 0 && selectedTab !== 'conversations') setSelectedTabState('received');
     }, [sms?.lastSeenFresh, sms?.lastSeen, sms?.unreadCount, capturedOldMessagesTimestamp]);
 
     const newestReceived = receivedList?.items?.[0]?.created_at ?? null;
@@ -299,7 +343,7 @@ const SMS = () => {
                 setShowComposeModal(true);
                 
                 // Clear the reply parameter from URL
-                setSearchParams({});
+                clearActionParams();
             }
         }
     }, [searchParams, messages, isAuthenticated, principalNames, principalNicknames]);
@@ -324,7 +368,7 @@ const SMS = () => {
                 setShowComposeModal(true);
                 
                 // Clear the recipient parameter from URL
-                setSearchParams({});
+                clearActionParams();
             } catch (e) {
                 console.error('Invalid recipient principal from URL:', e);
             }
@@ -354,7 +398,27 @@ const SMS = () => {
         setPrincipalDisplayInfo(displayInfoMap);
     }, [messages, principalNames, principalNicknames]);
 
-        // Send message
+    /// Sends one message (the compose dialog and the Conversations view): { ok: true } or { ok: false, error }.
+    const submitSms = async ({ recipients, subject, body, replyTo = null }) => {
+        const actor = getSmsActor();
+        if (!actor) return { ok: false, error: 'Not signed in' };
+        try {
+            const result = await actor.send_message({
+                recipients: recipients.map((r) => Principal.fromText(String(r).trim())),
+                subject,
+                body,
+                reply_to: replyTo !== null && replyTo !== undefined ? [[BigInt(replyTo)]] : [] // Optional array containing array of BigInt
+            });
+            if (!('ok' in result)) return { ok: false, error: smsErrorText(result.err) };
+            await sms?.sync({ includeSent: true });
+            return { ok: true };
+        } catch (err) {
+            console.error('Error sending message:', err);
+            return { ok: false, error: 'Failed to send message: ' + (err.message || err.toString()) };
+        }
+    };
+
+    // Send message
     const sendMessage = async () => {
         // Check if we have valid recipients
         const validRecipients = composeForm.recipients.filter(r => {
@@ -376,46 +440,19 @@ const SMS = () => {
         setError(null);
         
         try {
-            const actor = getSmsActor();
-            if (!actor) return;
-
-            // Convert valid recipients to Principal objects
-            const recipientPrincipals = validRecipients.map(r => Principal.fromText(r.trim()));
-
-            const messageInput = {
-                recipients: recipientPrincipals,
+            const result = await submitSms({
+                recipients: validRecipients,
                 subject: composeForm.subject.trim(),
                 body: composeForm.body.trim(),
-                reply_to: composeForm.replyTo ? [[BigInt(composeForm.replyTo)]] : [] // Optional array containing array of BigInt
-            };
-
-            const result = await actor.send_message(messageInput);
-            
-            if ('ok' in result) {
+                replyTo: composeForm.replyTo
+            });
+            if (result.ok) {
                 setShowComposeModal(false);
                 setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
                 setRecipientValidation('');
-                await sms?.sync({ includeSent: true });
             } else {
-                // Extract the specific error message from the backend response
-                let errorMsg = 'Failed to send message';
-                if (result.err.RateLimited) {
-                    errorMsg = `Rate Limited: ${result.err.RateLimited}`;
-                } else if (result.err.InvalidInput) {
-                    errorMsg = `Invalid Input: ${result.err.InvalidInput}`;
-                } else if (result.err.Unauthorized) {
-                    errorMsg = `Unauthorized: ${result.err.Unauthorized}`;
-                } else if (result.err.NotFound) {
-                    errorMsg = `Not Found: ${result.err.NotFound}`;
-                } else if (result.err.AlreadyExists) {
-                    errorMsg = `Already Exists: ${result.err.AlreadyExists}`;
-                }
-
-                setError(errorMsg);
+                setError(result.error);
             }
-        } catch (err) {
-            console.error('Error sending message:', err);
-            setError('Failed to send message: ' + (err.message || err.toString()));
         } finally {
             setSubmitting(false);
         }
@@ -720,7 +757,7 @@ const SMS = () => {
                 </div>
 
                 {/* Main Content */}
-                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                <div className="sms-main" style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
                     {/* Error Display */}
                     {shownError && (
                         <div style={{ 
@@ -754,7 +791,8 @@ const SMS = () => {
                             {[
                                 { key: 'received', label: 'Inbox', icon: <FaInbox size={14} />, color: smsPrimary },
                                 { key: 'sent', label: 'Sent', icon: <FaPaperPlane size={14} />, color: theme.colors.success },
-                                { key: 'all', label: 'All', icon: <FaFolderOpen size={14} />, color: smsAccent }
+                                { key: 'all', label: 'All', icon: <FaFolderOpen size={14} />, color: smsAccent },
+                                { key: 'conversations', label: 'Conversations', icon: <FaComments size={14} />, color: smsSecondary }
                             ].map(tab => (
                                 <button
                                     key={tab.key}
@@ -841,8 +879,24 @@ const SMS = () => {
                         </button>
                     </div>
 
-                    {/* Messages List */}
-                    {loading ? (
+                    {/* Conversations: the same messages as chats, grouped by who takes part */}
+                    {selectedTab === 'conversations' ? (
+                        <SmsConversations
+                            me={identity?.getPrincipal().toString()}
+                            received={receivedList?.items}
+                            sent={sentList?.items}
+                            unreadMark={capturedOldMessagesTimestamp ?? sms?.lastSeen ?? null}
+                            loaded={!loading}
+                            hasOlder={hasOlder}
+                            loadingOlder={loadingOlder}
+                            onLoadOlder={loadOlder}
+                            send={submitSms}
+                            limits={{ subject: effectiveSubjectLimit, body: effectiveBodyLimit, recipients: effectiveMaxRecipients }}
+                            accent={smsPrimary}
+                            accentDark={smsSecondary}
+                            onOpenMessage={(message) => { setSelectedMessage(message); setShowMessageModal(true); }}
+                        />
+                    ) : loading ? (
                         <div style={{
                             background: theme.colors.secondaryBg,
                             borderRadius: '16px',
@@ -1904,8 +1958,8 @@ const SMS = () => {
                                 </button>
                                 {selectedMessage.can_remove_self && (
                                     <button
-                                        onClick={() => {
-                                            if (window.confirm('Are you sure you want to remove yourself from this message? This action cannot be undone.')) {
+                                        onClick={async () => {
+                                            if (await appConfirm('Are you sure you want to remove yourself from this message? This action cannot be undone.')) {
                                                 removeSelfFromMessage(Number(selectedMessage.id));
                                             }
                                         }}
