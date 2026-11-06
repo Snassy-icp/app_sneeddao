@@ -238,9 +238,15 @@ function SneedexOffers() {
         return { name: 'SNS Neuron', symbol: symbol || 'Neuron', ledgerId: null };
     }, [snsList, snsSymbols]);
     
+    // Requests already started, by key: every offer with the same SNS or neuron asks for the same thing, and the
+    // callbacks below change (and the effects that call them run again) each time one result lands, so without
+    // this each id was fetched once per offer and again on every re-run (dozens of requests a second on load).
+    const startedRef = React.useRef(new Set());
+    const startOnce = (key) => { if (startedRef.current.has(key)) return false; startedRef.current.add(key); return true; };
+
     // Fetch token symbol from SNS ledger
     const fetchSnsSymbol = useCallback(async (governanceId) => {
-        if (snsSymbols.has(governanceId)) return;
+        if (snsSymbols.has(governanceId) || !startOnce(`symbol:${governanceId}`)) return;
         
         // Find the SNS to get its ledger ID
         const sns = snsList.find(s => 
@@ -248,7 +254,7 @@ function SneedexOffers() {
             s.governance_canister_id?.toString() === governanceId
         );
         const ledgerId = sns?.canisters?.ledger;
-        if (!ledgerId) return;
+        if (!ledgerId) { startedRef.current.delete(`symbol:${governanceId}`); return; } // the SNS list may not be loaded yet
         
         try {
             const agent = new HttpAgent({ host: getHost(), identity });
@@ -270,7 +276,7 @@ function SneedexOffers() {
     
     // Fetch SNS logo for a governance ID
     const fetchSnsLogoForOffer = useCallback(async (governanceId) => {
-        if (snsLogos.has(governanceId)) return;
+        if (snsLogos.has(governanceId) || !startOnce(`logo:${governanceId}`)) return;
         try {
             const logo = await fetchSnsLogo(governanceId);
             if (logo) {
@@ -284,7 +290,7 @@ function SneedexOffers() {
     // Fetch neuron info (staked amount)
     const fetchNeuronInfo = useCallback(async (governanceId, neuronIdHex) => {
         const key = `${governanceId}_${neuronIdHex}`;
-        if (neuronInfo[key]) return;
+        if (neuronInfo[key] || !startOnce(`neuron:${key}`)) return;
         
         try {
             const agent = new HttpAgent({ host: getHost(), identity });
@@ -321,7 +327,7 @@ function SneedexOffers() {
     
     // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
-        if (neuronManagerInfo[canisterId]) return;
+        if (neuronManagerInfo[canisterId] || !startOnce(`manager:${canisterId}`)) return;
         
         try {
             const actor = createSneedexActor(identity);
