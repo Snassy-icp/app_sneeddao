@@ -16,6 +16,7 @@ import SmsConversations from '../components/SmsConversations';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import { appConfirm } from '../utils/appDialog';
 import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaComments } from 'react-icons/fa';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -1957,8 +1958,8 @@ const SMS = () => {
                                 </button>
                                 {selectedMessage.can_remove_self && (
                                     <button
-                                        onClick={() => {
-                                            if (window.confirm('Are you sure you want to remove yourself from this message? This action cannot be undone.')) {
+                                        onClick={async () => {
+                                            if (await appConfirm('Are you sure you want to remove yourself from this message? This action cannot be undone.')) {
                                                 removeSelfFromMessage(Number(selectedMessage.id));
                                             }
                                         }}
