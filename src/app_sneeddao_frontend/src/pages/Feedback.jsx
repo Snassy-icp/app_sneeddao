@@ -77,7 +77,7 @@ export default function Feedback() {
     };
 
     const card = { background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 16, padding: 18 };
-    const input = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1px solid ${c.border}`, background: c.secondaryBg, color: c.primaryText, fontSize: 15, fontFamily: 'inherit' };
+    const input = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1px solid ${c.border}`, background: c.secondaryBg, color: c.primaryText, fontSize: 16, fontFamily: 'inherit' }; // 16px: iOS zooms into smaller text fields
     const label = { display: 'block', fontSize: 12, color: c.mutedText, textTransform: 'uppercase', letterSpacing: .6, margin: '14px 0 6px' };
     const K = KINDS[kind];
 
