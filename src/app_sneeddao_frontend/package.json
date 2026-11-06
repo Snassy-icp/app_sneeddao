@@ -12,6 +12,7 @@
     "test:topup": "node --test scripts/cyclesTopUp.test.mjs",
     "test:tx": "node --test scripts/icrcTx.test.mjs",
     "test:jsxspace": "node --test scripts/jsxSpace.test.mjs",
+    "test:smsconv": "node --test scripts/smsConversations.test.mjs",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\""
   },
   "dependencies": {

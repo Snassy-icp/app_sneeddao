@@ -1,6 +1,6 @@
 // /help/sms: Sneed SMS direct messages (/sms, /msg/:id).
 import React from 'react';
-import { FaEnvelope, FaBook, FaPaperPlane, FaReply, FaInbox, FaLock, FaStar, FaTrash, FaBell } from 'react-icons/fa';
+import { FaEnvelope, FaBook, FaPaperPlane, FaReply, FaInbox, FaLock, FaStar, FaTrash, FaBell, FaComments } from 'react-icons/fa';
 import { HelpPage, Section, Sub, P, List, Steps, Li, B, Code, L, Tip, Warning, Info, Related } from './HelpLayout';
 
 export default function HelpSms() {
@@ -83,7 +83,7 @@ export default function HelpSms() {
 
             <Section icon={FaInbox} title="Reading messages" id="inbox">
                 <List>
-                    <Li>The tabs <B>Inbox</B>, <B>Sent</B> and <B>All</B> filter your messages. The header shows how many you have received and sent; press <B>Refresh</B> to reload.</Li>
+                    <Li>The tabs <B>Inbox</B>, <B>Sent</B> and <B>All</B> filter your messages (<B>Conversations</B> groups them as chats, see below). The header shows how many you have received and sent; press <B>Refresh</B> to reload.</Li>
                     <Li>Messages that arrived since your last visit are highlighted as <B>New</B>. When you open the page, they count as seen.</Li>
                     <Li>Click a message to open it. <B>Message Details</B> shows the subject, sender (<B>From</B>), all recipients (<B>To</B>) and the date, with buttons to copy principals.</Li>
                 </List>
@@ -94,6 +94,16 @@ export default function HelpSms() {
                     <Li><B>Reply</B> answers only the sender. <B>Reply All</B> answers the sender and every other recipient, without you. Both keep the subject with <Code>Re:</Code> in front.</Li>
                     <Li>A reply is linked to the message it answers. You can only reply to messages you have access to.</Li>
                     <Li>Press <B>Thread</B> on a message to open the conversation view. It shows the message with the messages it answers above and the replies to it below, nested. Use <B>Expand All</B> and <B>Collapse All</B>, collapse single messages, and load earlier context as you go.</Li>
+                </List>
+            </Section>
+
+            <Section icon={FaComments} title="Conversations" id="conversations">
+                <List>
+                    <Li>The <B>Conversations</B> tab shows your messages as chats. Every message belongs to the conversation with exactly the people in it (sender and recipients, without you): one other person makes a chat, more make a group. Messages you sent only to yourself are under <B>Notes to self</B>; notifications from a system sender such as Sneedex form their own conversation.</Li>
+                    <Li>Your messages are on the right, the others' on the left; in a group each run of messages carries the sender's name. A subject shows only when it changes, and a reply shows a line from the message it answers.</Li>
+                    <Li>Type in the box at the bottom and press send (or <Code>Ctrl+Enter</Code>) to write to everyone in the conversation. The message replies to the conversation's last message; its subject is <Code>Re:</Code> the last subject unless you type one. The usual limits apply.</Li>
+                    <Li>Press <B>New</B> to start a conversation: add one or more people, then <B>Open conversation</B>.</Li>
+                    <Li>Conversations are a view of the same messages: they are just as private (see above), not more.</Li>
                 </List>
             </Section>
 
