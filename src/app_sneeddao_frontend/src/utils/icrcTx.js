@@ -8,7 +8,9 @@
 //
 // Behaviour, the same for all of them:
 //   - args.created_at_time is filled with "now" when empty; the caller's object is not changed.
-//   - A thrown call (outcome unknown) is resent once with the very same args, but ONLY on a ledger
+//   - A call the network refused (HTTP 4xx when submitting it, e.g. "Invalid signature" from a
+//     broken login session) never reached the ledger: a NotSentError says so, and nothing is resent.
+//   - Any other thrown call (outcome unknown) is resent once with the very same args, but ONLY on a ledger
 //     known to deduplicate (see below). On any other ledger nothing is resent: an
 //     OutcomeUnknownError is thrown whose message tells the user to check their balance and
 //     history before trying again.
@@ -78,6 +80,33 @@ export class OutcomeUnknownError extends Error {
     }
 }
 
+/** The HTTP status with which the network refused to accept a call (4xx), or null. @dfinity/agent
+ *  2.x throws AgentCallError whose `response` is the AgentHTTPResponseError carrying the status.
+ *  Only a 4xx answer to the submission proves the call never ran; 5xx and network errors don't. */
+export function refusedStatus(e) {
+    const status = e?.response?.response?.status ?? e?.response?.status;
+    return Number.isInteger(status) && status >= 400 && status < 500 ? status : null;
+}
+
+/** Thrown when the network refused the call: nothing was sent, so trying again is safe. */
+export class NotSentError extends Error {
+    constructor(method, cause) {
+        const what = method === 'icrc2_approve' ? 'approval' : 'transfer';
+        const body = /Body:\s*([^\n]*)/.exec(cause?.message || '')?.[1]?.trim() || `HTTP ${refusedStatus(cause)}`;
+        const reason = body.length > 160 ? `${body.slice(0, 160)}…` : body;
+        const relogin = /signature|delegation/i.test(cause?.message || '')
+            ? ' Your login session looks broken: log out and log in again, then retry.'
+            : '';
+        super(`The ${what} was not sent: the network refused the request (${reason}). Nothing left your account, so it is safe to try again.${relogin}`);
+        this.name = 'NotSentError';
+        this.code = 'NOT_SENT';
+        this.cause = cause;
+    }
+}
+
+/** The error for a thrown call: not sent (refused) or outcome unknown. */
+const callFailed = (method, e) => (refusedStatus(e) ? new NotSentError(method, e) : new OutcomeUnknownError(method, e));
+
 const nowNs = () => BigInt(Date.now()) * 1_000_000n;
 
 /** [now in ns], for a created_at_time opt field. */
@@ -97,7 +126,7 @@ async function callWithDedupe(actor, method, args, { legacy = false } = {}) {
 
     const send = async () => {
         try { return await actor[method](a); } catch (e) {
-            if (!retryUnknown) throw new OutcomeUnknownError(method, e);
+            if (!retryUnknown || refusedStatus(e)) throw callFailed(method, e);
             // Unknown outcome on a deduping ledger: resend the identical args; a landed first try
             // comes back as Duplicate.
             try { return await actor[method](a); } catch (_) { throw new OutcomeUnknownError(method, e); }
@@ -115,7 +144,7 @@ async function callWithDedupe(actor, method, args, { legacy = false } = {}) {
             r = await send();
         } else if (('TooOld' in err) || ('TxTooOld' in err)) {
             a = { ...a, created_at_time: [] };
-            try { r = await actor[method](a); } catch (e) { throw new OutcomeUnknownError(method, e); } // no time: never resent
+            try { r = await actor[method](a); } catch (e) { throw callFailed(method, e); } // no time: never resent
         }
     }
     const e2 = r && typeof r === 'object' ? r.Err : undefined;

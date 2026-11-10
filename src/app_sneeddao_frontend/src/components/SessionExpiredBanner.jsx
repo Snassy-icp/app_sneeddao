@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 export default function SessionExpiredBanner() {
-    const { sessionExpired, isAuthenticated, login } = useAuth();
+    const { sessionExpired, sessionBroken, isAuthenticated, login } = useAuth();
     const { theme } = useTheme();
     if (!sessionExpired || isAuthenticated) return null;
     const dark = theme?.name !== 'bright';
@@ -21,7 +21,9 @@ export default function SessionExpiredBanner() {
             position: 'relative', zIndex: 1001, display: 'flex', flexWrap: 'wrap', alignItems: 'center',
             justifyContent: 'center', gap: '8px 12px',
         }}>
-            <span>Your session expired. Log in again to see your data and to send, vote or post.</span>
+            <span>{sessionBroken
+                ? 'Your login could not be used any more (for example after logging out in another tab). Log in again to see your data and to send, vote or post.'
+                : 'Your session expired. Log in again to see your data and to send, vote or post.'}</span>
             <button type="button" onClick={login} style={{
                 background: colors.buttonBg, color: colors.buttonText, border: 'none', borderRadius: '6px',
                 padding: '5px 14px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
