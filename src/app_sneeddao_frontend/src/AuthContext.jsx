@@ -1,9 +1,10 @@
 // AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { AuthClient, IdbStorage, KEY_STORAGE_DELEGATION } from '@dfinity/auth-client';
+import { IdbStorage, KEY_STORAGE_DELEGATION } from '@dfinity/auth-client';
 import { DelegationChain } from '@dfinity/identity';
 import { completePairing as storePairing } from './utils/pairing';
 import { getDelegationExpiryMs, isIdentityExpired, onAuthExpired, reportIfAuthExpired } from './utils/authExpiry';
+import { createAuthClient, rememberSessionKey } from './utils/authSession';
 
 const AuthContext = createContext();
 
@@ -45,6 +46,9 @@ export function AuthProvider({ children }) {
   // The login ran out while the app was open (or since the last visit): AuthClient checks the
   // delegation only at load, so we watch its expiry and show SessionExpiredBanner until the next login.
   const [sessionExpired, setSessionExpired] = useState(false);
+  // The stored login was unusable (its key did not match its delegation, utils/authSession.js), so
+  // it was logged out: the banner asks to log in again without saying it expired.
+  const [sessionBroken, setSessionBroken] = useState(false);
   const expiringRef = useRef(false);
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export function AuthProvider({ children }) {
       } catch {
         // no stored login, or not readable: nothing to report
       }
-      const client = await AuthClient.create({
+      const { client, brokenLogin } = await createAuthClient({
         idleOptions: {
           disableIdle: true,
           disableDefaultIdleCallback: true
@@ -69,6 +73,11 @@ export function AuthProvider({ children }) {
         keyType: 'Ed25519',
       });
       setAuthClient(client);
+      if (brokenLogin) {
+        setSessionBroken(true);
+        setSessionExpired(true);
+        return;
+      }
 
       const isAuth = await client.isAuthenticated();
       if (isAuth) {
@@ -117,12 +126,15 @@ export function AuthProvider({ children }) {
         maxTimeToLive: MAX_TIME_TO_LIVE,
         windowOpenerFeatures: getWindowFeatures(),
         onSuccess: () => {
+          // auth-client stores only the delegation; store the key it was made for next to it
+          rememberSessionKey(authClient).catch((e) => console.error('Could not store the session key:', e));
           const id = authClient.getIdentity();
           setIdentity(id);
           setIsAuthenticated(true);
           setIsLoggingIn(false);
           setShowLoginModal(false);
           setSessionExpired(false);
+          setSessionBroken(false);
         },
         onError: (error) => {
           console.error('Internet Identity 1.0 login error:', error);
@@ -158,12 +170,15 @@ export function AuthProvider({ children }) {
         maxTimeToLive: MAX_TIME_TO_LIVE,
         windowOpenerFeatures: getWindowFeatures(),
         onSuccess: () => {
+          // auth-client stores only the delegation; store the key it was made for next to it
+          rememberSessionKey(authClient).catch((e) => console.error('Could not store the session key:', e));
           const id = authClient.getIdentity();
           setIdentity(id);
           setIsAuthenticated(true);
           setIsLoggingIn(false);
           setShowLoginModal(false);
           setSessionExpired(false);
+          setSessionBroken(false);
         },
         onError: (error) => {
           console.error('Internet Identity 2.0 login error:', error);
@@ -292,6 +307,7 @@ export function AuthProvider({ children }) {
       showLoginModal,
       closeLoginModal,
       sessionExpired,
+      sessionBroken,
       ensureSession,
     }}>
       {children}
