@@ -158,3 +158,45 @@ test('stake journal: entry before transfer, block after, removed after claim', a
     m.set(j.STAKE_JOURNAL_KEY, 'not json');
     assert.deepEqual(j.loadPendingStakes(), []);
 });
+
+// A call the network refused (HTTP 4xx when submitting it, e.g. "Invalid signature" from a broken
+// login session) never reached the ledger: say so, instead of "not known whether it went through".
+// The error is built exactly as @dfinity/agent 2.x builds it for a refused /call.
+import { AgentCallError, AgentHTTPResponseError } from '@dfinity/agent';
+const refusedCall = (status, body) => new AgentCallError(
+    `Error while making call: Server returned an error:\n  Code: ${status} ()\n  Body: ${body}\n`,
+    new AgentHTTPResponseError(`Server returned an error:\n  Code: ${status} ()\n  Body: ${body}\n`, { ok: false, status, statusText: '', headers: [] }),
+    'ab', 'cd', 'ef', '1');
+
+test('regression: a refused call (HTTP 400 invalid signature) is reported as not sent, with a re-login hint', async () => {
+    const l = mockLedger({ ledgerId: CUSTOM });
+    l.icrc1_transfer = async () => { l.calls++; throw refusedCall(400, 'Invalid signature: Invalid basic signature: Ed25519 signature could not be verified: public key 50f8…, signature cc85…, error: A signature was invalid'); };
+    let err = null;
+    try { await icrc1Transfer(l, args()); } catch (e) { err = e; }
+    assert.equal(l.calls, 1);
+    assert.ok(err);
+    assert.equal(err.code, 'NOT_SENT');
+    assert.match(err.message, /was not sent/);
+    assert.match(err.message, /safe to try again/);
+    assert.match(err.message, /log out and log in again/i);
+    assert.doesNotMatch(err.message, /not known whether/);
+});
+
+test('a refused call for another reason (HTTP 429) is not sent either, without the re-login hint', async () => {
+    const l = mockLedger({ ledgerId: CUSTOM });
+    l.icrc1_transfer = async () => { l.calls++; throw refusedCall(429, 'Too many requests'); };
+    let err = null;
+    try { await icrc1Transfer(l, args()); } catch (e) { err = e; }
+    assert.equal(err?.code, 'NOT_SENT');
+    assert.doesNotMatch(err.message, /log in again/i);
+});
+
+test('a server error (HTTP 5xx) or a network error stays outcome-unknown', async () => {
+    for (const thrown of [refusedCall(503, 'Service unavailable'), new Error('Failed to fetch')]) {
+        const l = mockLedger({ ledgerId: CUSTOM });
+        l.icrc1_transfer = async () => { l.calls++; throw thrown; };
+        let err = null;
+        try { await icrc1Transfer(l, args()); } catch (e) { err = e; }
+        assert.equal(err?.code, 'OUTCOME_UNKNOWN', String(thrown.message));
+    }
+});
